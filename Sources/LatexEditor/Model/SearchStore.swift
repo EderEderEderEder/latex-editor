@@ -69,8 +69,12 @@ final class SearchStore {
         }
     }
 
+    /// Wartet auf die jeweils letzte Suche: Eine neue Anfrage (z. B. durch ein Dateiereignis) bricht die laufende ab.
     func waitUntilIdle() async {
-        await task?.value
+        while let current = task {
+            await current.value
+            if task == current { return }
+        }
     }
 
     func reset() {

@@ -3,28 +3,7 @@ import Foundation
 import Testing
 @testable import LatexEditor
 
-private let thesisTemplate = URL(fileURLWithPath: "/Users/maxieder/Desktop/FH/5 Semster/Bachelorarbeit/Thesis", isDirectory: true)
-private let canCompileTemplate = LatexToolchain.latexmk() != nil
-    && FileManager.default.fileExists(atPath: thesisTemplate.appendingPathComponent("hgbthesis.cls").path)
-
-/// Kopiert die Vorlagen-Dateien (ohne .git, Build-Dateien) in einen temporären Ordner. `../Thesis` bleibt unberührt.
-private func copyTemplate(to destination: URL) throws {
-    let manager = FileManager.default
-    let skipped: Set<String> = [".git", ".gitignore", ".texpadtmp"]
-    let skippedExtensions: Set<String> = ["aux", "log", "pdf", "gz", "toc", "out", "bbl", "bcf", "blg", "xml", "fls", "fdb_latexmk", "lof", "lot"]
-    let enumerator = try #require(manager.enumerator(at: thesisTemplate, includingPropertiesForKeys: [.isDirectoryKey]))
-    for case let url as URL in enumerator {
-        let relative = String(url.path.dropFirst(thesisTemplate.path.count + 1))
-        if relative.split(separator: "/").contains(where: { skipped.contains(String($0)) }) { continue }
-        let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
-        let target = destination.appendingPathComponent(relative)
-        if isDirectory {
-            try manager.createDirectory(at: target, withIntermediateDirectories: true)
-        } else if !skippedExtensions.contains(url.pathExtension) || url.lastPathComponent.hasPrefix("hgbtheme") {
-            try manager.copyItem(at: url, to: target)
-        }
-    }
-}
+private let canCompileTemplate = LatexToolchain.latexmk() != nil && DemoProject.exists
 
 private func writePNG(to url: URL) throws {
     let size = 40
@@ -36,13 +15,13 @@ private func writePNG(to url: URL) throws {
     try png.write(to: url)
 }
 
-@Suite("Einfügen: kompiliert in der HgbThesis-Vorlage (nur mit MacTeX)", .serialized, .enabled(if: canCompileTemplate))
+@Suite("Einfügen: kompiliert im Demo-Projekt im Stil der HgbThesis (nur mit MacTeX)", .serialized, .enabled(if: canCompileTemplate))
 struct InsertionCompileTests {
     @Test("Alle Bausteine zusammen kompilieren ohne Fehler; Verweise und Zitat lösen auf")
     func compilesAllBlocks() async throws {
         let project = try TemporaryProject()
         defer { project.remove() }
-        try copyTemplate(to: project.root)
+        try DemoProject.copy(to: project.root)
 
         // Bild von außerhalb des Projekts („Downloads“): wird nach images/ kopiert (Leerzeichen, Umlaut im Namen)
         let downloads = try TemporaryProject()
@@ -115,7 +94,7 @@ struct InsertionCompileTests {
                 "Verweise müssen auflösen: \(undefined.map(\.message))")
         let citations = report.issues.filter { $0.message.contains("knuth1984") }
         #expect(citations.isEmpty, "Zitat muss auflösen: \(citations.map(\.message))")
-        print("⏱ Thesis-Vorlage mit allen Bausteinen kompiliert in \(String(format: "%.1f", result.duration.milliseconds / 1000)) s")
+        print("⏱ Demo-Vorlage mit allen Bausteinen kompiliert in \(String(format: "%.1f", result.duration.milliseconds / 1000)) s")
     }
 
     private func appendToChapter(_ chapter: URL, blocks: [String], sentence: String) throws {

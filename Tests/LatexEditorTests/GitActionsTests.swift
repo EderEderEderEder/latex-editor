@@ -4,9 +4,6 @@ import Foundation
 import Testing
 @testable import LatexEditor
 
-private let thesisRoot = URL(fileURLWithPath: "/Users/maxieder/Desktop/FH/5 Semster/Bachelorarbeit/Thesis", isDirectory: true)
-private let thesisIsRepository = FileManager.default.fileExists(atPath: thesisRoot.appendingPathComponent(".git").path)
-
 /// Wartet, bis FSEvents (0,3 s) und der entprellte Statuslauf (0,3 s) durch sind.
 @MainActor
 private func waitUntil(_ condition: () -> Bool) async throws {
@@ -226,11 +223,24 @@ struct GitActionsTests {
 }
 }
 
-@Suite("Git mit der echten Thesis (nur lesen)", .enabled(if: thesisIsRepository))
+@Suite("Git mit dem Demo-Projekt (nur lesen)", .enabled(if: DemoProject.exists))
 @MainActor
-struct GitThesisTests {
-    /// Änderungszeit und Größe aller Dateien in `.git`. Das Arbeitsverzeichnis selbst nicht: Dort arbeitet
-    /// der Nutzer womöglich gerade (eigene App-Instanz), und die Lesepfade schreiben dort ohnehin nie.
+struct GitDemoProjectTests {
+    /// Demo-Projekt als Repository mit einem Commit und danach bereitgestellten, nicht bereitgestellten und neuen Dateien
+    private func makeRepository() async throws -> TemporaryRepository {
+        let repository = try await TemporaryRepository()
+        try DemoProject.copy(to: repository.root)
+        try await repository.run("add", "--all")
+        try await repository.run("commit", "--quiet", "--message", "Demo")
+        try repository.write("chapters/grundlagen.tex", "\\chapter{Geändert}\n")
+        try await repository.run("add", "chapters/grundlagen.tex")
+        try repository.write("chapters/einleitung.tex", "\\chapter{Auch geändert}\n")
+        try repository.write("notizen.tex", "neu\n")
+        return repository
+    }
+
+    /// Änderungszeit und Größe aller Dateien in `.git`. Das Arbeitsverzeichnis selbst nicht: Die Lesepfade
+    /// schreiben dort ohnehin nie.
     private func snapshot(of root: URL) throws -> [String: [Double]] {
         var result: [String: [Double]] = [:]
         let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey]
@@ -243,38 +253,43 @@ struct GitThesisTests {
         return result
     }
 
-    @Test("Status und Diff der Thesis lesen verändert dort nichts, auch nicht den Index")
-    func readingThesisChangesNothing() async throws {
-        let gitDirectory = thesisRoot.appendingPathComponent(".git")
+    @Test("Status und Diff lesen verändert im Repository nichts, auch nicht den Index")
+    func readingChangesNothing() async throws {
+        let repository = try await makeRepository()
+        defer { repository.remove() }
+        let gitDirectory = repository.url(".git")
         let before = try snapshot(of: gitDirectory)
-        let indexBefore = try Data(contentsOf: thesisRoot.appendingPathComponent(".git/index"))
-        let store = GitStore()
+        let indexBefore = try Data(contentsOf: repository.url(".git/index"))
+        let store = repository.makeStore()
 
-        await store.open(project: thesisRoot)
+        await store.open(project: repository.root)
         await store.refresh()
         let urls = Set((store.staged + store.unstaged).compactMap { store.url(for: $0) })
+        #expect(urls.count == 3)
         store.updateDiffTabs(open: urls, active: nil)
         try await waitUntil { store.diffs.values.allSatisfy { $0.state != .loading } }
 
         #expect(store.availability == .ready)
-        #expect(try Data(contentsOf: thesisRoot.appendingPathComponent(".git/index")) == indexBefore)
+        #expect(try Data(contentsOf: repository.url(".git/index")) == indexBefore)
         #expect(try snapshot(of: gitDirectory) == before)
     }
 
-    @Test("Statuslauf für die Thesis bleibt schnell (inklusive Prozessstart)")
-    func thesisStatusDuration() async throws {
+    @Test("Statuslauf für das Demo-Projekt bleibt schnell (inklusive Prozessstart)")
+    func statusDuration() async throws {
         // gemessen 23 ms (zwei Prozesse: status, bei offenem Diff auch cat-file); Prozessstarts schwanken stark
         let budget = Duration.milliseconds(300)
-        let store = GitStore()
-        await store.open(project: thesisRoot)
+        let repository = try await makeRepository()
+        defer { repository.remove() }
+        let store = repository.makeStore()
+        await store.open(project: repository.root)
         let clock = ContinuousClock()
         var durations: [Duration] = []
         for _ in 0..<5 { durations.append(await clock.measure { await store.refresh() }) }
         // Der schnellste Lauf, nicht der mittlere: Im Gesamtlauf teilen sich über 400 Tests die Maschine, die Wandzeit
-        // schwankt dort zwischen 160 und 400 ms (allein 23 ms), ohne dass sich im Git-Code etwas ändert. Ein echter
-        // Rückschritt (zusätzlicher Prozess, langsamer Status) macht jeden der fünf Läufe langsam.
+        // schwankt dort zwischen 160 und 400 ms, ohne dass sich im Git-Code etwas ändert. Ein echter Rückschritt
+        // (zusätzlicher Prozess, langsamer Status) macht jeden der fünf Läufe langsam.
         let fastest = durations.min() ?? .zero
-        print("⏱ Git-Status Thesis: schnellster \(fastest), mittlerer \(durations.sorted()[durations.count / 2])")
+        print("⏱ Git-Status Demo: schnellster \(fastest), mittlerer \(durations.sorted()[durations.count / 2])")
         #expect(fastest <= budget)
     }
 }

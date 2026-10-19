@@ -30,7 +30,7 @@ Wichtig: **nicht** `swift test` direkt aufrufen. Ohne die Flags aus dem Skript w
 | `SyncTeXTests` | gzip (auch Kopf mit Dateiname, abgeschnittene/fremde Daten), Parser, Vorwärts- und Rückwärtssuche gegen Referenzwerte der `synctex`-Kommandozeile (Fixture `two-chapters.synctex.gz`), Leerzeile/Zeile hinter dem Ende, Pfade mit `./`, Symlink und Leerzeichen, Koordinatenumrechnung, Nachladen bei kaputter Datei; mit MacTeX zusätzlich frisch kompiliertes Dokument live gegen die Kommandozeile |
 | `InsertionTests` (3 Suites) | Maskierung, Label-Namen (eindeutig, Umlaute), Blockplatzierung, alle Generatoren gegen exakte Muster aus dem HgbThesis-Tutorial, Tabelle (Größe, Excel-Einfügen, Linien), Projektkatalog (Labels, .bib mit einzeiligen Einträgen, graphicspath), Bild-Import (Bereinigung, Nummerierung, gleicher Inhalt, nicht unterstützte Formate) |
 | `EditorInsertionTests` | echter Coordinator: Block in eigenen Zeilen, ein Undo-Schritt (Undo/Redo), Markierung ersetzen vs. dahinter, Fließtext, keine Doppelausführung, markierter Text |
-| `InsertionCompileTests` | nur mit MacTeX: alle Bausteine (inkl. aller 27 Sprachumgebungen, Bild-Kopie, Verweise, Zitat) in einer **Kopie** der Thesis-Vorlage kompilieren; ../Thesis bleibt unberührt |
+| `InsertionCompileTests` | nur mit MacTeX: alle Bausteine (inkl. aller 27 Sprachumgebungen, Bild-Kopie, Verweise, Zitat) in einer **Kopie** des Demo-Projekts (`Testdaten/HgbDemo`, Nachbau der HgbThesis-Vorlage) kompilieren |
 | `EditorTabsTests` (3 Suites) | Tab-Logik (Datei- und Diff-Tabs): Öffnen rechts vom aktiven, Vorschau-Tab ersetzen/festhalten, Schließen (Nachbar), Andere/Alle, Wechsel mit Umbruch, Verschieben, Gedächtnis pro Projekt |
 | `EditorTabStoreTests` | mit echten Dateien: Sitzung des ersetzten Vorschau-Tabs wird freigegeben, Bearbeitung hält fest, Wechsel behält Änderungen, Schließen, gleiche Datei in zwei Schreibweisen, schnelles Öffnen ohne verwaiste Sitzungen, gelöschte Dateien, Wiederherstellung, Änderungsmeldung |
 | `FileOperationsTests` | Namensprüfung, `.tex` ergänzen, Anlegen/Kollision, Umbenennen (auch nur Groß-/Kleinschreibung), Duplizieren, Verschieben und seine Grenzen, Zielordner, leere Ordner im Baum |
@@ -44,7 +44,8 @@ Wichtig: **nicht** `swift test` direkt aufrufen. Ohne die Flags aus dem Skript w
 | `ChangeMarksTests`, `DiskSyncTests` | Marken (neu, geändert, gelöscht darüber/am Ende, unverändert); offene Dateien: stilles Neuladen nur des geänderten Teils (Undo geleert), eigenes Speichern ignoriert, Konflikt mit „Behalten“/„Neu laden“, Verwerfen ohne Plattenänderung, Latin-1, gelöschte Datei |
 | `GitPhase2Tests` (unter `AppModelSuite`) | App-Ebene: Pull lädt unveränderte offene Dateien neu und markiert geänderte, Branch-Wechsel schließt Tabs fehlender Dateien, Branch aus dem Terminal erscheint, FSEvents lädt neu, Änderungsmarken beim Tippen und nach dem Commit weg, Marken im echten Ruler gezeichnet (Pixelprüfung) |
 | `GitResetTests` (Plan + unter `AppModelSuite`) | Zurücksetzen auf den letzten Commit: Plan (HEAD vs. neu, Umbenennung, Konflikt, ohne Commit); bereitgestellte Änderung in einem Schritt (Fall vorwort.tex) mit Datei-Tab statt Diff, Sicherung und Rückgängig; ungespeicherter Text in Sicherung und Rückgängig; neue Dateien (Papierkorb, Tab zu, zurück samt Tab); gelöscht/umbenannt; Abbrechen |
-| `GitThesisTests` | nur mit `../Thesis/.git`: Status und alle Diffs der echten Thesis lesen ändert in `.git` nichts (Index byte-gleich); Statuslauf-Budget |
+| `GitDemoProjectTests` | Repository aus einer Kopie des Demo-Projekts (Commit, bereitgestellt, nicht bereitgestellt, neu): Status und alle Diffs lesen ändert in `.git` nichts (Index byte-gleich); Statuslauf-Budget |
+| `DemoProjectTests` | Das Demo-Projekt hat den vorausgesetzten Aufbau: Hauptdatei, Labels, Literatur, `graphicspath`, genau ein unbekannter Verweis, ungenutztes Label und Quelle, Klassenoptionen lesbar, alle 27 Sprachumgebungen definiert |
 | `CompletionTests` (mehrere Suites, App-Ebene unter `AppModelSuite`) | Kontext (Befehle, `\\`, Argumente mit `[…]`/`*`, Listen, Kommentare, UTF-16), Sortierung, Einfügen (Gerüste, Klammern, Komma, `\begin` mit Einrückung, kein doppeltes `\end`), Projektindex (Makros/Umgebungen aus `.tex` und `.sty`, Bilder, Dateien), offene Umgebungen, ungespeicherte Labels; echter Editor: `\ref{` → Liste → Filtern → Return (ein Undo-Schritt), `\beg` + Tab → Umgebungen → Gerüst, Tastatur/Esc/Menü, keine Liste in Kommentaren/ohne Automatik/bei Einfügen; Popup pixelgleich mit frisch aufgebauter Liste (Regression: Reste früherer Treffer); Index folgt Projekt und Speichern |
 | `CompletionOptionTests` | Optionen in `[…]`: Erkennung (Bilder, Gleitumgebungen, tabular, Zitate mit zwei Klammern, Klasse/Paket mit Namen dahinter, Schlüssel vs. Wert) und Abgrenzung (`\section[`, `\\[`, Kommentar, `itemize`); Einfügen (`key=`, vorhandenes `=`, Wert, Schalter in Listen, `]` bei Einzelwerten); Scanner gegen HgbThesis-Ausschnitte (`\DeclareKeys` ohne veraltete auch über zwei Zeilen, Registrierung, true/false, Themes, Studienrichtungen, Kommentar-Werte); Vorschläge; echter Editor: `\includegraphics[wi` → `width=` → Werte → `0.8\textwidth`, `\begin{figure}[` → `H]` |
 | `BibliographyTests` (mehrere Suites, App-Ebene unter `AppModelSuite`) | `.bib`-Parser (verschachtelt, `"…"`, Zahl, `#`, Kommentare), Katalog mit Autor/Jahr, Autoren-Umwandlung, Schlüssel (Umlaute, eindeutig, Titelwort), Formatierung und Maskierung, Zieldatei aus `\bibliography`, Abstand beim Anhängen; „Quelle“: Formular Buch exakt, Pflichtfelder, Webseite mit heutigem Abrufdatum, BibTeX einfügen (Felder unverändert, Schlüssel ersetzt), eigener Schlüssel; Zitat-Suche nach Autor/Titel/Jahr; App: Eintrag ans Ende der `.bib` + `\cite[S.~3]{…}` im Editor, offene geänderte `.bib` im Editor mit Undo |
@@ -60,7 +61,7 @@ Wichtig: **nicht** `swift test` direkt aufrufen. Ohne die Flags aus dem Skript w
 | `StabilizationTests` (teils App-Ebene unter `AppModelSuite`) | Text ohne Text-View ersetzen mit Undo/Redo; Verweise anpassen in geänderter offener Datei ist eigener Rückgängig-Schritt, früheres Tippen bleibt rückgängig machbar; Git erholt sich nach kaputtem `HEAD`; Quelle anlegen mit `.bib` vorne (Zitieren blockiert); aufgeklappte Ordner überstehen Tabwechsel, Projektwechsel setzt zurück; Build-Dauer mit Komma; Einfügen-Blocker |
 | `PerformanceTests` | 10.000-Zeilen-Dokument mit festen Budgets (siehe unten) |
 
-Testdaten entstehen in temporären Ordnern (`TemporaryProject`). `../Thesis` wird nie verwendet.
+Testdaten entstehen in temporären Ordnern (`TemporaryProject`) oder als Kopie des Demo-Projekts `Testdaten/HgbDemo` (`DemoProject.copy(to:)`). `../Thesis` (die echte Abschlussarbeit) wird nie verwendet, auch nicht lesend.
 
 Die Log-Fixtures in `Tests/LatexEditorTests/Fixtures/` sind echte Logs. Neu erzeugen: Mini-Dokument in einem Ordner anlegen und mit denselben Einstellungen wie die App kompilieren (`PATH=/Library/TeX/texbin:… max_print_line=10000 error_line=254 half_error_line=238 latexmk -pdf -synctex=1 -interaction=nonstopmode -file-line-error -cd main.tex`), dann `main.log` bzw. `main.blg` kopieren. Keine persönlichen Pfade einchecken.
 
@@ -89,7 +90,7 @@ Budgets gelten für den Debug-Build und haben etwa 3-fachen Puffer zum Messwert 
 | Git-Diff, 10.000 Zeilen, 100 verstreute Änderungen (Hintergrund) | 116 ms | 24 ms | 350 ms |
 | Git-Diff, 10.000 Zeilen, jede Zeile geändert (Hintergrund) | 1.300 ms | 231 ms | 4.000 ms |
 | Git-Diff, ungünstigster Fall (umsortierte Bausteine, Grenze greift) | 890 ms | 155 ms | 2.700 ms |
-| Git-Status der Thesis inkl. Prozessstart (einzeln; im parallelen Komplettlauf bis ca. 150 ms) | 18 ms | – | 300 ms |
+| Git-Status des Demo-Projekts inkl. Prozessstart (einzeln; im parallelen Komplettlauf bis ca. 150 ms) | 18 ms | – | 300 ms |
 | Vervollständigung: Kontext pro Tastendruck (Argument am Ende einer 2.000-Zeichen-Zeile) | 0,015 ms | 0,013 ms | 0,05 ms |
 | Vervollständigung: 5.000 Vorschläge filtern und sortieren | 9,7 ms | 2,1 ms | 30 ms |
 | latexmk Mini-Dokument (Info, kein Budget) | ca. 1,2–1,4 s | – | – |
@@ -112,7 +113,7 @@ Während des Samplings tippen oder scrollen. In `sample.txt` unter „Sort by to
 
 ## Manuelle UI-Checkliste
 
-Vorbereitung: `scripts/build-app.sh`, dann `open build/LatexEditor.app`. Für Belastungstests eine große Datei in einem **eigenen Testordner** anlegen, nicht in `../Thesis`. Am einfachsten kopierst du ein Kapitel 50-mal hintereinander in eine `test.tex`.
+Vorbereitung: `scripts/build-app.sh`, dann `open build/LatexEditor.app`. Für Belastungstests eine große Datei in einem **eigenen Testordner** anlegen, nicht in `../Thesis`. Am einfachsten legst du mit `scripts/demo-projekt.sh` die Arbeitskopie an (`Testdaten/Arbeitskopie`) und kopierst ein Kapitel 50-mal hintereinander in eine `test.tex`.
 
 ### Sitzung 1: Grundfunktionen
 
@@ -213,7 +214,7 @@ Vorbereitung: `scripts/build-app.sh`, dann `open build/LatexEditor.app`. Für Be
 | 56 | „Log anzeigen“ (Fehler-Tab oder Menü Ablage → Build-Log anzeigen) | Sheet mit latexmk-Ausgabe und `main.log`, scrollbar, Esc schließt |
 | 57 | Warnungen in Paketdateien (TeX-Live-Pfade) | Eintrag ist nicht anklickbar (nur Info) |
 | 58 | MacTeX vorübergehend unauffindbar (nur theoretisch) | Status „MacTeX fehlt“ mit Hinweis im Tooltip und im Fehler-Tab |
-| 59 | Nach dem Test mit `../Thesis` | Eingebaute Testfehler entfernt, `git -C ../Thesis status` ist leer (Build-Dateien sind per `.gitignore` ausgeschlossen) |
+| 59 | Nach dem Test mit der Arbeitskopie | Eingebaute Testfehler entfernt, `git -C Testdaten/Arbeitskopie status` zeigt nur die bewusst angelegten Änderungen |
 
 ### Sitzung 4: SyncTeX (PDF folgt Cursor, ⌘J, ⌘-Klick)
 
@@ -292,7 +293,7 @@ Vorher einmal kompilieren (⌘B), damit `main.synctex.gz` existiert.
 
 | # | Aktion | Erwartung |
 | --- | --- | --- |
-| 110 | Thesis öffnen | Toolbar zeigt `main` (ggf. ↑/↓), Seitenleiste hat den Tab „Änderungen“ mit Zahl; geänderte Dateien im Baum mit M/A/U, Ordner darüber mit Punkt |
+| 110 | Arbeitskopie des Demo-Projekts öffnen (`scripts/demo-projekt.sh`) | Toolbar zeigt `main` (ggf. ↑/↓), Seitenleiste hat den Tab „Änderungen“ mit Zahl; geänderte Dateien im Baum mit M/A/U, Ordner darüber mit Punkt |
 | 111 | Ordner ohne Git öffnen | Kein Branch in der Toolbar, kein Änderungen-Tab |
 | 112 | Datei bearbeiten und speichern (⌘S) | Erscheint nach spätestens ca. 1 s unter „Nicht bereitgestellt“ |
 | 113 | Datei in der Liste anklicken | Diff öffnet als kursiver Tab mit ±-Symbol: rot/grün, geänderte Wörter kräftiger, „… n unveränderte Zeilen“ klappt per Klick auf; Kopfzeile mit +/−-Zahlen |
@@ -314,7 +315,7 @@ Vorher einmal kompilieren (⌘B), damit `main.synctex.gz` existiert.
 | # | Aktion | Erwartung |
 | --- | --- | --- |
 | 124 | Branch-Eintrag in der Toolbar anklicken | Menü mit Branches (aktueller mit Haken), „Neuer Branch …“, Abrufen, Pull, Push, „Änderungen anzeigen“ |
-| 125 | Abrufen (Thesis, nachdem auf einem anderen Rechner/GitHub gepusht wurde) | ↓-Zahl erscheint; ohne Abrufen fragt die App nie selbst |
+| 125 | Abrufen (Projekt mit Remote, nachdem auf einem anderen Rechner/GitHub gepusht wurde) | ↓-Zahl erscheint; ohne Abrufen fragt die App nie selbst |
 | 126 | Pull mit unveränderter offener Datei | Datei zeigt sofort den neuen Stand, Cursor bleibt in der Nähe |
 | 127 | Pull, während eine geöffnete Datei ungespeicherte Änderungen hat, „Nicht speichern“ | Pfadzeile: „Auf der Platte geändert – Neu laden / Meine behalten“; beides funktioniert |
 | 128 | Lokal und Remote beide mit neuen Commits, Pull bzw. Push | Verständliche Meldung („auseinandergelaufen“ bzw. „Erst Pull“), nichts verändert |

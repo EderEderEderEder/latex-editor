@@ -3,3 +3,5 @@
 build/
 .DS_Store
 .swiftpm/
+# Demo-Projekte für Tests und Handtests liegen nur lokal; Tests überspringen sich, wenn sie fehlen
+Testdaten/

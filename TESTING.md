@@ -1,0 +1,357 @@
+# Tests
+
+## Automatische Tests
+
+Ohne Xcode gibt es kein XCTest und keine UI-Tests. Die Tests nutzen **Swift Testing** aus den Command Line Tools.
+
+```bash
+scripts/test.sh                                  # alle Tests (Debug)
+scripts/test.sh --filter Performance             # nur Performance-Tests
+scripts/test.sh --filter LatexTokenizer          # eine Suite
+scripts/test.sh -c release -Xswiftc -enable-testing --filter Performance   # Release-Vergleichswerte
+```
+
+Wichtig: **nicht** `swift test` direkt aufrufen. Ohne die Flags aus dem Skript wird der Test-Runner ohne Swift Testing gebaut, und es laufen still 0 Tests. Das Skript bricht in diesem Fall mit Fehler ab, ebenso bei einem `--filter` ohne Treffer. `--filter` vergleicht mit Typ- und Funktionsnamen (z. B. `WindowLayoutTests`), nicht mit den deutschen Anzeigenamen.
+
+| Datei | Inhalt |
+| --- | --- |
+| `OutlineParserTests` | Includes mit/ohne `.tex`, Reihenfolge, Kommentare und `\%`, Zeilennummern, Titelbereinigung, Zyklen, Cache, Include-Kette |
+| `ProjectLoadingTests` | FileTreeLoader (Filter, versteckte und leere Ordner, Sortierung), MainFileDetector |
+| `LatexTokenizerTests` | Grenzfälle: `\%`, `$` in Kommentaren, verschachtelte Klammern, `\verb`, Mathe-Umgebungen, Verbatim, unvollständige Eingaben, UTF-16 |
+| `LineIndexTests` | Einfügen/Löschen über Zeilengrenzen, leere Datei, ohne abschließenden Umbruch, 500 zufällige Bearbeitungen gegen Neuaufbau |
+| `SyntaxHighlighterTests` | eine Zeile pro Tastendruck, offenes `$` endet am Absatz, Verbatim bis Dateiende, 500 zufällige Bearbeitungen gegen Komplett-Einfärben |
+| `EditorIntegrationTests` | echter TextKit-Stapel ohne Fenster: Farben nach Bearbeitung, Index-Synchronität, Rechtschreibfilter, Ruler (Umbruch, letzte Zeile, nur sichtbarer Bereich, Breite) |
+| `WindowLayoutTests` | echtes Hauptfenster offscreen: Editor füllt die Höhe, Text beginnt rechts vom Ruler, im Textbereich wird tatsächlich gezeichnet (fängt Übermalen ab); Sprünge durch das echte SwiftUI-Fenster, wiederholt und dateiübergreifend, mit Tab- und Projektwechsel; Tabs durch das Fenster (Vorschau/fest, Wechsel mit Auswahl, Nachfrage beim Schließen, Wiederherstellung nach Projektneuöffnung, leere Anzeige); mit MacTeX: ⌘J (Seite + Markierung, die wieder verschwindet), PDF folgt Cursor, ⌘-Klick ins PDF → richtige Datei und Zeile |
+| `SessionSwitchTests` | echter `EditorCoordinator` im Offscreen-Fenster: Wechsel lang → kurz (Regressionstest für den Absturz `Range … out of bounds`), Auswahl pro Datei, veraltete Auswahl/Scrollposition, Projektwechsel, wiederholte Sprünge über Dateigrenzen, Zeile hinter Dateiende, extern gelöschte Dateien |
+| `TextPositionsTests` | Klemm-Logik für Bereiche, Zeilennummern und Positionen (auch `NSNotFound`, leerer Text) |
+| `SidebarModelTests` | Gliederungsbaum (Ebenen, fehlende Ebene, Einträge vor dem ersten Kapitel), aktueller Abschnitt zur Cursorposition, „Zuletzt geöffnet“, Tab pro Projekt |
+| `LatexLogParserTests` | echte Logs (MacTeX 2026) als Fixtures: Fehler mit Datei/Zeile auch im `\include`-Kapitel, fataler Fehler (fehlendes Paket), Warnungen, mehrzeilige Package-Warnung, Over-/Underfull, biblatex/biber; Grenzfälle (Klammern im Fehlerkontext und Box-Inhalt, Pfade mit Leerzeichen, abgeschnittenes Log) |
+| `BuildTests` | Build-Store mit Fake-latexmk (nie parallel, Aufträge zusammengefasst, Status, fehlendes MacTeX, Projektwechsel während Build) und echte latexmk-Builds (nur mit MacTeX): Mini-Dokument in Pfad mit Leerzeichen, Fehler im Kapitel mit Datei/Zeile, „alles aktuell“-Build behält Warnungen |
+| `SyncTeXTests` | gzip (auch Kopf mit Dateiname, abgeschnittene/fremde Daten), Parser, Vorwärts- und Rückwärtssuche gegen Referenzwerte der `synctex`-Kommandozeile (Fixture `two-chapters.synctex.gz`), Leerzeile/Zeile hinter dem Ende, Pfade mit `./`, Symlink und Leerzeichen, Koordinatenumrechnung, Nachladen bei kaputter Datei; mit MacTeX zusätzlich frisch kompiliertes Dokument live gegen die Kommandozeile |
+| `InsertionTests` (3 Suites) | Maskierung, Label-Namen (eindeutig, Umlaute), Blockplatzierung, alle Generatoren gegen exakte Muster aus dem HgbThesis-Tutorial, Tabelle (Größe, Excel-Einfügen, Linien), Projektkatalog (Labels, .bib mit einzeiligen Einträgen, graphicspath), Bild-Import (Bereinigung, Nummerierung, gleicher Inhalt, nicht unterstützte Formate) |
+| `EditorInsertionTests` | echter Coordinator: Block in eigenen Zeilen, ein Undo-Schritt (Undo/Redo), Markierung ersetzen vs. dahinter, Fließtext, keine Doppelausführung, markierter Text |
+| `InsertionCompileTests` | nur mit MacTeX: alle Bausteine (inkl. aller 27 Sprachumgebungen, Bild-Kopie, Verweise, Zitat) in einer **Kopie** der Thesis-Vorlage kompilieren; ../Thesis bleibt unberührt |
+| `EditorTabsTests` (3 Suites) | Tab-Logik (Datei- und Diff-Tabs): Öffnen rechts vom aktiven, Vorschau-Tab ersetzen/festhalten, Schließen (Nachbar), Andere/Alle, Wechsel mit Umbruch, Verschieben, Gedächtnis pro Projekt |
+| `EditorTabStoreTests` | mit echten Dateien: Sitzung des ersetzten Vorschau-Tabs wird freigegeben, Bearbeitung hält fest, Wechsel behält Änderungen, Schließen, gleiche Datei in zwei Schreibweisen, schnelles Öffnen ohne verwaiste Sitzungen, gelöschte Dateien, Wiederherstellung, Änderungsmeldung |
+| `FileOperationsTests` | Namensprüfung, `.tex` ergänzen, Anlegen/Kollision, Umbenennen (auch nur Groß-/Kleinschreibung), Duplizieren, Verschieben und seine Grenzen, Zielordner, leere Ordner im Baum |
+| `ReferenceUpdaterTests` | include/input mit und ohne Endung, Kommentare, Bilder mit graphicspath, bibliography mit Liste, Ordner, relative Pfade, Umlaute/Emoji, ähnliche Namen bleiben |
+| `FileActionsTests` (unter `AppModelSuite`) | App-Ebene mit Ersatz-Papierkorb: Neue Datei, Umbenennen mit Tabs/Änderungen/Verweisen, „Nur umbenennen“/Abbrechen, Hauptdatei, Ordner, Verschieben, Papierkorb inkl. Schutz, Duplizieren, Dialog-Fehler; mit MacTeX: nach Umbenennen kompiliert das Projekt weiter |
+| `LineDiffTests`, `DiffLayoutTests` | Zeilen-Diff (Nummern, leere Seiten, `\r\n`, verschobene Zeilen), Wort-Hervorhebung (nur geänderte Wörter, LaTeX-Befehle als ein Token, keine bei völlig verschiedenen Zeilen), 600 Zufallsfälle: Diff ergibt alten und neuen Text exakt und ist minimal (gegen Referenz-LCS), Grenze für Bearbeitungsschritte; Einklappen unveränderter Bereiche |
+| `GitStatusTests` (2 Suites) | Parser für `git status --porcelain=v2 -z` (Branch, neues Repository, losgelöster HEAD, alle Statusarten, Leerzeichen/Umlaute, Umbenennung) plus echte Git-Ausgabe; Git finden, Umgebung, Fehlermeldungen, relevante Ereignisse in `.git`, Projekt im Unterordner |
+| `GitStoreTests` | echte temporäre Repositories (ohne globale Git-Konfiguration des Nutzers): Status und Markierungen, Bereitstellen/Zurücknehmen (auch ohne ersten Commit), Commit (mehrzeilig, Sonderzeichen, alles inkl. neuer Dateien), Fehler (Identität, Hook, leere Nachricht), Diff-Tabs (Index/HEAD, neu, gelöscht, umbenannt, binär, folgt beim Bereitstellen, Umschalten der Seite, schließt nach Commit, aufgeklappte Bereiche pro Tab), Unterordner, Status schreibt den Index nicht |
+| `GitActionsTests` (unter `AppModelSuite`) | App-Ebene: Commit mit Speichern-Nachfrage und „Alle committen“, Abbrechen, Diff als Tab (Vorschau-Platz mit Dateien geteilt, fester Diff-Tab, Wechsel ohne Sitzung, folgt beim Bereitstellen, schließt nach Commit, wird nicht gemerkt), externe Änderungen und Commits im Terminal erscheinen per FSEvents, ohne Repository fällt die Seitenleiste auf Dateien zurück; Diff ohne gespeicherten Inhalt deckt den Editor vollständig ab (Pixelmessung) |
+| `GitRemoteTests` | gegen ein lokales Bare-Repository plus zweiten Klon („anderer Rechner“): Abrufen → ↓, Pull (Vorspulen), Push, Upstream beim ersten Push eines neuen Branches, auseinandergelaufen (Pull bricht ab, Push abgelehnt, nichts geht verloren), Pull würde überschreiben (Datei genannt), Branches wechseln/anlegen inkl. ungültiger und doppelter Namen, ohne Remote, Stand aus HEAD |
+| `ChangeMarksTests`, `DiskSyncTests` | Marken (neu, geändert, gelöscht darüber/am Ende, unverändert); offene Dateien: stilles Neuladen nur des geänderten Teils (Undo geleert), eigenes Speichern ignoriert, Konflikt mit „Behalten“/„Neu laden“, Verwerfen ohne Plattenänderung, Latin-1, gelöschte Datei |
+| `GitPhase2Tests` (unter `AppModelSuite`) | App-Ebene: Pull lädt unveränderte offene Dateien neu und markiert geänderte, Branch-Wechsel schließt Tabs fehlender Dateien, Branch aus dem Terminal erscheint, FSEvents lädt neu, Änderungsmarken beim Tippen und nach dem Commit weg, Marken im echten Ruler gezeichnet (Pixelprüfung) |
+| `GitResetTests` (Plan + unter `AppModelSuite`) | Zurücksetzen auf den letzten Commit: Plan (HEAD vs. neu, Umbenennung, Konflikt, ohne Commit); bereitgestellte Änderung in einem Schritt (Fall vorwort.tex) mit Datei-Tab statt Diff, Sicherung und Rückgängig; ungespeicherter Text in Sicherung und Rückgängig; neue Dateien (Papierkorb, Tab zu, zurück samt Tab); gelöscht/umbenannt; Abbrechen |
+| `GitThesisTests` | nur mit `../Thesis/.git`: Status und alle Diffs der echten Thesis lesen ändert in `.git` nichts (Index byte-gleich); Statuslauf-Budget |
+| `CompletionTests` (mehrere Suites, App-Ebene unter `AppModelSuite`) | Kontext (Befehle, `\\`, Argumente mit `[…]`/`*`, Listen, Kommentare, UTF-16), Sortierung, Einfügen (Gerüste, Klammern, Komma, `\begin` mit Einrückung, kein doppeltes `\end`), Projektindex (Makros/Umgebungen aus `.tex` und `.sty`, Bilder, Dateien), offene Umgebungen, ungespeicherte Labels; echter Editor: `\ref{` → Liste → Filtern → Return (ein Undo-Schritt), `\beg` + Tab → Umgebungen → Gerüst, Tastatur/Esc/Menü, keine Liste in Kommentaren/ohne Automatik/bei Einfügen; Popup pixelgleich mit frisch aufgebauter Liste (Regression: Reste früherer Treffer); Index folgt Projekt und Speichern |
+| `CompletionOptionTests` | Optionen in `[…]`: Erkennung (Bilder, Gleitumgebungen, tabular, Zitate mit zwei Klammern, Klasse/Paket mit Namen dahinter, Schlüssel vs. Wert) und Abgrenzung (`\section[`, `\\[`, Kommentar, `itemize`); Einfügen (`key=`, vorhandenes `=`, Wert, Schalter in Listen, `]` bei Einzelwerten); Scanner gegen HgbThesis-Ausschnitte (`\DeclareKeys` ohne veraltete auch über zwei Zeilen, Registrierung, true/false, Themes, Studienrichtungen, Kommentar-Werte); Vorschläge; echter Editor: `\includegraphics[wi` → `width=` → Werte → `0.8\textwidth`, `\begin{figure}[` → `H]` |
+| `BibliographyTests` (mehrere Suites, App-Ebene unter `AppModelSuite`) | `.bib`-Parser (verschachtelt, `"…"`, Zahl, `#`, Kommentare), Katalog mit Autor/Jahr, Autoren-Umwandlung, Schlüssel (Umlaute, eindeutig, Titelwort), Formatierung und Maskierung, Zieldatei aus `\bibliography`, Abstand beim Anhängen; „Quelle“: Formular Buch exakt, Pflichtfelder, Webseite mit heutigem Abrufdatum, BibTeX einfügen (Felder unverändert, Schlüssel ersetzt), eigener Schlüssel; Zitat-Suche nach Autor/Titel/Jahr; App: Eintrag ans Ende der `.bib` + `\cite[S.~3]{…}` im Editor, offene geänderte `.bib` im Editor mit Undo |
+| `TextEditingTests`, `TypingTests` | Klammern (Paar, überspringen, `$`, `\{`, Auswahl umschließen, Paar löschen), Enter (Einrückung, `\end` mit Argumenten, kein doppeltes, `\item` fortsetzen/beenden), Kommentar (Einrückung, gemischt), Ein-/Ausrücken (Leerzeichen), Zeilen verschieben/verdoppeln/löschen am Rand, Formatierung umschalten; echter Editor mit **echten Tastatur-Ereignissen**: Klammern zusammen mit der Vervollständigung, Enter in `itemize`, Tab/⇧Tab, Menübefehle mit Undo, abschaltbar |
+| `RecoveryTests`, `FontSizeTests` | Sicherung kurz nach der Eingabe, Speichern löscht; Absturz → Wiederherstellen (ungespeichert) bzw. Verwerfen; „Nicht speichern“ löscht, veraltete verschwinden (Regression: Tabs-Wiederherstellen löschte die Sicherung vor der Rückfrage); Schriftgröße für Editor, Datei und Ruler, Grenzen |
+| `PerformanceTests` | 10.000-Zeilen-Dokument mit festen Budgets (siehe unten) |
+
+Testdaten entstehen in temporären Ordnern (`TemporaryProject`). `../Thesis` wird nie verwendet.
+
+Die Log-Fixtures in `Tests/LatexEditorTests/Fixtures/` sind echte Logs. Neu erzeugen: Mini-Dokument in einem Ordner anlegen und mit denselben Einstellungen wie die App kompilieren (`PATH=/Library/TeX/texbin:… max_print_line=10000 error_line=254 half_error_line=238 latexmk -pdf -synctex=1 -interaction=nonstopmode -file-line-error -cd main.tex`), dann `main.log` bzw. `main.blg` kopieren. Keine persönlichen Pfade einchecken.
+
+`@MainActor`-Tests laufen selbst auf der Main-Queue. Vorgemerkte Arbeit (`DispatchQueue.main.async`) läuft deshalb nur, wenn der Test per `await Task.sleep` die Queue freigibt, nicht mit `RunLoop.run`.
+
+### Performance-Budgets
+
+Budgets gelten für den Debug-Build und haben etwa 3-fachen Puffer zum Messwert (Intel-Mac, 14.10.2026). Ein Test schlägt fehl, wenn der Median das Budget überschreitet.
+
+| Messung | Debug | Release | Budget |
+| --- | --- | --- | --- |
+| Zeilenindex aufbauen | 2,7 ms | 0,7 ms | 10 ms |
+| Zeilenindex, eine Bearbeitung | 0,033 ms | 0,014 ms | 0,25 ms |
+| Komplett tokenisieren (Hintergrund) | 40 ms | 6,7 ms | 120 ms |
+| Datei öffnen inkl. Einfärben | 64 ms | 26 ms | 200 ms |
+| **Tastendruck** (Index + Highlighting + Attribute) | 0,125 ms | 0,06 ms | 0,5 ms |
+| `$` tippen und löschen (je ein Absatz neu) | 0,9 ms | 0,7 ms | 3 ms |
+| Rechtschreib-Tokens für einen Absatz | 0,11 ms | 0,02 ms | 0,5 ms |
+| Ruler, sichtbarer Bereich | 0,036 ms | 0,026 ms | 0,25 ms |
+| Sprung zu Zeile 9.000 inkl. Layout + Ruler | 9–17 ms | 7 ms | 40 ms |
+| Gliederung parsen (Hintergrund) | 34 ms | 6,7 ms | 100 ms |
+
+| Log-Parser, 5-MB-Log (Hintergrund) | 785 ms | 53 ms | 2.000 ms |
+| SyncTeX laden, 400 Seiten / 250.000 Einträge (Hintergrund) | 1.425 ms | 180 ms | 4.000 ms |
+| SyncTeX: eine Vorwärts- + eine Rückwärtsabfrage | 0,47 ms | 0,084 ms | 1,5 ms |
+| Git-Diff, 10.000 Zeilen, 100 verstreute Änderungen (Hintergrund) | 116 ms | 24 ms | 350 ms |
+| Git-Diff, 10.000 Zeilen, jede Zeile geändert (Hintergrund) | 1.300 ms | 231 ms | 4.000 ms |
+| Git-Diff, ungünstigster Fall (umsortierte Bausteine, Grenze greift) | 890 ms | 155 ms | 2.700 ms |
+| Git-Status der Thesis inkl. Prozessstart (einzeln; im parallelen Komplettlauf bis ca. 150 ms) | 18 ms | – | 300 ms |
+| Vervollständigung: Kontext pro Tastendruck (Argument am Ende einer 2.000-Zeichen-Zeile) | 0,015 ms | 0,013 ms | 0,05 ms |
+| Vervollständigung: 5.000 Vorschläge filtern und sortieren | 9,7 ms | 2,1 ms | 30 ms |
+| latexmk Mini-Dokument (Info, kein Budget) | ca. 1,2–1,4 s | – | – |
+
+Nicht abgedeckt: Layout und Zeichnen in einem echten Fenster beim Tippen. Das lässt sich nur manuell oder mit Instruments prüfen (siehe unten).
+
+## Messen in der laufenden App
+
+```bash
+/usr/bin/log stream --level debug --style compact --predicate 'subsystem == "de.maxieder.LatexEditor"'
+```
+
+Zeigt pro Bearbeitung `Edit: x ms, n Zeilen` sowie `FileTreeLoad`, `OutlineParse`, `PrepareDocument`, `ApplyInitialColors`, `SaveFile` und `PDFReload`. Unter zsh `/usr/bin/log` schreiben, `log` ist dort ein Builtin.
+
+```bash
+sample LatexEditor 5 -file ~/Desktop/sample.txt
+```
+
+Während des Samplings tippen oder scrollen. In `sample.txt` unter „Sort by top of stack“ sollten keine eigenen Funktionen (`LatexEditor`) weit oben stehen.
+
+## Manuelle UI-Checkliste
+
+Vorbereitung: `scripts/build-app.sh`, dann `open build/LatexEditor.app`. Für Belastungstests eine große Datei in einem **eigenen Testordner** anlegen, nicht in `../Thesis`. Am einfachsten kopierst du ein Kapitel 50-mal hintereinander in eine `test.tex`.
+
+### Sitzung 1: Grundfunktionen
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 1 | App starten | Zuletzt geöffnetes Projekt wird geladen, Hauptdatei ist offen. Editor und PDF füllen die ganze Fensterhöhe, der Text beginnt rechts neben den Zeilennummern |
+| 2 | ⌘O, anderen Ordner wählen | Baum, Gliederung und PDF wechseln, bei ungespeicherten Änderungen erscheint eine Nachfrage |
+| 3 | Filterfeld unten: „ein“ | Flache Liste mit relativen Pfaden; ✕ leert den Filter |
+| 4 | Gliederung: Kapitel anklicken | Datei öffnet sich, Zeile ist ausgewählt und kurz hervorgehoben |
+| 5 | Datei A bearbeiten, zu B wechseln, ⌘Z | Undo betrifft nur B. Zurück zu A: Undo-Verlauf, Auswahl und Scrollposition von A sind erhalten |
+| 6 | Tippen | Oranger Punkt in der Pfadzeile. ⌘S lässt ihn verschwinden, die Gliederung aktualisiert sich |
+| 7 | Pfadzeile in eingebundener Datei | `main.tex › einleitung.tex`, Klick auf `main.tex` öffnet die Hauptdatei |
+| 8 | Ansichtsmodus und ⌘0 | Editor/Geteilt/PDF wechseln, Seitenleiste ein/aus, Trenner verschiebbar |
+| 9 | PDF neu schreiben (kompilieren oder Datei ersetzen) | PDF lädt neu, Seite, Position und Zoom bleiben erhalten |
+| 10 | Beenden mit ungespeicherten Änderungen | Nachfrage Speichern / Nicht speichern / Abbrechen |
+
+### Sitzung 2: Syntaxfarben
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 11 | Datei öffnen | Sofort eingefärbt: Befehle blau, `{}` grau-blau, Labels/Zitate/Umgebungsnamen und `[…]` lila, Mathe grün, Kommentare grau, `\verb` und Verbatim braun. Prosa in `\section{…}` bleibt in Textfarbe |
+| 12 | `50\% Rabatt` tippen | `\%` blau, kein Kommentar danach |
+| 13 | In einem Absatz `$` tippen | Rest des Absatzes wird grün, aber **nicht** der nächste Absatz nach der Leerzeile. Zweites `$` beendet die Mathe |
+| 14 | `\begin{equation}` tippen | Folgezeilen grün bis zur nächsten Leerzeile bzw. bis `\end{equation}` |
+| 15 | `\begin{verbatim}` am Dateianfang tippen | Ganze Datei braun, `\end{verbatim}` tippen nimmt es zurück. Kurzer Ruckler beim ersten Mal ist bei sehr großen Dateien akzeptabel |
+| 16 | `% Kommentar mit $x$ und \section{}` | Ganze Zeile grau, kein Grün |
+| 17 | `\verb|$x$ % y|` | Alles braun, kein Kommentar |
+| 18 | Hell/Dunkel in den Systemeinstellungen umschalten | Farben passen sich ohne Neustart an, alles gut lesbar |
+| 19 | Undo/Redo nach Bearbeitungen | Farben stimmen nach jedem Schritt |
+| 20 | Großen Text einfügen (z. B. 2.000 Zeilen) | Wird eingefärbt, keine spürbare Verzögerung |
+
+### Sitzung 2: Zeilennummern
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 21 | Fenster schmal machen, lange Zeile | Nummer nur an der ersten visuellen Zeile, umbrochene Folgezeilen ohne Nummer |
+| 22 | Cursor bewegen | Aktuelle Nummer kräftiger, sehr dezenter Streifen über die ganze logische Zeile (auch umbrochen), in Hell und Dunkel |
+| 23 | Text markieren | Kein Streifen, solange eine Auswahl besteht |
+| 24 | Datei mit 9 bzw. 100+ / 10.000+ Zeilen | Leiste wird bei mehr Stellen breiter, Nummern rechtsbündig |
+| 25 | Leere Datei, Datei mit abschließendem Umbruch | Leere Datei zeigt „1“, nach letztem Umbruch erscheint eine Nummer für die leere letzte Zeile |
+| 26 | Enter / Zeilen löschen | Nummern darunter aktualisieren sofort |
+| 27 | Schnell scrollen, Scrollbalken ans Ende ziehen | Nummern laufen synchron mit, keine Lücken, kein Flackern |
+| 28 | Gliederungsklick auf Kapitel weit unten | Sprung ohne spürbare Verzögerung, Nummern sofort korrekt |
+| 29 | Datei wechseln | Nummern und Breite passen sofort zur neuen Datei |
+
+### Sitzung 2: Rechtschreibung
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 30 | `\textbf{Fehlerr}` und `\label{sec:einleitng}` | „Fehlerr“ rot unterstrichen, Befehlsnamen und Label **nicht** |
+| 31 | Mathe `$\alpha + \beta$` und `% Kommentr` | Keine Markierung |
+| 32 | Falls Befehle doch markiert werden | Bitte melden: Dann greift weder der Delegate noch `setSpellingState`, ein dritter Weg ist nötig |
+
+### Sitzung 2: Tipp-Performance (mit Instruments, sobald Xcode installiert ist)
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 33 | Große Datei (10.000 Zeilen), in der Mitte schnell tippen und Enter halten | Kein Ruckeln. Im Log `Edit:` unter 0,5 ms und meist „1 Zeilen“ |
+| 34 | Instruments → Time Profiler beim Tippen | Hauptlast bei AppKit-Layout/Zeichnen, eigene Funktionen klein |
+| 35 | Instruments → Points of Interest | Intervalle `Edit`, `PrepareDocument` usw. sichtbar |
+
+### Sitzung 3: Dateiwechsel (Absturz-Regression)
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 36 | In einer langen Datei ans Ende gehen, dann im Baum eine kurze Datei öffnen | Kein Absturz, Cursor am Anfang bzw. an der gemerkten Stelle der kurzen Datei |
+| 36a | Im Dateibaum mitten auf den Dateinamen bzw. das Icon klicken (nicht auf den Zeilenrand) | Datei öffnet sich beim ersten Klick; Doppelklick auf Bild/PDF öffnet es extern, Rechtsklick zeigt „Öffnen“ und „Im Finder zeigen“ |
+| 37 | 10-mal abwechselnd über den Baum **und** die Gliederung zwischen Dateien wechseln | Jeder Klick wirkt, die UI bleibt bedienbar, Tabs lassen sich jederzeit wechseln |
+| 38 | Denselben Gliederungseintrag mehrmals hintereinander anklicken (dazwischen scrollen) | Jeder Klick springt wieder zur Überschrift |
+| 39 | Geöffnete, unveränderte Datei im Finder löschen | Editor wechselt zur Hauptdatei, Baum aktualisiert sich |
+| 40 | Geöffnete Datei mit ungespeicherten Änderungen im Finder löschen | Datei bleibt offen, Pfadzeile zeigt „Gelöscht“, ⌘S legt sie neu an |
+
+### Sitzung 3: Seitenleiste
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 41 | App ohne Projekt starten (in Ablage → Zuletzt geöffnet „Liste löschen“, `defaults delete de.maxieder.LatexEditor lastProjectPath`) | Seitenleiste zeigt „Kein Projekt geöffnet“ mit Button, der Button öffnet den Ordnerdialog |
+| 42 | Ablage → Projekt öffnen … (⌘O) und Ablage → Zuletzt geöffnet | Öffnet das Projekt; die Liste zeigt die letzten Projekte, neueste zuerst |
+| 43 | Icon-Tabs Dateien / Gliederung / Fehler durchklicken | Gewählter Tab blau gefüllt, Liste wechselt; Fehler-Tab zeigt Badge mit Anzahl |
+| 44 | Tab wählen, anderes Projekt öffnen, zurück | Jedes Projekt merkt sich seinen Tab |
+| 45 | Gliederung: Kapitel auf-/zuklappen | Hierarchie Kapitel (K) > Abschnitt (§) > Unterabschnitt (§§), Zustand bleibt beim Tabwechsel |
+| 46 | Cursor im Editor durch mehrere Abschnitte bewegen | Nach kurzer Pause wird der aktuelle Abschnitt in der Gliederung blau hervorgehoben, auch dateiübergreifend |
+| 47 | Statistikzeilen | Dateien, Abschnitte und Meldungen stimmen mit Baum, Gliederung und Fehlerliste überein |
+| 48 | Filter in jedem Tab | Filter gilt nur für den aktiven Tab und bleibt pro Tab erhalten |
+
+### Sitzung 3: Kompilieren und Fehlerliste
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 48a | Toolbar vor dem ersten Build | Rechts nur der Hammer, kein leeres Feld; genau ein Seitenleisten-Button (in der Seitenleiste, ⌃⌘S) |
+| 49 | ⌘B bzw. Hammer in der Toolbar | Status „Kompiliert …“, danach „Erfolgreich“ oder „n Fehler · m Warnungen“; PDF lädt **einmal** neu, Seite/Position bleiben |
+| 50 | Fehler einbauen (z. B. `\gibtsnicht` in einem Kapitel), ⌘S | Kompiliert automatisch („Beim Speichern kompilieren“), Status rot, Fehler-Tab mit Datei:Zeile, roter Punkt neben der Zeilennummer |
+| 51 | Klick auf den Fehler in der Liste | Richtige Datei öffnet sich an der richtigen Zeile, auch mehrfach hintereinander |
+| 52 | Klick auf die Statusanzeige in der Toolbar | Seitenleiste wechselt zum Fehler-Tab |
+| 53 | Fehler beheben, ⌘S | Status grün, Liste leer, Punkt verschwindet |
+| 54 | Mehrmals schnell hintereinander ⌘S / ⌘B | Nie zwei Builds gleichzeitig (Aktivitätsanzeige: nur ein `latexmk`), am Ende ein Build mit dem letzten Stand |
+| 55 | Menü Ablage: „Beim Speichern kompilieren“ ausschalten, ⌘S | Kein Build; Einstellung bleibt nach Neustart erhalten |
+| 56 | „Log anzeigen“ (Fehler-Tab oder Menü Ablage → Build-Log anzeigen) | Sheet mit latexmk-Ausgabe und `main.log`, scrollbar, Esc schließt |
+| 57 | Warnungen in Paketdateien (TeX-Live-Pfade) | Eintrag ist nicht anklickbar (nur Info) |
+| 58 | MacTeX vorübergehend unauffindbar (nur theoretisch) | Status „MacTeX fehlt“ mit Hinweis im Tooltip und im Fehler-Tab |
+| 59 | Nach dem Test mit `../Thesis` | Eingebaute Testfehler entfernt, `git -C ../Thesis status` ist leer (Build-Dateien sind per `.gitignore` ausgeschlossen) |
+
+### Sitzung 4: SyncTeX (PDF folgt Cursor, ⌘J, ⌘-Klick)
+
+Vorher einmal kompilieren (⌘B), damit `main.synctex.gz` existiert.
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 60 | In `einleitung.tex` Cursor in eine Textzeile, ⌘J (oder Darstellung → Im PDF zeigen) | PDF springt auf die Seite, Stelle etwa mittig, reines Gelb (#FFFF00) hinter dem Text, nach ca. 0,7 s weiches Ausblenden (ca. 0,6 s) |
+| 61 | Dasselbe in mehreren Kapiteln nacheinander | Jedes Mal die richtige Seite |
+| 62 | Pfeil-Schalter in der PDF-Leiste einschalten, durch ein Kapitel scrollen/klicken | PDF folgt nach kurzer Pause; solange die Stelle schon sichtbar ist, bleibt das PDF ruhig |
+| 63 | Schalter aus, App neu starten | Schalter bleibt aus; an → bleibt an |
+| 64 | ⌘-Klick auf einen Absatz im PDF | Richtige `.tex`-Datei öffnet sich (auch eingebundene Kapitel), Cursor in der richtigen Zeile |
+| 65 | ⌘-Klick auf Inhaltsverzeichnis/Titelseite | Springt in `main.tex` oder passiert nichts – nie eine `.toc`/`.aux`-Datei |
+| 66 | Normaler Klick und Textauswahl im PDF (ohne ⌘) | Verhalten wie bisher |
+| 67 | Text ändern, ohne zu kompilieren, dann ⌘J | Kein Absturz; Position ggf. leicht daneben, nach ⌘S/⌘B wieder genau |
+| 68 | ⌘J bzw. ⌘-Klick, während ein Build läuft | Kein Absturz; es gelten die Daten des letzten Builds |
+| 69 | Projekt ohne bisherigen Build öffnen, ⌘J | Passiert nichts, kein Fehler |
+
+### Sitzung 5: Einfügen-Menü
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 70 | Toolbar „Einfügen“ (Symbol, Pfeil daneben) und Menü Einfügen in der Menüleiste | Ganz oben „Einfügeoptionen …“ (⇧⌘I) öffnet das Fenster mit dem zuletzt benutzten Baustein, darunter die einzelnen Bausteine; ohne geöffnete .tex-Datei sind alle deaktiviert |
+| 70a | Aussehen des Fensters (Hell und Dunkel) | Seitenleiste mit farbigen Symbolen, Kopf mit Titel und Beschreibung, Einstellungen auf Karten, Vorschau mit Farben wie im Editor, „Kopieren“ legt den Code in die Zwischenablage |
+| 71 | Tabelle: Größe ändern, Zellen tippen (mit Tab springen), Ausrichtung pro Spalte | Vorschau unten ändert sich sofort; Kopfzeile fett |
+| 72 | In Excel/Numbers Zellen kopieren, „Aus Zwischenablage einfügen“ | Raster passt sich an und enthält die Zellen |
+| 73 | Zeichen wie `%`, `&`, `_`, `#` in Zellen und Beschriftung | In der Vorschau maskiert (`\%` …); mit abgeschaltetem Haken unverändert |
+| 74 | Einfügen drücken | Code steht an der Cursorposition in eigenen Zeilen, Cursor dahinter, ⌘Z macht alles in einem Schritt rückgängig |
+| 75 | Bild: Datei wählen oder per Drag & Drop ziehen (außerhalb des Projekts) | Beim Einfügen liegt es in `images/` (Dateibaum aktualisiert sich), Pfad ist nur der Dateiname (graphicspath) |
+| 76 | Dasselbe Bild nochmal einfügen / anderes Bild mit gleichem Namen | Gleiches Bild: keine zweite Kopie; anderes: `…-2.png` |
+| 77 | HEIC/SVG-Datei ziehen | Verständliche Meldung, nichts wird kopiert |
+| 78 | Code markieren, Einfügen → Codeblock | Markierter Text ist der Inhalt und wird ersetzt; Sprache wählbar |
+| 79 | Gleichung, Aufzählung (Punkte, Texte) | Passende Umgebung, Label nur bei nummerierter Gleichung |
+| 80 | Verweis | Liste der Labels des Projekts; „Abbildung~\ref{…}“ mit Vorsatz |
+| 81 | Zitat (mehrere Einträge mit ⌘ wählen, Seitenangabe) | `\cite[S.~12]{a,b}`; Titel der Einträge sichtbar |
+| 82 | Eingefügte Tabelle/Bild/Code kompilieren (⌘B) | Keine Fehler; Verweise lösen auf |
+
+### Sitzung 6: Tabs
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 83 | Datei im Baum einfach anklicken, dann eine andere | Es gibt nur einen kursiven Vorschau-Tab, er wird ersetzt |
+| 84 | Doppelklick auf einen Tab oder auf die Datei im Baum | Tab wird fest (nicht mehr kursiv), der nächste Klick öffnet einen neuen Tab daneben |
+| 85 | In einem Vorschau-Tab tippen | Tab wird fest, oranger Punkt statt Schließen-Symbol |
+| 86 | Zwischen Tabs wechseln (Klick, ⇧⌘], ⇧⌘[) | Jede Datei behält Cursor, Scrollposition und Undo-Verlauf |
+| 87 | ⌘W bei geänderter Datei | Nachfrage Speichern / Nicht speichern / Abbrechen; „Abbrechen“ lässt den Tab offen |
+| 88 | Rechtsklick auf einen Tab | Schließen, Andere schließen, Alle schließen, Festhalten, Im Finder zeigen |
+| 89 | Tabs per Ziehen umsortieren | Reihenfolge ändert sich, aktiver Tab bleibt aktiv |
+| 90 | Projekt schließen/App beenden und neu öffnen | Dieselben Tabs sind wieder da, der aktive Tab ist aktiv |
+| 91 | Gliederungs-Eintrag oder Fehler anklicken, dessen Datei schon als Tab offen ist | Wechselt zum vorhandenen Tab (kein zweiter) und springt zur Zeile |
+| 92 | Viele Tabs öffnen | Leiste scrollt horizontal, der aktive Tab bleibt sichtbar |
+| 93 | Alle Tabs schließen | Leere Anzeige mit Hinweis, kein Absturz; Datei im Baum öffnet wieder |
+| 94 | Geöffnete Datei im Finder löschen | Tab verschwindet, Nachbar wird angezeigt; mit Änderungen bleibt er (durchgestrichen) |
+
+### Sitzung 7: Dateien verwalten
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 95 | Rechtsklick auf Ordner → Neue Datei … („kapitel2“) | Datei `kapitel2.tex` entsteht im Ordner, öffnet in festem Tab, Ordner klappt auf |
+| 96 | Name eingeben, der schon existiert | Meldung beim Tippen, „Anlegen“ deaktiviert; Name mit `/` wird abgelehnt |
+| 97 | Neue Datei mit Haken „Kapitelüberschrift“ | Inhalt `\chapter{name}` |
+| 98 | Neuer Ordner …, dann leer im Baum | Ordner erscheint auch leer |
+| 99 | Datei umbenennen, die in `main.tex` per `\include` steht | Liste „Verweise anpassen?“ mit alt → neu; „Verweise anpassen“ ändert `main.tex`, Tab trägt den neuen Namen, ungespeicherte Änderungen bleiben |
+| 100 | Dasselbe mit „Nur umbenennen“ und „Abbrechen“ | Nur umbenennen: Verweise bleiben (Build zeigt dann den Fehler); Abbrechen: nichts ändert sich |
+| 101 | Bild im Ordner `images/` umbenennen | `\includegraphics{…}` wird angepasst, auch ohne Endung geschrieben |
+| 102 | Ganzen Ordner (z. B. `chapters`) umbenennen | Alle Verweise darauf und alle offenen Tabs darin folgen |
+| 103 | Hauptdatei umbenennen | Projekt kompiliert weiter mit neuem Namen, PDF heißt wie die neue Hauptdatei |
+| 104 | Datei per Ziehen in anderen Ordner verschieben, auch auf freie Fläche (Projektordner) | Datei zieht um, Verweise werden angepasst; Ordner in sich selbst verschieben wird abgelehnt |
+| 105 | Datei markieren, Entf bzw. Rechtsklick → In den Papierkorb legen | Rückfrage; Datei liegt im Papierkorb (wiederherstellbar), Tab schließt; mit Änderungen steht ein Hinweis |
+| 106 | Hauptdatei oder Ordner mit offenen Tabs löschen | Zusätzlicher Hinweis; danach Hauptdatei bzw. Nachbar wird angezeigt |
+| 107 | ⌘N und ⇧⌘N im Menü Ablage | Neue Datei bzw. Ordner im markierten Ordner oder Projektordner |
+| 108 | Duplizieren | „name Kopie.tex“, wird geöffnet |
+| 109 | Nach den Operationen kompilieren (⌘B) | Keine neuen Fehler durch kaputte Verweise |
+
+### Sitzung 8: Git Phase 1
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 110 | Thesis öffnen | Toolbar zeigt `main` (ggf. ↑/↓), Seitenleiste hat den Tab „Änderungen“ mit Zahl; geänderte Dateien im Baum mit M/A/U, Ordner darüber mit Punkt |
+| 111 | Ordner ohne Git öffnen | Kein Branch in der Toolbar, kein Änderungen-Tab |
+| 112 | Datei bearbeiten und speichern (⌘S) | Erscheint nach spätestens ca. 1 s unter „Nicht bereitgestellt“ |
+| 113 | Datei in der Liste anklicken | Diff öffnet als kursiver Tab mit ±-Symbol: rot/grün, geänderte Wörter kräftiger, „… n unveränderte Zeilen“ klappt per Klick auf; Kopfzeile mit +/−-Zahlen |
+| 114 | Andere Datei in der Liste oder im Baum einfach anklicken | Ersetzt den kursiven Diff-Tab (ein gemeinsamer Vorschau-Platz); Doppelklick in der Liste hält den Diff-Tab fest |
+| 114a | Zwischen Diff- und Datei-Tabs wechseln (Klick, ⇧⌘], ⌘W) | Dateien behalten Cursor und Scrollposition, Diffs ihre aufgeklappten Bereiche; im Diff-Tab ist Einfügen aus und Tippen landet nirgends |
+| 115 | Datei mit ungespeicherten Änderungen im Diff | Hinweis „Ungespeicherte Änderungen sind nicht enthalten (⌘S)“ |
+| 115a | Neue Datei anlegen, etwas tippen, **nicht** speichern, im Änderungen-Tab anklicken | „Noch kein Inhalt gespeichert“ auf leerer Fläche, kein Text des Editors sichtbar; nach ⌘S erscheinen die Zeilen grün mit + |
+| 116 | + / − beim Darüberfahren, „Alle bereitstellen“ / „Alle zurücknehmen“; Datei mit beiden Seiten | Datei wandert zwischen den Gruppen, der Diff-Tab folgt; bei beiden Seiten Umschalter in der Kopfzeile. Nach dem Commit schließt der Diff-Tab von selbst. Nach Neustart sind nur Datei-Tabs wieder da |
+| 117 | Nachricht tippen, ⌘↩ mit Bereitgestelltem | Commit nur des Bereitgestellten, Feld leert sich; `git log` im Terminal zeigt ihn |
+| 118 | Nichts bereitgestellt, „Alle committen“ | Rückfrage mit Anzahl, danach alles committet (auch neue Dateien) |
+| 119 | Commit mit ungespeicherter Datei | Nachfrage Speichern / Nicht speichern / Abbrechen |
+| 120 | Im Terminal `git commit` oder `git checkout -b test` | Liste bzw. Branch in der Toolbar aktualisieren sich von selbst |
+| 121 | Commit ohne gesetzte `user.email` (anderes Repo) oder mit ablehnendem Hook | Verständliche Meldung, nichts committet, Nachricht bleibt im Feld |
+| 122 | Bild ändern und anklicken | „Binärdatei geändert“ |
+| 123 | Hell/Dunkel umschalten | Diff-Farben bleiben gut lesbar |
+
+### Sitzung 8: Git Phase 2
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 124 | Branch-Eintrag in der Toolbar anklicken | Menü mit Branches (aktueller mit Haken), „Neuer Branch …“, Abrufen, Pull, Push, „Änderungen anzeigen“ |
+| 125 | Abrufen (Thesis, nachdem auf einem anderen Rechner/GitHub gepusht wurde) | ↓-Zahl erscheint; ohne Abrufen fragt die App nie selbst |
+| 126 | Pull mit unveränderter offener Datei | Datei zeigt sofort den neuen Stand, Cursor bleibt in der Nähe |
+| 127 | Pull, während eine geöffnete Datei ungespeicherte Änderungen hat, „Nicht speichern“ | Pfadzeile: „Auf der Platte geändert – Neu laden / Meine behalten“; beides funktioniert |
+| 128 | Lokal und Remote beide mit neuen Commits, Pull bzw. Push | Verständliche Meldung („auseinandergelaufen“ bzw. „Erst Pull“), nichts verändert |
+| 129 | Push mit gespeicherter Anmeldung (Schlüsselbund) | Läuft durch, ↑ verschwindet; ohne gespeicherte Anmeldung: Meldung mit Hinweis aufs Terminal |
+| 130 | Neuer Branch …, Name mit Leerzeichen bzw. vorhandener Name | Fehlermeldung; gültiger Name: Toolbar zeigt den neuen Branch, erster Push richtet den Upstream ein |
+| 131 | Branch wechseln mit offenen Tabs | Inhalte folgen, Tabs von Dateien, die es dort nicht gibt, schließen; Baum und Gliederung aktualisieren sich |
+| 132 | Bereitgestellte Datei: ↶ beim Darüberfahren (oder Rechtsklick, Dateibaum, „Zurücksetzen …“ im Diff-Tab) | Rückfrage nennt, was verloren geht („2 geänderte Zeilen gehen verloren“); danach Stand des letzten Commits, die Datei ist im Tab zu sehen, im Papierkorb liegt „name (verworfen …).tex“ |
+| 133 | Direkt danach im Änderungen-Tab „Rückgängig“ | Inhalt wie vorher (auch vorher ungespeicherter Text), neue Dateien samt Tab zurück; die Datei steht wieder unter „Nicht bereitgestellt“ |
+| 134 | In einer versionierten Datei tippen (ohne Speichern) | Nach ca. 0,3 s: oranger Streifen an geänderten, grüner an neuen Zeilen, rotes Dreieck, wo Zeilen gelöscht wurden; nach dem Commit verschwinden sie |
+| 135 | Datei in einem anderen Editor ändern und speichern | Unveränderte offene Datei lädt von selbst neu; eigenes ⌘S löst keinen Hinweis aus |
+
+### Sitzung 9: Autovervollständigung
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 136 | `\sec` tippen | Liste unter dem Cursor (`\section{…}`, `\section*{…}`, …), ↑↓ wählen, Return/Tab: `\section{}` mit Cursor in den Klammern; ⌘Z nimmt nur die Übernahme zurück |
+| 137 | `\ref{` bzw. `\cref{a,` tippen | Labels des Projekts mit Datei:Zeile; „einl“ findet `cha:einleitung`; ein eben getipptes, ungespeichertes `\label{…}` ist schon dabei |
+| 138 | `\cite{` mit Einträgen in der `.bib` | Schlüssel mit Titel; ohne Einträge (wie aktuell in `hgbreferences.bib`) erscheint keine Liste |
+| 139 | `\includegraphics[width=…]{` | Bilder aus `images/` ohne Ordnerpräfix (wegen `\graphicspath`) |
+| 140 | `\beg` + Tab, dann „item“ + Return | `\begin{itemize}` mit eingerücktem `\item` und `\end{itemize}`, Cursor nach `\item` |
+| 141 | In einer offenen Umgebung `\end{` | Die innerste offene Umgebung steht oben |
+| 142 | In `% Kommentar` oder `\begin{verbatim}` tippen | Keine Liste |
+| 143 | Esc (ohne Liste), ⌃Leertaste bzw. Bearbeiten → Vervollständigen | Liste öffnet von Hand; Esc schließt sie wieder; Klick daneben oder Fensterwechsel schließt sie |
+| 144 | Bearbeiten → „Automatisch vervollständigen“ aus | Keine Liste mehr beim Tippen, von Hand geht es weiter |
+| 145 | Befehle der Vorlage (`\advisor`, `\MakeBibliography` …) und eigene `\newcommand` | Erscheinen als „aus dem Projekt“; neue Makros nach dem Speichern |
+| 146 | Liste am unteren Fensterrand | Erscheint über statt unter der Zeile; Klick auf einen Eintrag übernimmt ihn |
+| 147 | In `\documentclass[…]{hgbthesis}` hinter einem Komma tippen | `type=`, `degree=`, `theme=`, `language=` … (veraltete wie `oneside` fehlen); nach `type=` die Werte bachelor, master, …; nach `degree=` die 11 Studienrichtungen |
+| 148 | `\includegraphics[` | `width=`, `height=`, `scale=` … und Schalter; Return auf `width=` öffnet die Werte (`\textwidth`, `0.8\textwidth` …) |
+| 149 | `\begin{figure}[` bzw. `\begin{table}[` | `H`, `htbp`, `h` … mit Beschreibung wie im Einfügen-Menü; Übernahme schließt mit `]` |
+| 150 | `\usepackage[|]{babel}` (Cursor zwischen den Klammern) | `ngerman`, `english` …; bei unbekannten Paketen keine Liste |
+| 151 | `\cite[` | `S.~`, `vgl.` …, danach `]` |
+
+### Sitzung 10: Quellen, Tippgefühl, Sicherung
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 152 | In `\cite{` einen Autornamen oder ein Titelwort tippen | Passende Einträge mit „Autor Jahr · Titel“, Treffer im Schlüssel stehen vorne |
+| 153 | Einfügen → Quelle, Formular Buch ausfüllen, Einfügen | Eintrag am Ende von `hgbreferences.bib` im Stil der Vorlage, `\cite{Nachname2024}` an der Cursorposition; Kompilieren zeigt ihn im Literaturverzeichnis |
+| 154 | Quelle → „BibTeX einfügen“ mit einem Eintrag aus Google Scholar | Wird übernommen, Schlüssel bei Umlauten/Dopplung angepasst |
+| 155 | Pflichtfeld leer lassen | Hinweis „Bitte noch ausfüllen: …“, Einfügen gesperrt |
+| 156 | `{`, `[`, `(`, `$` tippen; `}` tippen, wenn es schon dasteht; Rückschritt in `{}` | Paar mit Cursor dazwischen; Überspringen statt Verdoppeln; beide weg. Vor einem Wort kein Paar |
+| 157 | Wort markieren, `{` bzw. `$` tippen | Wird umschlossen, bleibt markiert |
+| 158 | `\begin{itemize}` + Enter, Text, Enter, Enter auf leerem `\item` | `\item` und `\end{itemize}` erscheinen, Liste setzt sich fort, leerer Punkt beendet sie |
+| 159 | ⌘/, ⌘], ⌘[, ⌥↑/⌥↓, ⇧⌥↓, ⇧⌘K mit und ohne Auswahl | Wie im Menü Bearbeiten beschrieben, jeweils ein ⌘Z |
+| 160 | Wort markieren, ⇧⌘B / ⌘I / ⇧⌘T, nochmal | `\textbf{…}`, `\emph{…}`, `\texttt{…}` und wieder zurück; ⌘B kompiliert weiterhin |
+| 161 | ⌘+ / ⌘− / ⌥⌘0 | Schrift im Editor, in allen offenen Dateien und in den Zeilennummern ändert sich, bleibt nach Neustart |
+| 162 | Tippen, ohne zu speichern, App per Aktivitätsanzeige „Sofort beenden“, neu öffnen | Rückfrage „Ungespeicherte Änderungen wiederherstellen?“; Text ist wieder da (ungespeichert) |
+| 163 | Ablage → „Beim Verlassen der App speichern“, tippen, in eine andere App wechseln | Datei ist gespeichert |

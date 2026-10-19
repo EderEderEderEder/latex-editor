@@ -5,6 +5,8 @@ import Observation
 @MainActor
 @Observable
 final class InsertStore {
+    static let citeNeedsTeXMessage = "Zum Zitieren muss eine .tex-Datei vorne sein. Ohne „Gleich zitieren“ wird nur die Quelle angelegt."
+    static let needsTeXMessage = "Zum Einfügen muss eine .tex-Datei geöffnet sein."
     private static let lastKindKey = "insertionKind"
     private static let missingLabelFallback = ["tab": "tabelle", "fig": "bild", "prog": "code", "eq": "gleichung"]
 
@@ -161,6 +163,15 @@ final class InsertStore {
         case .source: if case let .failure(problem) = sourceDraft { problem.message } else { nil }
         default: nil
         }
+    }
+
+    /// Warum der Baustein gerade nicht eingefügt werden kann, `nil` wenn es geht. Eine neue Quelle braucht
+    /// keine .tex-Datei (sie kommt in die .bib), nur das gleichzeitige Zitieren.
+    func blocker(canInsertIntoEditor: Bool) -> String? {
+        if let validationMessage { return validationMessage }
+        guard !canInsertIntoEditor else { return nil }
+        guard kind == .source else { return Self.needsTeXMessage }
+        return source.citeAfterInsert ? Self.citeNeedsTeXMessage : nil
     }
 
     // MARK: Einfügen vorbereiten

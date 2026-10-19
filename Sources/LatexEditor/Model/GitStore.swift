@@ -178,8 +178,10 @@ final class GitStore {
     // MARK: Status
 
     /// Fasst Dateisystem-Ereignisse zusammen: höchstens ein Statuslauf pro `refreshDelay`.
+    /// Auch nach einem fehlgeschlagenen Statuslauf (z. B. während eines Git-Befehls im Terminal):
+    /// Der nächste erfolgreiche macht den Änderungen-Tab wieder bereit.
     func scheduleRefresh() {
-        guard isReady, scheduledRefresh == nil else { return }
+        guard runner != nil, scheduledRefresh == nil else { return }
         scheduledRefresh = Task { [weak self] in
             try? await Task.sleep(for: Self.refreshDelay)
             guard let self, !Task.isCancelled else { return }
@@ -205,6 +207,7 @@ final class GitStore {
         guard currentGeneration == generation else { return }
         switch result {
         case let .success((snapshot, references)):
+            if availability != .ready { availability = .ready }
             applyFiltered(snapshot, repository: repository)
             if let references {
                 if branches != references.branches { branches = references.branches }

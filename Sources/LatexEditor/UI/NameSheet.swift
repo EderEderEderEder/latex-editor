@@ -34,10 +34,17 @@ struct NameSheet: View {
             if prompt.kind == .newFile, showsScaffoldOption {
                 Toggle("Mit Kapitelüberschrift (\\chapter{…})", isOn: $chapterScaffold)
             }
-            Label(message ?? " ", systemImage: message == nil ? "" : "exclamationmark.triangle.fill")
-                .font(.callout)
-                .foregroundStyle(.red)
-                .frame(minHeight: 18, alignment: .leading)
+            // Platz für die Meldung immer reservieren, damit der Dialog beim Tippen nicht springt
+            Group {
+                if let message {
+                    Label(message, systemImage: "exclamationmark.triangle.fill")
+                } else {
+                    Text(" ")
+                }
+            }
+            .font(.callout)
+            .foregroundStyle(.red)
+            .frame(minHeight: 18, alignment: .leading)
             HStack {
                 Spacer()
                 Button("Abbrechen") { model.fileActions.prompt = nil }
@@ -73,11 +80,18 @@ struct NameSheet: View {
         }
     }
 
+    /// Pfade ohne Symlinks vergleichen: `/tmp` und `/private/tmp` sind sonst verschieden.
     private var locationText: String {
-        let root = model.project.rootURL?.standardizedFileURL.path ?? ""
-        let path = prompt.kind == .rename ? prompt.target.deletingLastPathComponent().path : prompt.target.path
-        let relative = path.hasPrefix(root) ? String(path.dropFirst(root.count)) : path
-        return "in " + (relative.isEmpty ? "Projektordner" : String(relative.dropFirst()))
+        let root = model.project.rootURL.map(Self.resolvedPath) ?? ""
+        let folder = prompt.kind == .rename ? prompt.target.deletingLastPathComponent() : prompt.target
+        let path = Self.resolvedPath(folder)
+        if path == root { return "in Projektordner" }
+        guard path.hasPrefix(root + "/") else { return "in " + path }
+        return "in " + String(path.dropFirst(root.count + 1))
+    }
+
+    private static func resolvedPath(_ url: URL) -> String {
+        url.standardizedFileURL.resolvingSymlinksInPath().path
     }
 
     private var showsScaffoldOption: Bool {
@@ -124,7 +138,8 @@ struct NameSheet: View {
         guard prompt.kind == .rename else { return }
         DispatchQueue.main.async {
             guard let editor = NSApp.keyWindow?.firstResponder as? NSTextView else { return }
-            let length = (name as NSString).deletingPathExtension.count
+            // UTF-16-Länge, sonst stimmt die Markierung bei Namen mit z. B. Emojis nicht
+            let length = ((name as NSString).deletingPathExtension as NSString).length
             editor.setSelectedRange(NSRange(location: 0, length: length))
         }
     }

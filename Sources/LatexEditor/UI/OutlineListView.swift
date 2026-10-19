@@ -5,9 +5,8 @@ import SwiftUI
 struct OutlineListView: View {
     let outline: OutlineStore
     let editor: EditorStore
+    let sidebar: SidebarStore
     let filter: String
-
-    @State private var collapsed: Set<String> = []
 
     var body: some View {
         if outline.entries.isEmpty {
@@ -16,6 +15,8 @@ struct OutlineListView: View {
                 systemImage: "list.bullet.indent",
                 description: Text("Keine \\chapter, \\section oder \\subsection in den eingebundenen Dateien.")
             )
+        } else if filteredEntries.isEmpty {
+            NoFilterMatches(filter: filter)
         } else if filter.isEmpty {
             List {
                 ForEach(outline.tree) { node in
@@ -25,18 +26,25 @@ struct OutlineListView: View {
             .listStyle(.sidebar)
         } else {
             List(filteredEntries) { entry in
+                // Ohne Baum zeigt die Einrückung die Ebene
                 OutlineRow(entry: entry, isCurrent: entry.id == outline.currentEntryID, open: open)
+                    .padding(.leading, CGFloat(entry.level.depth) * Self.filteredIndent)
             }
             .listStyle(.sidebar)
         }
     }
 
+    private static let filteredIndent: CGFloat = 14
+
     private var filteredEntries: [OutlineEntry] {
-        outline.entries.filter { $0.title.localizedCaseInsensitiveContains(filter) }
+        guard !filter.isEmpty else { return outline.entries }
+        return outline.entries.filter { $0.title.localizedCaseInsensitiveContains(filter) }
     }
 
+    /// Im Store, damit Zugeklapptes einen Tabwechsel der Seitenleiste übersteht
     private var context: OutlineNodeView.Context {
-        OutlineNodeView.Context(currentEntryID: outline.currentEntryID, collapsed: $collapsed, open: open)
+        let collapsed = Binding(get: { sidebar.collapsedOutlineEntries }, set: { sidebar.collapsedOutlineEntries = $0 })
+        return OutlineNodeView.Context(currentEntryID: outline.currentEntryID, collapsed: collapsed, open: open)
     }
 
     private func open(_ entry: OutlineEntry) {
@@ -94,7 +102,6 @@ private struct OutlineRow: View {
             open(entry)
         } label: {
             HStack(spacing: 6) {
-                LevelBadge(level: entry.level)
                 Text(entry.title.isEmpty ? "(ohne Titel)" : entry.title)
                     .font(font)
                     .lineLimit(1)
@@ -115,21 +122,6 @@ private struct OutlineRow: View {
     }
 }
 
-private struct LevelBadge: View {
-    private static let width: CGFloat = 22
-
-    let level: OutlineEntry.Level
-
-    var body: some View {
-        Text(level.shortTitle)
-            .font(.system(size: 9, weight: .semibold, design: .rounded))
-            .foregroundStyle(.secondary)
-            .frame(width: Self.width)
-            .padding(.vertical, 1)
-            .background(RoundedRectangle(cornerRadius: 3).strokeBorder(.tertiary))
-    }
-}
-
 extension OutlineEntry.Level {
     var title: String {
         switch self {
@@ -139,11 +131,12 @@ extension OutlineEntry.Level {
         }
     }
 
-    var shortTitle: String {
+    /// Einrückung in der gefilterten (flachen) Liste
+    var depth: Int {
         switch self {
-        case .chapter: "K"
-        case .section: "§"
-        case .subsection: "§§"
+        case .chapter: 0
+        case .section: 1
+        case .subsection: 2
         }
     }
 }

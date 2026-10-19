@@ -218,10 +218,8 @@ extension AppModel {
             let current = ReferenceUpdater.mapped(file, from: source.standardizedFileURL, to: destination.standardizedFileURL) ?? file
             if let session = editor.session(for: current) {
                 let wasDirty = session.isDirty
-                for edit in fileEdits.sorted(by: { $0.range.location > $1.range.location })
-                where NSMaxRange(edit.range) <= session.textStorage.length {
-                    session.textStorage.replaceCharacters(in: edit.range, with: edit.newText)
-                }
+                session.replaceText(with: ReferenceUpdater.apply(fileEdits, to: session.textStorage.string),
+                                    actionName: "Verweise anpassen")
                 if !wasDirty { try? session.save() }
             } else if let text = try? String(contentsOf: current, encoding: .utf8) {
                 try? ReferenceUpdater.apply(fileEdits, to: text).write(to: current, atomically: true, encoding: .utf8)

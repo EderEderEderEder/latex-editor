@@ -4,6 +4,7 @@ import SwiftUI
 /// ungespeicherte Änderungen und „Datei öffnen“.
 struct DiffHeader: View {
     private static let height: CGFloat = 26
+    private static let separatorHeight: CGFloat = 14
 
     let model: AppModel
     let url: URL
@@ -15,24 +16,31 @@ struct DiffHeader: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(url.lastPathComponent).fontWeight(.semibold).lineLimit(1)
+            // Der Dateiname kürzt sich zuletzt
+            Text(url.lastPathComponent).fontWeight(.semibold).lineLimit(1).layoutPriority(1)
             side
             counts
             if hasUnsavedChanges {
-                Label("Ungespeicherte Änderungen sind nicht enthalten (⌘S)", systemImage: "exclamationmark.circle")
+                // Kurz, damit die Knöpfe rechts auch bei schmalem Fenster Platz haben; Erklärung im Tooltip
+                Label("Ungespeichert", systemImage: "exclamationmark.circle")
                     .font(.caption)
                     .foregroundStyle(.orange)
-                    .lineLimit(1)
+                    .fixedSize()
                     .help("Der Diff zeigt den gespeicherten Stand. Ungespeicherte Änderungen erscheinen nach ⌘S.")
             }
-            Spacer()
-            Button("Zurücksetzen …") { Task { await model.resetToLastCommit(file: url) } }
-                .buttonStyle(.borderless)
-                .disabled(git.isBusy || git.changes(for: url).contains { $0.kind == .conflicted })
-                .help("Datei auf den Stand des letzten Commits zurücksetzen …")
+            Spacer(minLength: 8)
             Button("Datei öffnen") { Task { await model.editor.open(url, asPreview: false) } }
                 .buttonStyle(.borderless)
+                .fixedSize()
                 .disabled(!FileManager.default.fileExists(atPath: url.path))
+            Divider().frame(height: Self.separatorHeight)
+            // Abgesetzt und rot: anders als „Datei öffnen“ verwirft das Änderungen (mit Rückfrage und Rückgängig)
+            Button("Zurücksetzen …", systemImage: "arrow.uturn.backward") { Task { await model.resetToLastCommit(file: url) } }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.red)
+                .fixedSize()
+                .disabled(git.isBusy || git.changes(for: url).contains { $0.kind == .conflicted })
+                .help("Datei auf den Stand des letzten Commits zurücksetzen …")
         }
         .font(.callout)
         .padding(.horizontal, 10)
@@ -52,7 +60,9 @@ struct DiffHeader: View {
             .controlSize(.small)
             .fixedSize()
         } else if let presentation {
-            Text(presentation.showsStaged ? "Bereitgestellt" : "Nicht bereitgestellt").foregroundStyle(.secondary)
+            Text(presentation.showsStaged ? "Bereitgestellt" : "Nicht bereitgestellt")
+                .foregroundStyle(.secondary)
+                .fixedSize()
         }
     }
 

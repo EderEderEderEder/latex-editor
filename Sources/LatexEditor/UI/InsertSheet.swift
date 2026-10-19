@@ -68,11 +68,8 @@ struct InsertSheet: View {
         HStack(spacing: 10) {
             if let message = store.errorMessage {
                 Label(message, systemImage: "xmark.octagon.fill").foregroundStyle(.red)
-            } else if let message = store.validationMessage {
+            } else if let message = blocker {
                 Label(message, systemImage: "info.circle").foregroundStyle(.secondary)
-            } else if !canInsert {
-                Label("Zum Einfügen muss eine .tex-Datei geöffnet sein.", systemImage: "info.circle")
-                    .foregroundStyle(.secondary)
             } else if store.kind == .source, let file = store.bibliographyFile {
                 Label("Neuer Eintrag in \(file.lastPathComponent)" + (store.source.citeAfterInsert ? ", Zitat an der Cursorposition" : ""),
                       systemImage: "books.vertical")
@@ -85,17 +82,23 @@ struct InsertSheet: View {
             Button("Abbrechen") { store.isPresented = false }
                 .keyboardShortcut(.cancelAction)
             Button(action: insert) {
-                Label("Einfügen", systemImage: "arrow.down.doc")
+                // Eine Quelle landet in der .bib, nicht an der Cursorposition
+                Label(store.kind == .source ? "Quelle anlegen" : "Einfügen",
+                      systemImage: store.kind == .source ? "books.vertical" : "arrow.down.doc")
                     .padding(.horizontal, 6)
             }
             .keyboardShortcut(.defaultAction)
             .buttonStyle(.borderedProminent)
-            .disabled(!canInsert || store.validationMessage != nil)
+            .disabled(blocker != nil)
         }
         .font(.callout)
         .controlSize(.large)
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
+    }
+
+    private var blocker: String? {
+        store.blocker(canInsertIntoEditor: canInsert)
     }
 }
 
@@ -287,12 +290,19 @@ private struct CaptionCard: View {
     @Binding var labelOverride: String
     @Binding var placement: FloatPlacement
     let automaticLabel: String
+    /// Nur wo der Schalter allein die Beschriftung betrifft (Bild); bei Tabellen gilt er auch für die Zellen
+    var escapeText: Binding<Bool>?
 
     var body: some View {
         SettingsCard("Beschriftung") {
             SettingRow("Text") {
                 TextField("", text: $caption, prompt: Text("z. B. Ergebnisse der Messung"))
                     .textFieldStyle(.roundedBorder)
+            }
+            if let escapeText {
+                SettingRow("") {
+                    Toggle("Sonderzeichen maskieren", isOn: escapeText)
+                }
             }
             SettingRow("Label") {
                 TextField("", text: $labelOverride, prompt: Text(automaticLabel.isEmpty ? "wird aus dem Text erzeugt" : automaticLabel))
@@ -456,6 +466,8 @@ private struct ImageSettingsView: View {
 
     @Bindable var store: InsertStore
     @State private var isDropTargeted = false
+    /// Einmal pro gewählter Datei geladen, nicht bei jeder Eingabe in der Beschriftung
+    @State private var thumbnailImage: NSImage?
 
     var body: some View {
         SettingsStack {
@@ -479,13 +491,11 @@ private struct ImageSettingsView: View {
                             .frame(width: 52, alignment: .trailing)
                     }
                 }
-                SettingRow("Text") {
-                    Toggle("Sonderzeichen maskieren", isOn: $store.image.escapeText)
-                }
             }
             CaptionCard(
                 caption: $store.image.caption, labelOverride: $store.image.labelOverride,
-                placement: $store.image.placement, automaticLabel: store.resolvedLabel(for: .image)
+                placement: $store.image.placement, automaticLabel: store.resolvedLabel(for: .image),
+                escapeText: $store.image.escapeText
             )
         }
     }
@@ -522,11 +532,12 @@ private struct ImageSettingsView: View {
                               style: StrokeStyle(lineWidth: 1.5, dash: [6]))
         )
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
+        .task(id: store.image.file) { thumbnailImage = store.image.file.flatMap(NSImage.init(contentsOf:)) }
     }
 
     @ViewBuilder
     private var thumbnail: some View {
-        if let file = store.image.file, let image = NSImage(contentsOf: file) {
+        if store.image.file != nil, let image = thumbnailImage {
             Image(nsImage: image)
                 .resizable()
                 .scaledToFit()
@@ -729,8 +740,12 @@ private struct CitationSettingsView: View {
             }
             if store.catalog.bibEntries.isEmpty {
                 SettingsCard {
-                    Label("Es wurde keine .bib-Datei mit Einträgen gefunden.", systemImage: "info.circle")
-                        .foregroundStyle(.secondary)
+                    HStack {
+                        Label("Die Literaturdatei hat noch keine Einträge.", systemImage: "info.circle")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Neue Quelle anlegen …", systemImage: InsertionKind.source.symbolName) { store.kind = .source }
+                    }
                 }
             } else {
                 SettingsCard("Einträge (mehrere mit ⌘ oder ⇧ wählen)") {

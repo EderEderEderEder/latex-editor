@@ -111,7 +111,7 @@ struct RootView: View {
                 }
             }
         }
-        if model.build.status != .idle {
+        if model.project.rootURL != nil {
             ToolbarItem(placement: .primaryAction) {
                 BuildStatusView(build: model.build, sidebar: model.sidebar)
             }

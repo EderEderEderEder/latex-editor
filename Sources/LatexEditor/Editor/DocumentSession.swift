@@ -162,7 +162,9 @@ final class DocumentSession {
             return .conflict
         }
         guard let decoded = Self.decode(data) else { return .unchanged }
-        replaceText(with: decoded.text)
+        isReloading = true
+        replaceChangedRange(with: decoded.text)
+        isReloading = false
         encoding = decoded.encoding
         knownDiskData = data
         isDirty = false
@@ -180,9 +182,21 @@ final class DocumentSession {
         if hasExternalChange { hasExternalChange = false }
     }
 
+    /// Ändert den Text ohne Text-View (Verweise anpassen, Quelle anhängen) als einen Rückgängig-Schritt.
+    /// Ohne Eintrag im Undo-Verlauf würde ein späteres ⌘Z mit veralteten Textpositionen arbeiten.
+    func replaceText(with newText: String, actionName: String) {
+        let previous = textStorage.string
+        guard newText != previous else { return }
+        replaceChangedRange(with: newText)
+        undoManager.registerUndo(withTarget: self) { session in
+            session.replaceText(with: previous, actionName: actionName)
+        }
+        undoManager.setActionName(actionName)
+    }
+
     /// Ersetzt nur den Teil zwischen gemeinsamem Anfang und Ende: Cursor und Scrollposition davor bleiben,
     /// und Highlighter wie Zeilenindex arbeiten nur den geänderten Bereich nach.
-    private func replaceText(with newText: String) {
+    private func replaceChangedRange(with newText: String) {
         let old = textStorage.mutableString
         let new = newText as NSString
         let shorter = min(old.length, new.length)
@@ -193,8 +207,6 @@ final class DocumentSession {
               old.character(at: old.length - 1 - suffix) == new.character(at: new.length - 1 - suffix) { suffix += 1 }
         let range = NSRange(location: prefix, length: old.length - prefix - suffix)
         let replacement = new.substring(with: NSRange(location: prefix, length: new.length - prefix - suffix))
-        isReloading = true
-        defer { isReloading = false }
         textStorage.replaceCharacters(in: range, with: NSAttributedString(string: replacement, attributes: EditorAppearance.textAttributes))
     }
 

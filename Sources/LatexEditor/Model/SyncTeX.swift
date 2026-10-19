@@ -136,8 +136,14 @@ struct SyncTeXIndex: Sendable {
     }
 
     /// Vergleichsschlüssel für Pfade: `/./`, `..`, Symlinks (`/tmp` → `/private/tmp`) aufgelöst.
+    /// `/tmp`, `/var` und `/etc` sind unter macOS Symlinks nach `/private/…`. `resolvingSymlinksInPath` entfernt
+    /// `/private` aber nur bei existierenden Dateien; hier immer, damit das Ergebnis nicht davon abhängt.
+    private static let privatePrefixes = ["/private/tmp/", "/private/var/", "/private/etc/"]
+
     static func normalizedPath(_ url: URL) -> String {
-        url.standardizedFileURL.resolvingSymlinksInPath().standardizedFileURL.path
+        let path = url.standardizedFileURL.resolvingSymlinksInPath().standardizedFileURL.path
+        guard privatePrefixes.contains(where: path.hasPrefix) else { return path }
+        return String(path.dropFirst("/private".count))
     }
 
     private static func groupByPath(_ records: [Record], inputs: [Int32: String]) -> [String: [Int]] {

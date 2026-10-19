@@ -8,7 +8,8 @@ enum SyntaxTheme {
     private static let delimiter = dynamicColor(light: 0x5A6B85, dark: 0x9AA8BD)
     private static let argument = dynamicColor(light: 0x8A3FB8, dark: 0xD09CFF)
     private static let math = dynamicColor(light: 0x1B7F3B, dark: 0x7DD38B)
-    private static let comment = dynamicColor(light: 0x8A8A8A, dark: 0x7F8A93)
+    /// Zurückgenommen, aber lesbar: beide Varianten über 4,5:1 Kontrast (WCAG AA) zum Hintergrund
+    private static let comment = dynamicColor(light: 0x737373, dark: 0x7F8A93)
     private static let verbatim = dynamicColor(light: 0xA0522D, dark: 0xE3A06B)
 
     /// Setzt `range` auf die Grundfarbe und färbt danach die Tokens ein.

@@ -114,6 +114,12 @@ final class AppModel {
         )
     }
 
+    /// Mit offenem Projekt geht das Fenster immer auf. Ohne .tex-Datei vorne lässt sich nur eine Quelle anlegen
+    /// (sie kommt in die .bib); die übrigen Bausteine brauchen die Cursorposition.
+    func canPresentInsert(_ kind: InsertionKind) -> Bool {
+        project.rootURL != nil && (kind == .source || editor.canInsert)
+    }
+
     /// Kopiert ggf. das Bild nach `images/`, setzt den Code an die Cursorposition und schließt das Fenster.
     func performInsert() async {
         // Erst den Katalog abwarten: Labels müssen eindeutig sein, der Bildpfad hängt von \graphicspath ab.
@@ -127,7 +133,7 @@ final class AppModel {
             let reference = kind == .image ? try insertion.prepareImageReference() : ""
             let text = insertion.generate(imageReference: reference)
             guard editor.insert(text, isBlock: kind.isBlock, replacesSelection: kind.usesSelectionAsContent) else {
-                insertion.errorMessage = "Zum Einfügen muss eine .tex-Datei geöffnet sein."
+                insertion.errorMessage = InsertStore.needsTeXMessage
                 return
             }
             insertion.isPresented = false
@@ -141,6 +147,10 @@ final class AppModel {
     private func performSourceInsert() async {
         guard case let .success(draft) = insertion.sourceDraft, let file = insertion.bibliographyFile else {
             insertion.errorMessage = insertion.validationMessage
+            return
+        }
+        guard !insertion.source.citeAfterInsert || editor.canInsert else {
+            insertion.errorMessage = InsertStore.citeNeedsTeXMessage
             return
         }
         do {
@@ -162,14 +172,8 @@ final class AppModel {
     /// eine offene, unveränderte Datei übernimmt den neuen Stand.
     private func appendToBibliography(_ entry: String, file: URL) async throws {
         if let session = editor.session(for: file), session.isDirty {
-            let storage = session.textStorage
-            let appendix = BibliographyFile.appendix(for: entry, after: storage.string)
-            let added = NSRange(location: storage.length, length: (appendix as NSString).length)
-            storage.replaceCharacters(in: NSRange(location: added.location, length: 0),
-                                      with: NSAttributedString(string: appendix, attributes: EditorAppearance.textAttributes))
-            // Direkte Änderungen am Speicher landen nicht von selbst im Undo-Verlauf.
-            session.undoManager.registerUndo(withTarget: storage) { $0.replaceCharacters(in: added, with: "") }
-            session.undoManager.setActionName("Quelle anlegen")
+            let text = session.textStorage.string
+            session.replaceText(with: text + BibliographyFile.appendix(for: entry, after: text), actionName: "Quelle anlegen")
             return
         }
         let existing = (try? String(contentsOf: file, encoding: .utf8)) ?? ""

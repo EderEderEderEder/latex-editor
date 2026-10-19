@@ -11,14 +11,16 @@ struct InsertMenu: View {
             Divider()
             ForEach(InsertionKind.allCases) { kind in
                 Button(kind.title, systemImage: kind.symbolName) { model.presentInsert(kind) }
+                    .disabled(!model.canPresentInsert(kind))
             }
         } label: {
-            Label("Einfügen", systemImage: "plus.square.on.square")
+            // Nicht „plus.square.on.square“: Das steht unter macOS meist für „Duplizieren“.
+            Label("Einfügen", systemImage: "plus")
         } primaryAction: {
             model.presentInsert()
         }
         .menuIndicator(.visible)
-        .disabled(!model.editor.canInsert)
+        .disabled(model.project.rootURL == nil)
         .help("Tabelle, Bild, Codeblock … einfügen")
     }
 }
@@ -34,7 +36,7 @@ struct CompileButton: View {
     }
 }
 
-/// Status des letzten Builds; ein Klick zeigt die Meldungen in der Seitenleiste.
+/// Status des letzten Builds (auch „noch nicht kompiliert“); ein Klick zeigt die Meldungen in der Seitenleiste.
 struct BuildStatusView: View {
     let build: BuildStore
     let sidebar: SidebarStore
@@ -68,13 +70,14 @@ struct BuildStatusView: View {
         case .unavailable:
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
         case .idle:
-            EmptyView()
+            Image(systemName: "hammer").foregroundStyle(.secondary)
         }
     }
 
     private var title: String {
         switch build.status {
-        case .idle: ""
+        // Ein vorhandenes PDF kann älter sein als der Text; das soll man sehen
+        case .idle: "Noch nicht kompiliert"
         case .running: "Kompiliert …"
         case .succeeded: build.warningCount == 0 ? "Erfolgreich" : "Erfolgreich · \(warnings)"
         case .failed: "\(build.errorCount) Fehler · \(warnings)"
@@ -87,8 +90,11 @@ struct BuildStatusView: View {
     }
 
     private var help: String {
-        if case let .unavailable(message) = build.status { return message }
-        return "Meldungen in der Seitenleiste anzeigen"
+        switch build.status {
+        case let .unavailable(message): return message
+        case .idle: return "Seit dem Öffnen des Projekts wurde nicht kompiliert, das PDF kann veraltet sein. ⌘B kompiliert."
+        default: return "Meldungen in der Seitenleiste anzeigen"
+        }
     }
 }
 

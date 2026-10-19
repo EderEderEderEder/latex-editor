@@ -16,7 +16,7 @@ struct IssueListView: View {
                     .disabled(model.build.rawLog.isEmpty)
                 Spacer()
                 if let duration = model.build.lastDuration {
-                    Text(String(format: "%.1f s", Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18))
+                    Text(Self.formatted(duration))
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
                         .help("Dauer des letzten Builds")
@@ -35,6 +35,8 @@ struct IssueListView: View {
             ContentUnavailableView("Kompilieren nicht möglich", systemImage: "exclamationmark.triangle", description: Text(message))
         } else if model.build.issues.isEmpty {
             ContentUnavailableView(emptyTitle, systemImage: emptySymbol, description: Text(emptyDescription))
+        } else if filteredIssues.isEmpty {
+            NoFilterMatches(filter: filter)
         } else {
             List(filteredIssues) { issue in
                 IssueRow(issue: issue, projectRoot: model.project.rootURL, open: open)
@@ -63,6 +65,12 @@ struct IssueListView: View {
         model.build.status == .succeeded ? "Der letzte Build lief ohne Fehler und Warnungen." : "Mit ⌘B kompilieren."
     }
 
+    /// Mit deutschem Komma, z. B. „3,9 s“
+    static func formatted(_ duration: Duration) -> String {
+        let seconds = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
+        return seconds.formatted(.number.precision(.fractionLength(1)).locale(Locale(identifier: "de_AT"))) + " s"
+    }
+
     private func open(_ issue: BuildIssue) {
         guard let file = issue.fileURL else {
             model.build.isLogVisible = true
@@ -78,8 +86,9 @@ private struct IssueRow: View {
     let open: (BuildIssue) -> Void
 
     var body: some View {
+        // Nicht `.disabled`: Das graut auch den Text aus. Meldungen aus Paketen bleiben lesbar, öffnen aber nichts.
         Button {
-            open(issue)
+            if canOpen { open(issue) }
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: symbol)
@@ -98,8 +107,7 @@ private struct IssueRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(!canOpen)
-        .help(issue.detail ?? issue.message)
+        .help((issue.detail ?? issue.message) + (canOpen ? "" : "\n\nStammt aus einem Paket außerhalb des Projekts."))
     }
 
     /// Nur Dateien im Projekt öffnen; Meldungen aus Paketen (TeX-Live-Pfade) bleiben Info.

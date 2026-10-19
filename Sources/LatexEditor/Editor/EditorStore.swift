@@ -45,7 +45,6 @@ final class EditorStore {
     @ObservationIgnored var onSessionTextChanged: ((DocumentSession) -> Void)?
 
     var dirtySessions: [DocumentSession] { sessions.values.filter(\.isDirty) }
-    var hasUnsavedChanges: Bool { sessions.values.contains(where: \.isDirty) }
 
     func session(for url: URL) -> DocumentSession? {
         sessions[url.standardizedFileURL]

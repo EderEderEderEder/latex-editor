@@ -88,23 +88,21 @@ struct AppCommands: Commands {
                 get: { model.synctex.followCursor },
                 set: { model.synctex.followCursor = $0 }
             ))
-        }
-        CommandMenu("Einfügen") {
-            Button("Einfügeoptionen …") { model.presentInsert() }
-                .keyboardShortcut("i", modifiers: [.command, .shift])
-                .disabled(!model.editor.canInsert)
-            Divider()
-            ForEach(InsertionKind.allCases) { kind in
-                Button(kind.title) { model.presentInsert(kind) }
-                    .disabled(!model.editor.canInsert)
-            }
-        }
-        CommandGroup(after: .sidebar) {
             Divider()
             Button("Nächster Tab") { model.editor.activateNextTab() }
                 .keyboardShortcut("]", modifiers: [.command, .shift])
             Button("Vorheriger Tab") { model.editor.activatePreviousTab() }
                 .keyboardShortcut("[", modifiers: [.command, .shift])
+        }
+        CommandMenu("Einfügen") {
+            Button("Einfügeoptionen …") { model.presentInsert() }
+                .keyboardShortcut("i", modifiers: [.command, .shift])
+                .disabled(model.project.rootURL == nil)
+            Divider()
+            ForEach(InsertionKind.allCases) { kind in
+                Button(kind.title) { model.presentInsert(kind) }
+                    .disabled(!model.canPresentInsert(kind))
+            }
         }
         CommandGroup(replacing: .saveItem) {
             Button("Speichern") { model.editor.saveCurrent() }
@@ -123,6 +121,7 @@ struct AppCommands: Commands {
             Divider()
             Button("Kompilieren") { model.compile() }
                 .keyboardShortcut("b")
+                .disabled(model.project.mainFileURL == nil)
             Toggle("Beim Speichern kompilieren", isOn: Binding(
                 get: { model.build.compileOnSave },
                 set: { model.build.compileOnSave = $0 }

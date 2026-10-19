@@ -236,10 +236,10 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         if lineNumberRuler.changeMarks != marks { lineNumberRuler.changeMarks = marks }
     }
 
+    /// Die Schrift aller offenen Dateien setzt `AppModel` (`EditorStore.applyEditorFont`), hier nur die Ansicht.
     private func applyFontSize() {
         textView.font = EditorAppearance.font
         textView.typingAttributes = EditorAppearance.textAttributes
-        session?.applyEditorFont()
         lineNumberRuler.updateFont()
         textView.scheduleCurrentLineHighlightUpdate()
     }

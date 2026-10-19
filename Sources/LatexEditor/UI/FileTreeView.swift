@@ -7,12 +7,18 @@ struct FileTreeView: View {
 
     private var project: ProjectStore { model.project }
     private var editor: EditorStore { model.editor }
+    /// Aufgeklappte Ordner (im Store, damit sie einen Tabwechsel der Seitenleiste überstehen)
+    private var expanded: Set<URL> {
+        get { model.sidebar.expandedFolders }
+        nonmutating set { model.sidebar.expandedFolders = newValue }
+    }
+    private var expandedBinding: Binding<Set<URL>> {
+        Binding(get: { model.sidebar.expandedFolders }, set: { model.sidebar.expandedFolders = $0 })
+    }
 
     /// Eigener Zustand statt einer rein berechneten Bindung: Die Markierung folgt dem Klick sofort,
     /// auch während die Datei noch lädt, und folgt umgekehrt Wechseln über Gliederung oder Fehlerliste.
     @State private var selection: URL?
-    /// Aufgeklappte Ordner. Eigener Zustand, damit ein Doppelklick auf den Ordner ihn auf-/zuklappen kann.
-    @State private var expanded: Set<URL> = []
 
     var body: some View {
         if let tree = project.tree {
@@ -20,9 +26,11 @@ struct FileTreeView: View {
                 if filter.isEmpty {
                     List(selection: $selection) {
                         ForEach(tree.children ?? []) { node in
-                            FileNodeRow(model: model, node: node, expanded: $expanded)
+                            FileNodeRow(model: model, node: node, expanded: expandedBinding)
                         }
                     }
+                } else if matches(in: tree).isEmpty {
+                    NoFilterMatches(filter: filter)
                 } else {
                     List(matches(in: tree), selection: $selection) { node in
                         FileRow(node: node, label: relativePath(of: node, in: tree), git: model.git)
@@ -55,13 +63,13 @@ struct FileTreeView: View {
         Task { await editor.open(url) }
     }
 
-    /// Doppelklick: Ordner auf-/zuklappen, Bilder und PDFs extern öffnen. .tex/.bib sind schon durch die Auswahl im Editor.
+    /// Doppelklick und „Öffnen“ im Kontextmenü: Ordner auf-/zuklappen, Textdateien als festen Tab,
+    /// Bilder und PDFs extern öffnen.
     private func openExternally(_ urls: Set<URL>) {
         for url in urls {
             if isDirectory(url) {
                 if expanded.contains(url) { expanded.remove(url) } else { expanded.insert(url) }
             } else if FileKind(url: url).isEditable {
-                // Doppelklick auf eine Textdatei: Tab dauerhaft festhalten
                 Task { await editor.open(url, asPreview: false) }
             } else {
                 NSWorkspace.shared.open(url)
@@ -76,11 +84,14 @@ struct FileTreeView: View {
     /// Klappt die Ordner über der Datei auf, damit sie im Baum sichtbar ist (z. B. nach „Neue Datei“).
     private func reveal(_ url: URL) {
         guard let root = project.rootURL?.standardizedFileURL else { return }
+        var folders: Set<URL> = []
         var folder = url.standardizedFileURL.deletingLastPathComponent()
         while folder.path.hasPrefix(root.path + "/") {
-            expanded.insert(folder)
+            folders.insert(folder)
             folder = folder.deletingLastPathComponent()
         }
+        // Nur schreiben, wenn sich etwas ändert: Jede Zuweisung zeichnet den ganzen Baum neu.
+        if !folders.isSubset(of: expanded) { expanded.formUnion(folders) }
     }
 
     private func deleteSelection() {
@@ -97,9 +108,7 @@ struct FileTreeView: View {
     @ViewBuilder
     private func contextMenu(_ urls: Set<URL>) -> some View {
         if let url = urls.first, urls.count == 1 {
-            Button("Öffnen") {
-                if FileKind(url: url).isEditable { Task { await editor.open(url) } } else { NSWorkspace.shared.open(url) }
-            }
+            Button(openTitle(for: url)) { openExternally([url]) }
             Divider()
             let folder = isDirectory(url) ? url : url.deletingLastPathComponent()
             Button("Neue Datei …", systemImage: "doc.badge.plus") { model.beginNewFile(in: folder) }
@@ -121,6 +130,11 @@ struct FileTreeView: View {
             Button("Neue Datei …", systemImage: "doc.badge.plus") { model.beginNewFile(in: project.rootURL) }
             Button("Neuer Ordner …", systemImage: "folder.badge.plus") { model.beginNewFolder(in: project.rootURL) }
         }
+    }
+
+    private func openTitle(for url: URL) -> String {
+        guard isDirectory(url) else { return "Öffnen" }
+        return expanded.contains(url) ? "Zuklappen" : "Aufklappen"
     }
 
     private func matches(in tree: FileNode) -> [FileNode] {
@@ -212,7 +226,8 @@ private struct FileRow: View {
     }
 
     private var iconColor: Color {
-        if node.isDirectory { return .accentColor }
+        // Ordner zurückhaltend, damit die Dateien (blau) hervorstehen
+        if node.isDirectory { return .secondary }
         switch node.kind {
         case .tex: return .accentColor
         case .bib: return .orange

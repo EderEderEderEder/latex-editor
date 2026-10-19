@@ -14,12 +14,12 @@ struct SidebarView: View {
             VStack(spacing: 0) {
                 SidebarTabBar(sidebar: model.sidebar, build: model.build, git: model.git)
                 Divider()
-                SidebarStatistics(project: model.project, outline: model.outline, build: model.build)
+                SidebarStatistics(project: model.project, outline: model.outline, build: model.build, sidebar: model.sidebar)
                 Divider()
                 content
                     .frame(maxHeight: .infinity)
                 Divider()
-                SidebarFilterField(text: filterBinding)
+                SidebarFilterField(text: filterBinding, placeholder: filterPlaceholder)
             }
         }
     }
@@ -29,9 +29,18 @@ struct SidebarView: View {
         let filter = filters[model.sidebar.tab, default: ""]
         switch model.sidebar.tab {
         case .files: FileTreeView(model: model, filter: filter)
-        case .outline: OutlineListView(outline: model.outline, editor: model.editor, filter: filter)
+        case .outline: OutlineListView(outline: model.outline, editor: model.editor, sidebar: model.sidebar, filter: filter)
         case .issues: IssueListView(model: model, filter: filter)
         case .changes: ChangesListView(model: model, filter: filter)
+        }
+    }
+
+    private var filterPlaceholder: String {
+        switch model.sidebar.tab {
+        case .files: "Dateien filtern"
+        case .outline: "Gliederung filtern"
+        case .issues: "Meldungen filtern"
+        case .changes: "Änderungen filtern"
         }
     }
 
@@ -71,7 +80,8 @@ private struct SidebarTabBar: View {
             tabButton(.issues, symbol: "exclamationmark.triangle", title: "Fehler und Warnungen", badge: badgeCount,
                       badgeColor: build.errorCount > 0 ? .red : .orange)
             if showsChangesTab {
-                tabButton(.changes, symbol: "arrow.triangle.branch", title: "Änderungen (Git)", badge: git.changeCount,
+                // ± wie die Diff-Tabs; die Verzweigung gehört zum Branch-Menü in der Toolbar
+                tabButton(.changes, symbol: "plus.forwardslash.minus", title: "Änderungen (Git)", badge: git.changeCount,
                           badgeColor: .accentColor)
             }
         }
@@ -128,16 +138,19 @@ private struct TabBadge: View {
     }
 }
 
+/// Kennzahlen des Projekts; ein Klick wechselt zum passenden Tab.
 private struct SidebarStatistics: View {
     let project: ProjectStore
     let outline: OutlineStore
     let build: BuildStore
+    let sidebar: SidebarStore
 
     var body: some View {
         VStack(spacing: 3) {
-            row("Dateien", value: "\(project.fileCount)")
-            row("Abschnitte", value: "\(outline.entries.count)")
-            row("Meldungen", value: issueSummary)
+            row("Dateien", value: "\(project.fileCount)", tab: .files)
+            row("Abschnitte", value: "\(outline.entries.count)", tab: .outline)
+            row("Meldungen", value: issueSummary, tab: .issues)
+                .help("Meldungen des letzten Builds. Boxen: Zeilen, die zu breit oder zu locker gesetzt sind")
         }
         .font(.caption)
         .padding(.horizontal, 12)
@@ -146,31 +159,53 @@ private struct SidebarStatistics: View {
 
     private var issueSummary: String {
         switch build.status {
-        case .idle: return "–"
+        case .idle: return "nicht kompiliert"
         case .running: return "kompiliert …"
         case .unavailable: return "MacTeX fehlt"
         case .succeeded, .failed:
-            return "\(build.errorCount) Fehler · \(build.warningCount) Warn. · \(build.badBoxCount) Box"
+            let warnings = build.warningCount == 1 ? "1 Warnung" : "\(build.warningCount) Warnungen"
+            let boxes = build.badBoxCount == 1 ? "1 Box" : "\(build.badBoxCount) Boxen"
+            return "\(build.errorCount) Fehler · \(warnings) · \(boxes)"
         }
     }
 
-    private func row(_ title: String, value: String) -> some View {
-        HStack {
-            Text(title).foregroundStyle(.secondary)
-            Spacer()
-            Text(value).monospacedDigit()
+    private func row(_ title: String, value: String, tab: SidebarTab) -> some View {
+        Button {
+            sidebar.tab = tab
+        } label: {
+            HStack {
+                Text(title).foregroundStyle(.secondary)
+                Spacer()
+                Text(value)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Filter ohne Treffer (statt einer leeren Liste)
+struct NoFilterMatches: View {
+    let filter: String
+
+    var body: some View {
+        ContentUnavailableView("Keine Treffer", systemImage: "magnifyingglass", description: Text("Nichts passt zu „\(filter)“."))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
 private struct SidebarFilterField: View {
     @Binding var text: String
+    let placeholder: String
 
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: "line.3.horizontal.decrease.circle")
                 .foregroundStyle(.secondary)
-            TextField("Filtern", text: $text)
+            TextField(placeholder, text: $text)
                 .textFieldStyle(.plain)
             if !text.isEmpty {
                 Button("Filter löschen", systemImage: "xmark.circle.fill") { text = "" }

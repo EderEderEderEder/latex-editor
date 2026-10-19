@@ -50,6 +50,7 @@ Wichtig: **nicht** `swift test` direkt aufrufen. Ohne die Flags aus dem Skript w
 | `BibliographyTests` (mehrere Suites, App-Ebene unter `AppModelSuite`) | `.bib`-Parser (verschachtelt, `"…"`, Zahl, `#`, Kommentare), Katalog mit Autor/Jahr, Autoren-Umwandlung, Schlüssel (Umlaute, eindeutig, Titelwort), Formatierung und Maskierung, Zieldatei aus `\bibliography`, Abstand beim Anhängen; „Quelle“: Formular Buch exakt, Pflichtfelder, Webseite mit heutigem Abrufdatum, BibTeX einfügen (Felder unverändert, Schlüssel ersetzt), eigener Schlüssel; Zitat-Suche nach Autor/Titel/Jahr; App: Eintrag ans Ende der `.bib` + `\cite[S.~3]{…}` im Editor, offene geänderte `.bib` im Editor mit Undo |
 | `TextEditingTests`, `TypingTests` | Klammern (Paar, überspringen, `$`, `\{`, Auswahl umschließen, Paar löschen), Enter (Einrückung, `\end` mit Argumenten, kein doppeltes, `\item` fortsetzen/beenden), Kommentar (Einrückung, gemischt), Ein-/Ausrücken (Leerzeichen), Zeilen verschieben/verdoppeln/löschen am Rand, Formatierung umschalten; echter Editor mit **echten Tastatur-Ereignissen**: Klammern zusammen mit der Vervollständigung, Enter in `itemize`, Tab/⇧Tab, Menübefehle mit Undo, abschaltbar |
 | `RecoveryTests`, `FontSizeTests` | Sicherung kurz nach der Eingabe, Speichern löscht; Absturz → Wiederherstellen (ungespeichert) bzw. Verwerfen; „Nicht speichern“ löscht, veraltete verschwinden (Regression: Tabs-Wiederherstellen löschte die Sicherung vor der Rückfrage); Schriftgröße für Editor, Datei und Ruler, Grenzen |
+| `StabilizationTests` (teils App-Ebene unter `AppModelSuite`) | Text ohne Text-View ersetzen mit Undo/Redo; Verweise anpassen in geänderter offener Datei ist eigener Rückgängig-Schritt, früheres Tippen bleibt rückgängig machbar; Git erholt sich nach kaputtem `HEAD`; Quelle anlegen mit `.bib` vorne (Zitieren blockiert); aufgeklappte Ordner überstehen Tabwechsel, Projektwechsel setzt zurück; Build-Dauer mit Komma; Einfügen-Blocker |
 | `PerformanceTests` | 10.000-Zeilen-Dokument mit festen Budgets (siehe unten) |
 
 Testdaten entstehen in temporären Ordnern (`TemporaryProject`). `../Thesis` wird nie verwendet.
@@ -355,3 +356,17 @@ Vorher einmal kompilieren (⌘B), damit `main.synctex.gz` existiert.
 | 161 | ⌘+ / ⌘− / ⌥⌘0 | Schrift im Editor, in allen offenen Dateien und in den Zeilennummern ändert sich, bleibt nach Neustart |
 | 162 | Tippen, ohne zu speichern, App per Aktivitätsanzeige „Sofort beenden“, neu öffnen | Rückfrage „Ungespeicherte Änderungen wiederherstellen?“; Text ist wieder da (ungespeichert) |
 | 163 | Ablage → „Beim Verlassen der App speichern“, tippen, in eine andere App wechseln | Datei ist gespeichert |
+
+### Sitzung 11: Aufräumen und Verständlichkeit
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 164 | Bild im Dateibaum umbenennen, während eine geänderte Datei es per `\includegraphics` nutzt, danach ⌘Z in dieser Datei | Erst wird nur die Verweis-Anpassung zurückgenommen, ein weiteres ⌘Z nimmt das eigene Tippen zurück; kein Absturz |
+| 165 | `hgbreferences.bib` vorne, Einfügen → Quelle mit „Gleich zitieren“ | Hinweis, dass zum Zitieren eine .tex-Datei vorne sein muss; ohne den Haken „Quelle anlegen“ möglich |
+| 166 | Ordner im Dateibaum aufklappen, zur Gliederung und zurück wechseln | Ordner bleiben aufgeklappt; ebenso zugeklappte Kapitel in der Gliederung |
+| 167 | Filter mit Unsinn füllen, in allen vier Tabs | „Keine Treffer“ statt leerer Liste; Platzhalter nennt den Tab |
+| 168 | App starten, noch nicht kompilieren | Toolbar „Noch nicht kompiliert“, Statistik „Meldungen: nicht kompiliert“; Klick auf eine Statistikzeile wechselt den Tab |
+| 169 | Diff einer Datei öffnen, die auch als Datei-Tab offen ist | Tab heißt „name – Änderungen“; „Zurücksetzen …“ steht rot rechts, getrennt von „Datei öffnen“ |
+| 170 | Rechtsklick auf „Bereitgestellt“/„Nicht bereitgestellt“ | „Alle auf letzten Commit zurücksetzen …“ nur dort, im Kopf nur + bzw. − |
+| 171 | Kommentare im hellen Modus lesen | Deutlich lesbar, aber zurückgenommen gegenüber dem Text |
+| 172 | Git im Terminal kurz kaputt machen (z. B. `.git/HEAD` umbenennen und zurück), dann eine Datei speichern | Änderungen-Tab erholt sich ohne Neustart |

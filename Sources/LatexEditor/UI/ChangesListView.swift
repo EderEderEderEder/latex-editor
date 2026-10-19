@@ -62,6 +62,8 @@ struct ChangesListView: View {
     private var changes: some View {
         if !git.hasChanges {
             ContentUnavailableView("Keine Änderungen", systemImage: "checkmark.circle", description: Text("Alles ist committet."))
+        } else if filtered(git.staged).isEmpty && filtered(git.unstaged).isEmpty {
+            NoFilterMatches(filter: filter)
         } else {
             List {
                 section(title: "Bereitgestellt", changes: filtered(git.staged), actionTitle: "Alle zurücknehmen",
@@ -86,19 +88,23 @@ struct ChangesListView: View {
                     ChangeRow(model: model, change: change)
                 }
             } header: {
+                // Das Zurücksetzen aller Dateien steht bewusst nur im Rechtsklickmenü, nicht als Symbol
+                // neben „Alle bereitstellen“: ↶ liest man leicht als harmloses „Rückgängig“.
                 HStack {
                     Text("\(title) (\(changes.count))")
                     Spacer()
-                    Button("Alle auf letzten Commit zurücksetzen …", systemImage: "arrow.uturn.backward", action: resetAll)
-                        .labelStyle(.iconOnly)
-                        .buttonStyle(.borderless)
-                        .disabled(git.isBusy)
-                        .help("Diese Dateien auf den Stand des letzten Commits zurücksetzen …")
                     Button(actionTitle, systemImage: symbol, action: action)
                         .labelStyle(.iconOnly)
                         .buttonStyle(.borderless)
                         .disabled(git.isBusy)
                         .help(actionTitle)
+                }
+                .contentShape(Rectangle())
+                .contextMenu {
+                    Button(actionTitle, action: action)
+                    Divider()
+                    Button("Alle auf letzten Commit zurücksetzen …", action: resetAll)
+                        .disabled(git.isBusy)
                 }
             }
         }
@@ -157,7 +163,6 @@ private struct SyncBar: View {
                 Text(activity).foregroundStyle(.secondary)
             } else {
                 Button("Abrufen", systemImage: "arrow.triangle.2.circlepath") { Task { await model.fetchFromRemote() } }
-                    .labelStyle(.iconOnly)
                     .help("Stand des Remotes abrufen (ändert keine Dateien)")
             }
         }
@@ -188,7 +193,8 @@ private struct CommitBox: View {
                         .help("Bereitgestellte Dateien außerhalb des Projektordners werden mitcommittet.")
                 }
                 Spacer()
-                if git.isBusy { ProgressView().controlSize(.small) }
+                // Läuft ein Pull/Push, zeigt die Leiste darunter (nur mit Remote) schon den Fortschritt
+                if git.isBusy, git.activity == nil || !git.hasRemote { ProgressView().controlSize(.small) }
                 Button(git.staged.isEmpty ? "Alle committen" : "Commit") {
                     Task { await model.commitChanges() }
                 }

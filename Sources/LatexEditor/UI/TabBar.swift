@@ -32,6 +32,8 @@ struct TabBar: View {
 private struct TabItem: View {
     private static let minimumWidth: CGFloat = 90
     private static let maximumWidth: CGFloat = 200
+    /// Diff-Tabs tragen „– Änderungen“ im Titel
+    private static let maximumDiffWidth: CGFloat = 270
 
     let model: AppModel
     let tab: EditorTab
@@ -52,7 +54,8 @@ private struct TabItem: View {
             Image(systemName: isDiff ? "plus.forwardslash.minus" : FileKind(url: url).symbolName)
                 .font(.system(size: 11))
                 .foregroundStyle(isActive ? Color.accentColor : .secondary)
-            Text(url.lastPathComponent)
+            // Sonst sähen Datei- und Diff-Tab derselben Datei bis auf das kleine Symbol gleich aus
+            Text(isDiff ? "\(url.lastPathComponent) – Änderungen" : url.lastPathComponent)
                 .font(.callout)
                 .italic(isPreview)
                 .strikethrough(isMissing)
@@ -62,7 +65,7 @@ private struct TabItem: View {
             closeOrDirtyIndicator
         }
         .padding(.horizontal, 10)
-        .frame(minWidth: Self.minimumWidth, maxWidth: Self.maximumWidth)
+        .frame(minWidth: Self.minimumWidth, maxWidth: isDiff ? Self.maximumDiffWidth : Self.maximumWidth)
         .frame(maxHeight: .infinity)
         .background(isActive ? Color(nsColor: .textBackgroundColor) : (isHovering ? Color.primary.opacity(0.06) : .clear))
         .overlay(alignment: .trailing) { Divider() }

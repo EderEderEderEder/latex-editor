@@ -19,8 +19,9 @@ enum InsertionKind: String, CaseIterable, Identifiable, Sendable {
         case .code: "Codeblock"
         case .equation: "Gleichung"
         case .list: "Aufzählung"
-        case .reference: "Verweis"
-        case .citation: "Zitat"
+        // Mit Befehl, damit „Zitat“ nicht nach wörtlichem Zitat und „Verweis“ nicht nach Link klingt
+        case .reference: "Querverweis (\\ref)"
+        case .citation: "Zitieren (\\cite)"
         case .source: "Quelle"
         }
     }
@@ -47,7 +48,7 @@ enum InsertionKind: String, CaseIterable, Identifiable, Sendable {
         case .equation: "Formel, nummeriert oder ohne Nummer"
         case .list: "Aufzählung oder nummerierte Liste"
         case .reference: "Verweis auf Abbildung, Tabelle oder Kapitel"
-        case .citation: "Zitat aus der Literaturdatei"
+        case .citation: "Eine Quelle aus der Literaturdatei im Text zitieren"
         case .source: "Neue Quelle in der Literaturdatei anlegen, auf Wunsch gleich zitieren"
         }
     }

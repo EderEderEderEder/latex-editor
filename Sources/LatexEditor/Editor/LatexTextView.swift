@@ -204,16 +204,30 @@ final class LatexTextView: NSTextView {
 
     /// ⌘-Klick auf `\ref`, `\cite`, `\input` …: zum Ziel springen
     var onJumpToTarget: ((JumpTarget) -> Void)?
-    /// „Label umbenennen …“ im Kontextmenü
-    var onRenameLabel: ((String) -> Void)?
+    /// ⌘-Klick auf eine andere Stelle: im PDF zeigen (Zeichenposition)
+    var onShowInPDF: ((Int) -> Void)?
+    /// „Umbenennen …“ im Kontextmenü: Möglichkeiten an einer Zeichenposition und Ausführen
+    var renameScopes: ((Int) -> [RenameScope])?
+    var onRename: ((RenameScope) -> Void)?
     private var jumpTrackingArea: NSTrackingArea?
 
     override func mouseDown(with event: NSEvent) {
-        guard let target = commandClickTarget(for: event) else {
+        if let target = commandClickTarget(for: event) {
+            onJumpToTarget?(target)
+        } else if let location = commandClickLocation(for: event) {
+            setSelectedRange(NSRange(location: location, length: 0))
+            onShowInPDF?(location)
+        } else {
             super.mouseDown(with: event)
-            return
         }
-        onJumpToTarget?(target)
+    }
+
+    /// Zeichenposition eines ⌘-Klicks (ohne weitere Taste) auf eine Stelle ohne Sprungziel: dort im PDF zeigen.
+    func commandClickLocation(for event: NSEvent) -> Int? {
+        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command, onShowInPDF != nil else { return nil }
+        let local = convert(event.locationInWindow, from: nil)
+        guard bounds.contains(local) else { return nil }
+        return characterIndexForInsertion(at: local)
     }
 
     /// Das Ziel, wenn der Klick ein ⌘-Klick (ohne weitere Taste) auf einen Verweis, ein Zitat oder einen Dateipfad ist.
@@ -260,23 +274,27 @@ final class LatexTextView: NSTextView {
         return true
     }
 
-    /// Rechtsklick auf ein Label oder einen Verweis: „Label umbenennen …“
+    /// Rechtsklick auf ein Label, einen Literaturschlüssel, eine Abkürzung, einen eigenen Befehl oder `\begin`/`\end`:
+    /// „… umbenennen …“ (bei Umgebungen zwei Einträge: dieses Paar oder überall)
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = super.menu(for: event)
-        guard onRenameLabel != nil, let storage = textStorage else { return menu }
+        guard let menu, let renameScopes else { return menu }
         let location = characterIndexForInsertion(at: convert(event.locationInWindow, from: nil))
-        guard let key = JumpTargetFinder.label(at: location, in: storage.mutableString) else { return menu }
-        let item = NSMenuItem(title: "Label „\(key)“ umbenennen …", action: #selector(renameLabelFromMenu(_:)), keyEquivalent: "")
-        item.target = self
-        item.representedObject = key
-        menu?.insertItem(.separator(), at: 0)
-        menu?.insertItem(item, at: 0)
+        let scopes = renameScopes(location)
+        guard !scopes.isEmpty else { return menu }
+        menu.insertItem(.separator(), at: 0)
+        for scope in scopes.reversed() {
+            let item = NSMenuItem(title: scope.menuTitle, action: #selector(renameFromMenu(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = scope
+            menu.insertItem(item, at: 0)
+        }
         return menu
     }
 
-    @objc private func renameLabelFromMenu(_ sender: NSMenuItem) {
-        guard let key = sender.representedObject as? String else { return }
-        onRenameLabel?(key)
+    @objc private func renameFromMenu(_ sender: NSMenuItem) {
+        guard let scope = sender.representedObject as? RenameScope else { return }
+        onRename?(scope)
     }
 
     // MARK: Suchen im Editor

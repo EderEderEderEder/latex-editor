@@ -217,6 +217,11 @@ final class AppModel {
         revealInPDF(file: current.url, line: line, mode: .explicit)
     }
 
+    /// ⌘-Klick im Editor auf eine Stelle ohne Sprungziel
+    func showInPDF(file: URL, line: Int) {
+        revealInPDF(file: file, line: line, mode: .explicit)
+    }
+
     private func cursorMoved(file: URL, line: Int) {
         lastCursor = (file, line)
         outline.updateCursor(file: file, line: line)

@@ -22,8 +22,11 @@ struct EditorTextView: NSViewRepresentable {
     let onCursorMoved: (CursorInfo) -> Void
     /// ⌘-Klick auf Verweis, Zitat oder Dateipfad
     var onJumpToTarget: ((JumpTarget) -> Void)?
-    /// „Label umbenennen …“ im Kontextmenü
-    var onRenameLabel: ((String) -> Void)?
+    /// „Umbenennen …“ im Kontextmenü: Möglichkeiten an einer Zeichenposition und Ausführen
+    var renameScopes: ((DocumentSession, Int) -> [RenameScope])?
+    var onRename: ((RenameScope) -> Void)?
+    /// ⌘-Klick auf normalen Text: diese Zeile (1-basiert) der Datei im PDF zeigen
+    var onShowInPDF: ((URL, Int) -> Void)?
 
     func makeCoordinator() -> EditorCoordinator {
         EditorCoordinator()
@@ -36,7 +39,9 @@ struct EditorTextView: NSViewRepresentable {
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         context.coordinator.onCursorMoved = onCursorMoved
         context.coordinator.jumpHandler = onJumpToTarget
-        context.coordinator.renameLabelHandler = onRenameLabel
+        context.coordinator.renameScopesHandler = renameScopes
+        context.coordinator.renameHandler = onRename
+        context.coordinator.showInPDFHandler = onShowInPDF
         context.coordinator.update(session: session, jump: jump, insert: insertRequest)
         context.coordinator.updateIssueMarks(issueMarks)
         context.coordinator.updateChangeMarks(changeMarks)
@@ -59,7 +64,9 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
 
     var onCursorMoved: ((CursorInfo) -> Void)?
     var jumpHandler: ((JumpTarget) -> Void)?
-    var renameLabelHandler: ((String) -> Void)?
+    var renameScopesHandler: ((DocumentSession, Int) -> [RenameScope])?
+    var renameHandler: ((RenameScope) -> Void)?
+    var showInPDFHandler: ((URL, Int) -> Void)?
 
     var cursorLocation: Int { textView?.selectedRange().location ?? 0 }
 
@@ -108,7 +115,12 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         }
         textView.onCompletionRequested = { [weak self] in self?.completion.trigger() }
         textView.onJumpToTarget = { [weak self] target in self?.jumpHandler?(target) }
-        textView.onRenameLabel = { [weak self] key in self?.renameLabelHandler?(key) }
+        textView.renameScopes = { [weak self] location in
+            guard let self, let session = self.session else { return [] }
+            return self.renameScopesHandler?(session, location) ?? []
+        }
+        textView.onRename = { [weak self] scope in self?.renameHandler?(scope) }
+        textView.onShowInPDF = { [weak self] location in self?.showInPDF(at: location) }
         textView.syntaxTokensProvider = { [weak self] range in
             self?.session?.syntaxTokens(in: range) ?? []
         }
@@ -252,6 +264,13 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         textView.window?.makeFirstResponder(textView)
         textView.setSelectedRange(NSRange(location: lineRange.location, length: 0))
         textView.scrollRangeToVisible(lineRange)
+    }
+
+    /// Zeile direkt aus dem Zeilenindex: Die entprellte Cursormeldung (für ⌘J) käme erst 150 ms später.
+    private func showInPDF(at location: Int) {
+        guard let session else { return }
+        let line = session.lineIndex.clampedLine(containing: location) + 1
+        showInPDFHandler?(session.url, line)
     }
 
     func updateIssueMarks(_ marks: [Int: BuildIssue.Severity]) {

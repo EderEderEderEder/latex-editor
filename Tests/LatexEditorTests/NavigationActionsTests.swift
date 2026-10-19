@@ -49,14 +49,42 @@ struct CommandClickTests {
         #expect(harness.textView.commandClickTarget(for: try mouseDown(harness, at: onLabel, flags: .command)) == .label("fig:abc"))
     }
 
-    @Test("Rechtsklick auf ein Label bietet „Label umbenennen …“ an, auf Text nicht")
+    @Test("⌘-Klick auf normalen Text setzt den Cursor und zeigt die Zeile im PDF; ohne ⌘ nicht")
+    func clickShowsInPDF() async throws {
+        let text = "Erste Zeile\nZweite Zeile mit Text\nSiehe \\ref{fig:abc}"
+        let harness = CompletionHarness(text: text)
+        try await harness.start()
+        var shown: [(URL, Int)] = []
+        var jumped: [JumpTarget] = []
+        harness.coordinator.showInPDFHandler = { shown.append(($0, $1)) }
+        harness.textView.onJumpToTarget = { jumped.append($0) }
+        let source = text as NSString
+
+        let plain = source.range(of: "mit").location + 1
+        harness.textView.mouseDown(with: try mouseDown(harness, at: try windowPoint(forCharacter: plain, in: harness), flags: .command))
+        #expect(shown.map(\.1) == [2])
+        #expect(shown.first?.0 == harness.session.url)
+        #expect(harness.textView.selectedRange().location == plain || harness.textView.selectedRange().location == plain + 1)
+
+        let onLabel = try windowPoint(forCharacter: source.range(of: "fig:abc").location + 2, in: harness)
+        harness.textView.mouseDown(with: try mouseDown(harness, at: onLabel, flags: .command))
+        #expect(jumped == [.label("fig:abc")], "Sprungziele gehen vor")
+        #expect(shown.count == 1)
+        #expect(harness.textView.commandClickLocation(for: try mouseDown(harness, at: onLabel, flags: [])) == nil)
+        #expect(harness.textView.commandClickLocation(for: try mouseDown(harness, at: onLabel, flags: [.command, .option])) == nil)
+    }
+
+    @Test("Rechtsklick bietet „… umbenennen …“ mit allen Möglichkeiten der Stelle an, auf Text nicht")
     func contextMenu() async throws {
         let text = "Siehe \\ref{fig:abc} Text"
         let harness = CompletionHarness(text: text)
         try await harness.start()
-        var renamed: String?
-        harness.textView.onRenameLabel = { renamed = $0 }
+        var renamed: RenameScope?
         let source = text as NSString
+        let label = RenameScope.project(RenameSubject(kind: .label, name: "fig:abc"))
+        let pair = RenameScope.pair(harness.session.url, EnvironmentPair(name: "x", begin: NSRange(), end: NSRange()))
+        harness.textView.renameScopes = { location in location < source.range(of: "Text").location ? [label, pair] : [] }
+        harness.textView.onRename = { renamed = $0 }
 
         func rightClick(at index: Int) throws -> NSMenu? {
             let event = try #require(NSEvent.mouseEvent(
@@ -66,10 +94,10 @@ struct CommandClickTests {
             return harness.textView.menu(for: event)
         }
         let menu = try #require(try rightClick(at: source.range(of: "fig:abc").location + 2))
-        let item = try #require(menu.items.first { $0.title.contains("umbenennen") })
-        #expect(item.title == "Label „fig:abc“ umbenennen …")
+        #expect(menu.items.prefix(3).map(\.title) == ["Label „fig:abc“ umbenennen …", "Umgebung „x“ umbenennen (dieses Paar) …", ""])
+        let item = menu.items[0]
         _ = item.target?.perform(item.action, with: item)
-        #expect(renamed == "fig:abc")
+        #expect(renamed == label)
 
         let plainMenu = try rightClick(at: source.range(of: "Text").location + 1)
         #expect(plainMenu?.items.contains { $0.title.contains("umbenennen") } != true)
@@ -77,7 +105,7 @@ struct CommandClickTests {
 }
 
 extension AppModelSuite {
-@Suite("Sprung und Label umbenennen (App-Ebene)")
+@Suite("Sprung und Umbenennen (App-Ebene)")
 @MainActor
 struct NavigationActionsTests {
     private let model = AppModel.shared
@@ -89,6 +117,10 @@ struct NavigationActionsTests {
         try project.write("zwei.tex", "\\chapter{Zwei}\nSiehe \\ref{cha:eins} und \\cref{cha:eins,cha:zwei}.\n\\label{cha:zwei}\n")
         try project.write("lit.bib", "% Kopf\n@book{alt,\n title={A}}\n@book{neu,\n title={B}}\n")
         return project
+    }
+
+    private func label(_ name: String) -> RenameScope {
+        .project(RenameSubject(kind: .label, name: name))
     }
 
     @Test("Sprung zu Label, Literatureintrag und Datei; unbekanntes Ziel ändert nichts")
@@ -129,10 +161,10 @@ struct NavigationActionsTests {
         await model.editor.open(project.url("main.tex"), asPreview: false)
         let activeBefore = model.editor.tabs.active
 
-        let summary = await model.labelRenameSummary(for: "cha:eins")
+        let summary = await model.renameSummary(for: label("cha:eins"))
         #expect(summary == "4 Stellen in 2 Dateien", "label, ref, cref-Liste, ungespeichertes autoref")
 
-        await model.renameLabel("cha:eins", to: "kap:einleitung")
+        await model.rename(label("cha:eins"), to: "kap:einleitung")
 
         let eins = try #require(model.editor.session(for: project.url("kapitel/eins.tex")))
         #expect(eins.textStorage.string.contains("\\label{kap:einleitung}"))
@@ -142,7 +174,7 @@ struct NavigationActionsTests {
         #expect(try String(contentsOf: project.url("kapitel/eins.tex"), encoding: .utf8).contains("\\label{cha:eins}"), "Platte unverändert")
         #expect(eins.isDirty && sessionZwei.isDirty)
         #expect(model.editor.tabs.active == activeBefore)
-        #expect(model.fileActions.notice?.contains("4 Stellen in 2 Dateien") == true)
+        #expect(model.fileActions.notice?.hasPrefix("Label „cha:eins“ → „kap:einleitung“: 4 Stellen in 2 Dateien") == true)
 
         eins.undoManager.undo()
         #expect(eins.textStorage.string.contains("\\label{cha:eins}"), "⌘Z nimmt die Umbenennung zurück")
@@ -155,14 +187,91 @@ struct NavigationActionsTests {
         defer { project.remove() }
         await model.openProject(project.root)
 
-        await model.renameLabel("cha:eins", to: "cha:zwei")
+        await model.rename(label("cha:eins"), to: "cha:zwei")
         #expect(model.editor.session(for: project.url("kapitel/eins.tex")) == nil, "vorhanden: nichts geöffnet, nichts geändert")
-        await model.renameLabel("cha:eins", to: "mit leerzeichen")
+        await model.rename(label("cha:eins"), to: "mit leerzeichen")
         #expect(model.fileActions.notice == nil)
 
-        model.beginLabelRename(key: "cha:eins")
-        #expect(model.fileActions.labelRename?.oldKey == "cha:eins")
-        model.fileActions.labelRename = nil
+        model.beginRename(label("cha:eins"))
+        #expect(model.fileActions.rename?.scope == label("cha:eins"))
+        model.fileActions.rename = nil
+    }
+
+    @Test("Quelle umbenennen: Schlüssel in der .bib und alle Zitate im Text")
+    func renamingCitation() async throws {
+        let project = try makeProject()
+        defer { project.remove() }
+        try project.write("kapitel/eins.tex", "\\chapter{Eins}\nWie \\cite{alt} und \\parencite[S.~2]{neu,alt}.\n")
+        await model.openProject(project.root)
+        await model.reloadCompletionIndex(immediately: true)
+        let scope = RenameScope.project(RenameSubject(kind: .citation, name: "alt"))
+
+        #expect(model.renameProblem("neu", for: scope) == "Eine Quelle mit diesem Namen gibt es schon.")
+        #expect(await model.renameSummary(for: scope) == "3 Stellen in 2 Dateien")
+        await model.rename(scope, to: "alt2020")
+
+        let bib = try #require(model.editor.session(for: project.url("lit.bib")))
+        let eins = try #require(model.editor.session(for: project.url("kapitel/eins.tex")))
+        #expect(bib.textStorage.string.contains("@book{alt2020,"))
+        #expect(eins.textStorage.string.contains("\\cite{alt2020} und \\parencite[S.~2]{neu,alt2020}"))
+        #expect(bib.isDirty && eins.isDirty)
+        model.fileActions.notice = nil
+    }
+
+    @Test("Eigene Befehle, Umgebungen und Abkürzungen; \\section und Vorlagen-Befehle werden nicht angeboten")
+    func renamingCommandsEnvironmentsAcronyms() async throws {
+        let project = try TemporaryProject()
+        defer { project.remove() }
+        try project.write("vorlage.sty", "\\newcommand{\\vorlage}{V}\n")
+        try project.write("main.tex", """
+            \\documentclass{report}
+            \\newcommand{\\tool}{X}
+            \\newenvironment{hinweis}{}{}
+            \\newacronym{api}{API}{Programmierschnittstelle}
+            \\begin{document}
+            \\section{A} \\tool und \\vorlage, \\ac{api}.
+            \\begin{hinweis}Text\\end{hinweis}
+            \\begin{itemize}\\item a\\end{itemize}
+            \\end{document}
+            """)
+        await model.openProject(project.root)
+        await model.reloadCompletionIndex(immediately: true)
+        await model.editor.open(project.url("main.tex"), asPreview: false)
+        let session = try #require(model.editor.current)
+        let text = session.textStorage.mutableString
+        func scopes(at marker: String) -> [RenameScope] {
+            model.renameScopes(at: text.range(of: marker).location + 2, in: session)
+        }
+
+        #expect(scopes(at: "\\section").isEmpty, "Kein eigener Befehl")
+        #expect(scopes(at: "\\vorlage,").isEmpty, "Befehl der Vorlage (.sty)")
+        #expect(scopes(at: "\\tool und") == [.project(RenameSubject(kind: .command, name: "tool"))])
+        #expect(scopes(at: "api}.") == [.project(RenameSubject(kind: .acronym, name: "api"))])
+        let itemize = scopes(at: "itemize}\\item")
+        #expect(itemize.count == 1, "itemize: nur das Paar, weil nicht im Projekt definiert")
+        #expect(scopes(at: "hinweis}Text").count == 2, "eigene Umgebung: Paar oder überall")
+
+        await model.rename(.project(RenameSubject(kind: .command, name: "tool")), to: "\\werkzeug")
+        await model.rename(.project(RenameSubject(kind: .environment, name: "hinweis")), to: "kasten")
+        await model.rename(.project(RenameSubject(kind: .acronym, name: "api")), to: "schnittstelle")
+        let stale = try #require(itemize.first)
+        let beforeStale = session.textStorage.string
+        await model.rename(stale, to: "enumerate")
+        #expect(session.textStorage.string == beforeStale, "Veraltete Positionen: nichts ändern")
+        #expect(model.fileActions.notice?.contains("steht nicht mehr an dieser Stelle") == true)
+        let pair = try #require(scopes(at: "itemize}\\item").first)
+        await model.rename(pair, to: "enumerate")
+
+        let result = session.textStorage.string
+        #expect(result.contains("\\newcommand{\\werkzeug}") && result.contains("\\werkzeug und"))
+        #expect(result.contains("\\newenvironment{kasten}") && result.contains("\\begin{kasten}Text\\end{kasten}"))
+        #expect(result.contains("\\newacronym{schnittstelle}") && result.contains("\\ac{schnittstelle}"))
+        #expect(result.contains("\\begin{enumerate}\\item a\\end{enumerate}"))
+        #expect(result.contains("\\section{A}") && result.contains("\\vorlage,"))
+
+        session.undoManager.undo()
+        #expect(session.textStorage.string.contains("\\begin{itemize}\\item a\\end{itemize}"), "⌘Z: nur das Paar zurück")
+        model.fileActions.notice = nil
     }
 }
 }

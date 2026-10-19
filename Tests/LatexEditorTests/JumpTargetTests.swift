@@ -45,14 +45,6 @@ struct JumpTargetTests {
         #expect(target("Erste \\ref{eins}\nZweite \\ref{zw|ei}\nDritte")?.0 == .label("zwei"))
     }
 
-    @Test("Label an der Stelle: Definition und Verweis, nicht Zitat")
-    func labelAt() {
-        let text = "\\label{a}\\ref{b}\\cite{c}" as NSString
-        #expect(JumpTargetFinder.label(at: 8, in: text) == "a")
-        #expect(JumpTargetFinder.label(at: 15, in: text) == "b")
-        #expect(JumpTargetFinder.label(at: 24, in: text) == nil)
-    }
-
     @Test("Dateien: relativ zum Ordner, mit und ohne .tex, nie Ordner")
     func resolvingFiles() throws {
         let project = try TemporaryProject()
@@ -66,37 +58,5 @@ struct JumpTargetTests {
         #expect(JumpTargetFinder.resolveFile("eins", bases: bases) == project.url("kapitel/eins.tex"), "zweiter Ordner")
         #expect(JumpTargetFinder.resolveFile("ordner", bases: bases) == nil)
         #expect(JumpTargetFinder.resolveFile("gibtesnicht", bases: bases) == nil)
-    }
-}
-
-@Suite("Label umbenennen: Logik")
-struct LabelRenamerTests {
-    @Test("Definition und alle Verweise, aber nur dieses Label und keine Zitate")
-    func occurrences() {
-        let text = "\\label{a}\\ref{a}\\ref{ab}\\cref{x,a}\\cite{a}\\hyperref[a]{T} % \\ref{a}\n\\begin{verbatim}\\ref{a}\\end{verbatim}"
-        let ranges = LabelRenamer.occurrences(of: "a", in: text)
-        #expect(ranges.count == 4, "label, ref, cref-Liste, hyperref")
-        let source = text as NSString
-        #expect(ranges.allSatisfy { source.substring(with: $0) == "a" })
-    }
-
-    @Test("Ersetzen von hinten: Längen ändern die Positionen nicht")
-    func applying() {
-        let text = "\\label{a} \\ref{a} \\cref{x,a}"
-        let renamed = LabelRenamer.apply(LabelRenamer.occurrences(of: "a", in: text), newKey: "fig:lang", to: text)
-        #expect(renamed == "\\label{fig:lang} \\ref{fig:lang} \\cref{x,fig:lang}")
-    }
-
-    @Test("Prüfung des neuen Namens")
-    func validation() {
-        let existing: Set<String> = ["a", "b"]
-        #expect(LabelRenamer.validate("neu", old: "a", existing: existing) == nil)
-        #expect(LabelRenamer.validate("fig:neu_1", old: "a", existing: existing) == nil)
-        #expect(LabelRenamer.validate("  ", old: "a", existing: existing) != nil)
-        #expect(LabelRenamer.validate("a", old: "a", existing: existing) == "Der Name ist unverändert.")
-        #expect(LabelRenamer.validate("b", old: "a", existing: existing) == "Ein Label mit diesem Namen gibt es schon.")
-        #expect(LabelRenamer.validate("zwei worte", old: "a", existing: existing) != nil)
-        #expect(LabelRenamer.validate("a,b", old: "a", existing: existing) != nil)
-        #expect(LabelRenamer.validate("x}y", old: "a", existing: existing) != nil)
     }
 }

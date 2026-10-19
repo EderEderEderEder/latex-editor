@@ -20,12 +20,6 @@ enum JumpTargetFinder {
         return (hit.kind == .labelUse ? .label(hit.key) : .citation(hit.key), hit.range)
     }
 
-    /// Das Label an der Stelle, auch in `\label{…}` (für „Label umbenennen“)
-    static func label(at location: Int, in text: NSString) -> String? {
-        guard let hit = occurrence(at: location, in: text), hit.kind != .citation else { return nil }
-        return hit.key
-    }
-
     private static func occurrence(at location: Int, in text: NSString) -> ReferenceOccurrence? {
         guard let (line, lineRange) = lineText(at: location, in: text) else { return nil }
         let local = location - lineRange.location
@@ -65,36 +59,6 @@ enum JumpTargetFinder {
                 if fileExists(url), !FileOperations.isDirectory(url) { return url.standardizedFileURL }
             }
         }
-        return nil
-    }
-}
-
-/// Label umbenennen: alle `\label{alt}` und Verweise darauf im Projekt. Reine Logik.
-enum LabelRenamer {
-    private static let forbiddenCharacters = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "{},%#\\~^$&"))
-
-    /// Bereiche des Schlüssels `key` in Definition und Verweisen (Zitate bleiben außen vor)
-    static func occurrences(of key: String, in text: String) -> [NSRange] {
-        LatexReferences.scan(text).filter { $0.kind != .citation && $0.key == key }.map(\.range)
-    }
-
-    static func apply(_ ranges: [NSRange], newKey: String, to text: String) -> String {
-        let result = NSMutableString(string: text)
-        for range in ranges.sorted(by: { $0.location > $1.location }) where NSMaxRange(range) <= result.length {
-            result.replaceCharacters(in: range, with: newKey)
-        }
-        return result as String
-    }
-
-    /// Hinweistext, warum `newKey` nicht geht; `nil` wenn es geht.
-    static func validate(_ newKey: String, old: String, existing: Set<String>) -> String? {
-        let name = newKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if name.isEmpty { return "Bitte einen Namen eingeben." }
-        if name == old { return "Der Name ist unverändert." }
-        if name.unicodeScalars.contains(where: forbiddenCharacters.contains) {
-            return "Im Namen sind Leerzeichen und die Zeichen { } , % # \\ ~ ^ $ & nicht erlaubt."
-        }
-        if existing.contains(name) { return "Ein Label mit diesem Namen gibt es schon." }
         return nil
     }
 }

@@ -18,7 +18,9 @@ struct EditorPane: View {
                 // Auswahl und Scrollposition der Dateien liegen in ihren Sitzungen.
                 EditorContent(editor: model.editor, build: model.build, changeMarks: model.changeMarks,
                               completionProvider: model.completionProvider, referenceChecks: model.referenceChecks,
-                              jumpHandler: model.jump(to:), renameHandler: { model.beginLabelRename(key: $0) })
+                              jumpHandler: model.jump(to:), renameScopes: { model.renameScopes(at: $1, in: $0) },
+                              renameHandler: { model.beginRename($0) },
+                              showInPDFHandler: model.showInPDF(file:line:))
                 if let diffURL = model.editor.tabs.active?.diffURL {
                     DiffView(git: model.git, url: diffURL)
                         .id(diffURL)
@@ -40,7 +42,9 @@ private struct EditorContent: View {
     let completionProvider: CompletionProvider
     let referenceChecks: ReferenceCheckStore
     let jumpHandler: (JumpTarget) -> Void
-    let renameHandler: (String) -> Void
+    let renameScopes: (DocumentSession, Int) -> [RenameScope]
+    let renameHandler: (RenameScope) -> Void
+    let showInPDFHandler: (URL, Int) -> Void
 
     @AppStorage(WritingHints.enabledKey) private var showsWritingHints = true
 
@@ -59,7 +63,9 @@ private struct EditorContent: View {
                 completionRequest: editor.completionRequest,
                 onCursorMoved: editor.reportCursor,
                 onJumpToTarget: jumpHandler,
-                onRenameLabel: renameHandler
+                renameScopes: renameScopes,
+                onRename: renameHandler,
+                onShowInPDF: showInPDFHandler
             )
             if editor.current == nil, editor.tabs.active?.diffURL == nil {
                 EmptyStateView(

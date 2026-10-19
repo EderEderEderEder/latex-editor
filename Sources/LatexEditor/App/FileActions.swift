@@ -33,8 +33,8 @@ struct NamePrompt: Identifiable, Equatable {
 final class FileActionStore {
     var prompt: NamePrompt?
     var errorMessage: String?
-    /// Eingabe für „Label umbenennen“
-    var labelRename: LabelRenamePrompt?
+    /// Eingabe für „Umbenennen …“ (Label, Quelle, Abkürzung, Befehl, Umgebung)
+    var rename: RenamePrompt?
     /// Information zu einem abgeschlossenen Vorgang (z. B. „5 Stellen in 3 Dateien geändert“)
     var notice: String?
 }

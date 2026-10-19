@@ -19,6 +19,11 @@ struct CompletionIndex: Equatable, Sendable {
     var usedCitations: Set<String> = []
     /// `\nocite{*}` irgendwo: Alle Quellen gelten als benutzt
     var citesEverything = false
+    /// In den .tex-Dateien des Projekts definiert (nicht in Vorlagen-.cls/.sty): nur diese lassen sich umbenennen
+    var projectCommands: Set<String> = []
+    var projectEnvironments: Set<String> = []
+    /// Abkürzungen und Glossareinträge (`\newacronym`, `\DeclareAcronym`, `\newglossaryentry` …)
+    var acronyms: Set<String> = []
 
     static let empty = CompletionIndex()
 
@@ -44,6 +49,9 @@ struct CompletionIndex: Equatable, Sendable {
             commands.formUnion(definedCommands(in: text))
             environments.formUnion(definedEnvironments(in: text))
             guard FileKind(url: file) == .tex else { continue }
+            index.projectCommands.formUnion(definedCommands(in: text))
+            index.projectEnvironments.formUnion(EnvironmentNames.definedNames(in: text))
+            index.acronyms.formUnion(Acronyms.definedKeys(in: text))
             for occurrence in LatexReferences.scan(text) {
                 switch occurrence.kind {
                 case .labelUse: index.usedLabels.insert(occurrence.key)

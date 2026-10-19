@@ -51,7 +51,7 @@ struct RootView: View {
         .task { await model.restoreLastProject() }
         .sheet(isPresented: logBinding) { BuildLogSheet(build: model.build) }
         .sheet(item: promptBinding) { prompt in NameSheet(model: model, prompt: prompt) }
-        .sheet(item: labelRenameBinding) { prompt in LabelRenameSheet(model: model, prompt: prompt) }
+        .sheet(item: renameBinding) { prompt in RenameSheet(model: model, prompt: prompt) }
         .alert("Hinweis", isPresented: noticeBinding) {
             Button("OK") { model.fileActions.notice = nil }
         } message: {
@@ -146,8 +146,8 @@ struct RootView: View {
         Binding(get: { model.fileActions.prompt }, set: { model.fileActions.prompt = $0 })
     }
 
-    private var labelRenameBinding: Binding<LabelRenamePrompt?> {
-        Binding(get: { model.fileActions.labelRename }, set: { model.fileActions.labelRename = $0 })
+    private var renameBinding: Binding<RenamePrompt?> {
+        Binding(get: { model.fileActions.rename }, set: { model.fileActions.rename = $0 })
     }
 
     private var noticeBinding: Binding<Bool> {

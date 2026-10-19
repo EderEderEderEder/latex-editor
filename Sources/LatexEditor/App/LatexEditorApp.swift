@@ -51,7 +51,7 @@ struct AppCommands: Commands {
             Toggle("Groß-/Kleinschreibung automatisch korrigieren", isOn: $autoCapitalize)
             Toggle("Schreibhinweise anzeigen", isOn: $showsWritingHints)
             Divider()
-            Button("Label umbenennen …") { model.beginLabelRename() }
+            Button("Umbenennen …") { model.beginRename() }
                 .keyboardShortcut("r", modifiers: [.command, .option])
                 .disabled(model.editor.current == nil)
             Button("Im Projekt suchen …") { model.presentProjectSearch() }

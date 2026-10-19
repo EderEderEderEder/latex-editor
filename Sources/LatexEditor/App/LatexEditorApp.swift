@@ -36,6 +36,7 @@ struct AppCommands: Commands {
     @AppStorage(CompletionSettings.automaticKey) private var automaticCompletion = true
     @AppStorage(LatexTextView.autoPairKey) private var autoPairBrackets = true
     @AppStorage(AppModel.saveOnDeactivateKey) private var saveOnDeactivate = false
+    @AppStorage(InterfaceZoom.key) private var zoom = InterfaceZoom.standard
 
     var body: some Commands {
         CommandGroup(after: .textEditing) {
@@ -61,12 +62,16 @@ struct AppCommands: Commands {
             editorCommand("Schreibmaschine (\\texttt)", #selector(LatexTextView.formatMonospace(_:)), key: "t", modifiers: [.command, .shift])
         }
         CommandGroup(after: .toolbar) {
-            Button("Schrift vergrößern") { EditorAppearance.setFontSize(EditorAppearance.fontSize + 1) }
+            // Editor und Oberfläche gemeinsam (Dialoge bleiben in Systemgröße)
+            Button("Vergrößern") { InterfaceZoom.zoomIn() }
                 .keyboardShortcut("+")
-            Button("Schrift verkleinern") { EditorAppearance.setFontSize(EditorAppearance.fontSize - 1) }
+                .disabled(zoom >= InterfaceZoom.steps[InterfaceZoom.steps.count - 1])
+            Button("Verkleinern") { InterfaceZoom.zoomOut() }
                 .keyboardShortcut("-")
-            Button("Standard-Schriftgröße") { EditorAppearance.setFontSize(EditorAppearance.defaultFontSize) }
+                .disabled(zoom <= InterfaceZoom.steps[0])
+            Button("Originalgröße") { InterfaceZoom.reset() }
                 .keyboardShortcut("0", modifiers: [.command, .option])
+                .disabled(zoom == InterfaceZoom.standard)
         }
         CommandGroup(replacing: .newItem) {
             Button("Projekt öffnen …") { model.chooseProject() }

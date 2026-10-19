@@ -2,28 +2,27 @@ import AppKit
 import Observation
 
 enum EditorAppearance {
+    /// Schriftgröße bei 100 % Zoom
     static let defaultFontSize: CGFloat = 13
-    static let fontSizeRange: ClosedRange<CGFloat> = 9...32
-    static let fontSizeKey = "editorFontSize"
-    /// Wird nach einer Änderung der Schriftgröße gesendet (Editor, Ruler und offene Dateien passen sich an)
+    /// Wird nach einer Änderung des Zooms gesendet (Editor, Ruler und offene Dateien passen sich an)
     static let fontDidChange = Notification.Name("EditorFontDidChange")
     private static let currentLineAlpha: CGFloat = 0.035
 
-    /// Einstellbar mit ⌘+ / ⌘− (Menü Darstellung), gemerkt in den Einstellungen
+    /// Folgt dem Zoom der Oberfläche (⌘+ / ⌘−, `InterfaceZoom`)
     static var fontSize: CGFloat {
-        let stored = UserDefaults.standard.object(forKey: fontSizeKey) as? Double
-        return stored.map { min(max(CGFloat($0), fontSizeRange.lowerBound), fontSizeRange.upperBound) } ?? defaultFontSize
+        fontSize(for: InterfaceZoom.current)
     }
 
-    static func setFontSize(_ size: CGFloat) {
-        let clamped = min(max(size, fontSizeRange.lowerBound), fontSizeRange.upperBound)
-        guard clamped != fontSize else { return }
-        UserDefaults.standard.set(Double(clamped), forKey: fontSizeKey)
-        NotificationCenter.default.post(name: fontDidChange, object: nil)
+    static func fontSize(for zoom: Double) -> CGFloat {
+        (defaultFontSize * CGFloat(zoom)).rounded()
     }
 
     static var font: NSFont {
-        NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        font(for: InterfaceZoom.current)
+    }
+
+    static func font(for zoom: Double) -> NSFont {
+        NSFont.monospacedSystemFont(ofSize: fontSize(for: zoom), weight: .regular)
     }
 
     static var textAttributes: [NSAttributedString.Key: Any] {

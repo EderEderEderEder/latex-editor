@@ -15,11 +15,13 @@ extension GitChangeKind {
 
 /// Statusbuchstabe (M, A, D, R, U, !) in der Farbe der Änderung.
 struct GitStatusBadge: View {
+    private static let fontSize: CGFloat = 11
+
     let kind: GitChangeKind
 
     var body: some View {
         Text(kind.letter)
-            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+            .scaledFont(size: Self.fontSize, weight: .semibold, design: .monospaced)
             .foregroundStyle(kind.color)
             .help(kind.title)
     }
@@ -40,12 +42,12 @@ struct ChangesListView: View {
                 .controlSize(.small)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .notRepository:
-            ContentUnavailableView(
+            EmptyStateView(
                 "Kein Git-Repository", systemImage: "arrow.triangle.branch",
-                description: Text("Der Projektordner gehört zu keinem Git-Repository.")
+                description: "Der Projektordner gehört zu keinem Git-Repository."
             )
         case let .unavailable(message):
-            ContentUnavailableView("Git nicht verfügbar", systemImage: "exclamationmark.triangle", description: Text(message))
+            EmptyStateView("Git nicht verfügbar", systemImage: "exclamationmark.triangle", description: message)
         case .ready:
             VStack(spacing: 0) {
                 if let reset = git.lastReset { ResetNotice(model: model, snapshot: reset) }
@@ -61,7 +63,7 @@ struct ChangesListView: View {
     @ViewBuilder
     private var changes: some View {
         if !git.hasChanges {
-            ContentUnavailableView("Keine Änderungen", systemImage: "checkmark.circle", description: Text("Alles ist committet."))
+            EmptyStateView("Keine Änderungen", systemImage: "checkmark.circle", description: "Alles ist committet.")
         } else if filtered(git.staged).isEmpty && filtered(git.unstaged).isEmpty {
             NoFilterMatches(filter: filter)
         } else {
@@ -92,6 +94,7 @@ struct ChangesListView: View {
                 // neben „Alle bereitstellen“: ↶ liest man leicht als harmloses „Rückgängig“.
                 HStack {
                     Text("\(title) (\(changes.count))")
+                        .scaledFont(.subheadline, weight: .semibold)
                     Spacer()
                     Button(actionTitle, systemImage: symbol, action: action)
                         .labelStyle(.iconOnly)
@@ -132,7 +135,7 @@ private struct ResetNotice: View {
                 .labelStyle(.iconOnly)
                 .buttonStyle(.borderless)
         }
-        .font(.callout)
+        .scaledFont(.callout)
         .padding(8)
         .background(RoundedRectangle(cornerRadius: 6).fill(Color.orange.opacity(0.12)))
         .padding([.horizontal, .top], 10)
@@ -167,7 +170,7 @@ private struct SyncBar: View {
             }
         }
         .buttonStyle(.borderless)
-        .font(.caption)
+        .scaledFont(.caption)
         .disabled(git.isBusy)
         .padding(.horizontal, 10)
         .padding(.bottom, 8)
@@ -179,6 +182,7 @@ private struct CommitBox: View {
     private static let cornerRadius: CGFloat = 6
 
     let model: AppModel
+    @Environment(\.interfaceScale) private var scale
 
     private var git: GitStore { model.git }
 
@@ -188,7 +192,7 @@ private struct CommitBox: View {
             HStack(spacing: 6) {
                 if git.stagedOutsideProject > 0 {
                     Text("+ \(git.stagedOutsideProject) außerhalb")
-                        .font(.caption)
+                        .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                         .help("Bereitgestellte Dateien außerhalb des Projektordners werden mitcommittet.")
                 }
@@ -209,17 +213,17 @@ private struct CommitBox: View {
     private var messageEditor: some View {
         ZStack(alignment: .topLeading) {
             TextEditor(text: messageBinding)
-                .font(.callout)
+                .scaledFont(.callout)
                 .scrollContentBackground(.hidden)
             if git.commitMessage.isEmpty {
                 Text("Commit-Nachricht")
-                    .font(.callout)
+                    .scaledFont(.callout)
                     .foregroundStyle(.tertiary)
                     .padding(.leading, 5)
                     .allowsHitTesting(false)
             }
         }
-        .frame(height: Self.editorHeight)
+        .frame(height: Self.editorHeight * scale)
         .padding(4)
         .background(RoundedRectangle(cornerRadius: Self.cornerRadius).fill(Color(nsColor: .textBackgroundColor)))
         .overlay(RoundedRectangle(cornerRadius: Self.cornerRadius).strokeBorder(.separator))
@@ -258,6 +262,8 @@ private struct ChangeRow: View {
             }
             GitStatusBadge(kind: change.kind)
         }
+        // `.sidebar`-Listen ignorieren die vererbte Schrift, deshalb an jeder Zeile
+        .scaledFont(.body)
         .padding(.horizontal, 4)
         .background(RoundedRectangle(cornerRadius: Self.cornerRadius).fill(isShown ? Color.accentColor.opacity(0.18) : .clear))
         .onHover { isHovering = $0 }
@@ -269,12 +275,14 @@ private struct ChangeRow: View {
         HStack(spacing: 6) {
             Image(systemName: FileKind(url: URL(fileURLWithPath: change.path)).symbolName)
                 .foregroundStyle(.secondary)
+            // In Buttons einer `.sidebar`-Liste greift auch die Schrift der Zeile nicht, deshalb direkt am Text
             Text(change.fileName)
+                .scaledFont(.body)
                 .lineLimit(1)
                 .strikethrough(change.kind == .deleted)
             if !change.directory.isEmpty {
                 Text(change.directory)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.head)

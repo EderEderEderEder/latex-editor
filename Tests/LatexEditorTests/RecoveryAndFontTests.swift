@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import Foundation
 import Testing
 @testable import LatexEditor
@@ -90,28 +91,41 @@ struct RecoveryTests {
 }
 }
 
-@Suite("Schriftgröße", .serialized)
+@Suite("Zoom", .serialized)
 @MainActor
 struct FontSizeTests {
-    @Test("⌘+ / ⌘−: Editor, offene Datei und Zeilennummern folgen; Grenzen werden eingehalten")
+    @Test("⌘+ / ⌘−: Editor, offene Datei und Zeilennummern folgen dem Zoom; an den Enden bleibt es")
     func fontSize() async throws {
-        defer { UserDefaults.standard.removeObject(forKey: EditorAppearance.fontSizeKey) }
+        defer { UserDefaults.standard.removeObject(forKey: InterfaceZoom.key) }
         let harness = CompletionHarness(text: "Zeile eins\nZeile zwei\n")
         try await harness.start()
         let before = harness.textView.enclosingScrollView?.verticalRulerView?.ruleThickness ?? 0
 
-        EditorAppearance.setFontSize(18)
+        InterfaceZoom.set(1.5)
         try await Task.sleep(for: .milliseconds(40))
 
-        #expect(EditorAppearance.fontSize == 18)
-        #expect(harness.textView.font?.pointSize == 18)
+        #expect(EditorAppearance.fontSize == 20, "13 pt × 150 %, gerundet")
+        #expect(harness.textView.font?.pointSize == 20)
         let storageFont = harness.session.textStorage.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
-        #expect(storageFont?.pointSize == 18)
+        #expect(storageFont?.pointSize == 20)
         #expect(!harness.session.isDirty, "Nur das Aussehen, keine Bearbeitung")
         #expect((harness.textView.enclosingScrollView?.verticalRulerView?.ruleThickness ?? 0) > before)
 
-        EditorAppearance.setFontSize(100)
-        #expect(EditorAppearance.fontSize == EditorAppearance.fontSizeRange.upperBound)
-        EditorAppearance.setFontSize(EditorAppearance.defaultFontSize)
+        for _ in 0..<InterfaceZoom.steps.count { InterfaceZoom.zoomIn() }
+        #expect(InterfaceZoom.current == 2)
+        #expect(EditorAppearance.fontSize == 26)
+        InterfaceZoom.reset()
+        #expect(EditorAppearance.fontSize == EditorAppearance.defaultFontSize)
+    }
+
+    /// Hier statt in `InterfaceZoomTests`: beide Tests ändern den gemerkten Zoom und laufen deshalb nacheinander.
+    @Test("Die Wurzel liest den gemerkten Zoom")
+    func rootReadsStoredZoom() {
+        defer { UserDefaults.standard.removeObject(forKey: InterfaceZoom.key) }
+        let view = Text("A").scaledFont(.body).interfaceZoomRoot()
+        let normal = NSHostingView(rootView: view).fittingSize.height
+        UserDefaults.standard.set(2.0, forKey: InterfaceZoom.key)
+        let zoomed = NSHostingView(rootView: view).fittingSize.height
+        #expect(zoomed > normal * 1.6)
     }
 }

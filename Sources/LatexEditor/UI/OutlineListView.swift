@@ -7,13 +7,14 @@ struct OutlineListView: View {
     let editor: EditorStore
     let sidebar: SidebarStore
     let filter: String
+    @Environment(\.interfaceScale) private var scale
 
     var body: some View {
         if outline.entries.isEmpty {
-            ContentUnavailableView(
+            EmptyStateView(
                 "Keine Gliederung",
                 systemImage: "list.bullet.indent",
-                description: Text("Keine \\chapter, \\section oder \\subsection in den eingebundenen Dateien.")
+                description: "Keine \\chapter, \\section oder \\subsection in den eingebundenen Dateien."
             )
         } else if filteredEntries.isEmpty {
             NoFilterMatches(filter: filter)
@@ -28,7 +29,7 @@ struct OutlineListView: View {
             List(filteredEntries) { entry in
                 // Ohne Baum zeigt die Einrückung die Ebene
                 OutlineRow(entry: entry, isCurrent: entry.id == outline.currentEntryID, open: open)
-                    .padding(.leading, CGFloat(entry.level.depth) * Self.filteredIndent)
+                    .padding(.leading, CGFloat(entry.level.depth) * Self.filteredIndent * scale)
             }
             .listStyle(.sidebar)
         }
@@ -103,7 +104,7 @@ private struct OutlineRow: View {
         } label: {
             HStack(spacing: 6) {
                 Text(entry.title.isEmpty ? "(ohne Titel)" : entry.title)
-                    .font(font)
+                    .scaledFont(entry.level == .chapter ? .body : .callout, weight: weight)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 0)
@@ -116,9 +117,8 @@ private struct OutlineRow: View {
         .help("\(entry.level.title): \(entry.fileURL.lastPathComponent), Zeile \(entry.line)")
     }
 
-    private var font: Font {
-        let base: Font = entry.level == .chapter ? .body : .callout
-        return isCurrent || entry.level == .chapter ? base.weight(.semibold) : base
+    private var weight: Font.Weight {
+        isCurrent || entry.level == .chapter ? .semibold : .regular
     }
 }
 

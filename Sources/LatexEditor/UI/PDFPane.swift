@@ -9,10 +9,10 @@ struct PDFPane: View {
             if let url = store.pdfURL {
                 PDFKitView(store: store, url: url, reloadToken: store.reloadToken)
             } else {
-                ContentUnavailableView(
+                EmptyStateView(
                     "Kein PDF vorhanden",
                     systemImage: "doc.richtext",
-                    description: Text(missingHint)
+                    description: missingHint
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -28,8 +28,12 @@ struct PDFPane: View {
 }
 
 private struct PDFStatusBar: View {
+    private static let height: CGFloat = 28
+    private static let separatorHeight: CGFloat = 14
+
     let store: PDFPreviewStore
     let synctex: SyncTeXStore
+    @Environment(\.interfaceScale) private var scale
 
     var body: some View {
         HStack(spacing: 4) {
@@ -42,7 +46,7 @@ private struct PDFStatusBar: View {
             Button("Breite", systemImage: "arrow.left.and.right", action: store.zoomToFitWidth)
                 .labelStyle(.titleAndIcon)
                 .help("An die Breite anpassen")
-            Divider().frame(height: 14)
+            Divider().frame(height: Self.separatorHeight * scale)
             Toggle("Folgen", systemImage: "location", isOn: followCursor)
                 .labelStyle(.titleAndIcon)
                 .toggleStyle(.button)
@@ -56,9 +60,9 @@ private struct PDFStatusBar: View {
         }
         .labelStyle(.iconOnly)
         .buttonStyle(.borderless)
-        .font(.callout)
+        .scaledFont(.callout)
         .padding(.horizontal, 10)
-        .frame(height: 28)
+        .frame(height: Self.height * scale)
         .disabled(store.pdfURL == nil)
         .background(.bar)
     }

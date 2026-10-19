@@ -53,6 +53,8 @@ final class LineNumberRulerView: NSRulerView {
         clipsToBounds = true
         clientView = textView
         observeChanges(of: textView, in: scrollView)
+        // Sonst stünden die Nummern bei schon vergrößertem Zoom (z. B. nach dem Start) bis zur nächsten Änderung klein da
+        updateFont()
         refresh()
     }
 

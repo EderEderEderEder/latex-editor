@@ -133,13 +133,14 @@ final class CompletionController {
     private func position(for detected: CompletionContext, in textView: NSTextView) {
         guard let window = textView.window else { return }
         let caret = textView.firstRect(forCharacterRange: NSRange(location: detected.range.location, length: 0), actualRange: nil)
+        let scale = CGFloat(InterfaceZoom.current)
         let rows = CGFloat(min(model.items.count, Self.visibleRows))
-        let height = rows * CompletionListView.rowHeight + 2 * CompletionListView.padding
-        var origin = NSPoint(x: caret.minX - Self.horizontalInset, y: caret.minY - height - Self.gap)
+        let height = (rows * CompletionListView.rowHeight + 2 * CompletionListView.padding) * scale
+        var origin = NSPoint(x: caret.minX - Self.horizontalInset * scale, y: caret.minY - height - Self.gap)
         if let screen = window.screen ?? NSScreen.main, origin.y < screen.visibleFrame.minY {
             origin.y = caret.maxY + Self.gap
         }
-        panel.setFrame(NSRect(origin: origin, size: NSSize(width: Self.width, height: height)), display: true)
+        panel.setFrame(NSRect(origin: origin, size: NSSize(width: Self.width * scale, height: height)), display: true)
         isShowing = true
         guard presentsPanel else { return }
         if panel.parent == nil { window.addChildWindow(panel, ordered: .above) }

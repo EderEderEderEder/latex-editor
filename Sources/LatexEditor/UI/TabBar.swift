@@ -7,6 +7,7 @@ struct TabBar: View {
     private static let height: CGFloat = 30
 
     let model: AppModel
+    @Environment(\.interfaceScale) private var scale
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -24,7 +25,7 @@ struct TabBar: View {
                 withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(active) }
             }
         }
-        .frame(height: Self.height)
+        .frame(height: Self.height * scale)
         .background(.bar)
     }
 }
@@ -35,9 +36,15 @@ private struct TabItem: View {
     /// Diff-Tabs tragen „– Änderungen“ im Titel
     private static let maximumDiffWidth: CGFloat = 270
 
+    private static let iconSize: CGFloat = 11
+    private static let dotSize: CGFloat = 8
+    private static let closeSize: CGFloat = 9
+    private static let closeFrame: CGFloat = 16
+
     let model: AppModel
     let tab: EditorTab
 
+    @Environment(\.interfaceScale) private var scale
     @State private var isHovering = false
 
     private var url: URL { tab.url }
@@ -52,11 +59,11 @@ private struct TabItem: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: isDiff ? "plus.forwardslash.minus" : FileKind(url: url).symbolName)
-                .font(.system(size: 11))
+                .scaledFont(size: Self.iconSize)
                 .foregroundStyle(isActive ? Color.accentColor : .secondary)
             // Sonst sähen Datei- und Diff-Tab derselben Datei bis auf das kleine Symbol gleich aus
             Text(isDiff ? "\(url.lastPathComponent) – Änderungen" : url.lastPathComponent)
-                .font(.callout)
+                .scaledFont(.callout)
                 .italic(isPreview)
                 .strikethrough(isMissing)
                 .lineLimit(1)
@@ -65,7 +72,7 @@ private struct TabItem: View {
             closeOrDirtyIndicator
         }
         .padding(.horizontal, 10)
-        .frame(minWidth: Self.minimumWidth, maxWidth: isDiff ? Self.maximumDiffWidth : Self.maximumWidth)
+        .frame(minWidth: Self.minimumWidth * scale, maxWidth: (isDiff ? Self.maximumDiffWidth : Self.maximumWidth) * scale)
         .frame(maxHeight: .infinity)
         .background(isActive ? Color(nsColor: .textBackgroundColor) : (isHovering ? Color.primary.opacity(0.06) : .clear))
         .overlay(alignment: .trailing) { Divider() }
@@ -96,15 +103,15 @@ private struct TabItem: View {
             model.closeTab(tab)
         } label: {
             if isDirty && !isHovering {
-                Circle().fill(.orange).frame(width: 8, height: 8)
+                Circle().fill(.orange).frame(width: Self.dotSize * scale, height: Self.dotSize * scale)
             } else {
                 Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
+                    .scaledFont(size: Self.closeSize, weight: .bold)
                     .opacity(showsClose || isDirty ? 1 : 0)
             }
         }
         .buttonStyle(.plain)
-        .frame(width: 16, height: 16)
+        .frame(width: Self.closeFrame * scale, height: Self.closeFrame * scale)
         .help(isDirty ? "Schließen (ungespeicherte Änderungen)" : "Tab schließen (⌘W)")
     }
 

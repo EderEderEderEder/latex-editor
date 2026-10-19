@@ -9,6 +9,8 @@ struct DiffHeader: View {
     let model: AppModel
     let url: URL
 
+    @Environment(\.interfaceScale) private var scale
+
     private var git: GitStore { model.git }
     private var presentation: DiffPresentation? { git.diffs[url] }
     private var hasStaged: Bool { git.change(for: url, staged: true) != nil }
@@ -23,7 +25,7 @@ struct DiffHeader: View {
             if hasUnsavedChanges {
                 // Kurz, damit die Knöpfe rechts auch bei schmalem Fenster Platz haben; Erklärung im Tooltip
                 Label("Ungespeichert", systemImage: "exclamationmark.circle")
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(.orange)
                     .fixedSize()
                     .help("Der Diff zeigt den gespeicherten Stand. Ungespeicherte Änderungen erscheinen nach ⌘S.")
@@ -33,7 +35,7 @@ struct DiffHeader: View {
                 .buttonStyle(.borderless)
                 .fixedSize()
                 .disabled(!FileManager.default.fileExists(atPath: url.path))
-            Divider().frame(height: Self.separatorHeight)
+            Divider().frame(height: Self.separatorHeight * scale)
             // Abgesetzt und rot: anders als „Datei öffnen“ verwirft das Änderungen (mit Rückfrage und Rückgängig)
             Button("Zurücksetzen …", systemImage: "arrow.uturn.backward") { Task { await model.resetToLastCommit(file: url) } }
                 .buttonStyle(.borderless)
@@ -42,9 +44,9 @@ struct DiffHeader: View {
                 .disabled(git.isBusy || git.changes(for: url).contains { $0.kind == .conflicted })
                 .help("Datei auf den Stand des letzten Commits zurücksetzen …")
         }
-        .font(.callout)
+        .scaledFont(.callout)
         .padding(.horizontal, 10)
-        .frame(height: Self.height)
+        .frame(height: Self.height * scale)
         .background(.bar)
     }
 
@@ -60,9 +62,10 @@ struct DiffHeader: View {
             .controlSize(.small)
             .fixedSize()
         } else if let presentation {
+            // Darf sich kürzen, damit der Dateiname sichtbar bleibt
             Text(presentation.showsStaged ? "Bereitgestellt" : "Nicht bereitgestellt")
                 .foregroundStyle(.secondary)
-                .fixedSize()
+                .lineLimit(1)
         }
     }
 
@@ -78,6 +81,7 @@ struct DiffHeader: View {
                 Text("−\(diff.removedCount)").foregroundStyle(.red)
             }
             .monospacedDigit()
+            .fixedSize()
         }
     }
 
@@ -107,7 +111,7 @@ struct DiffView: View {
             ProgressView()
                 .controlSize(.small)
         case let .failed(message)?:
-            ContentUnavailableView("Diff nicht verfügbar", systemImage: "exclamationmark.triangle", description: Text(message))
+            EmptyStateView("Diff nicht verfügbar", systemImage: "exclamationmark.triangle", description: message)
         case let .loaded(diff)?:
             content(of: diff)
         }
@@ -122,21 +126,21 @@ struct DiffView: View {
     private func content(of diff: FileDiff) -> some View {
         switch diff.content {
         case .binary:
-            ContentUnavailableView("Binärdatei geändert", systemImage: "photo",
-                                   description: Text("Für Bilder und andere Binärdateien gibt es keinen Textvergleich."))
+            EmptyStateView("Binärdatei geändert", systemImage: "photo",
+                           description: "Für Bilder und andere Binärdateien gibt es keinen Textvergleich.")
         case .conflict:
-            ContentUnavailableView("Merge-Konflikt", systemImage: "exclamationmark.triangle",
-                                   description: Text("Die Datei enthält einen Konflikt. „Datei öffnen“, um ihn im Editor zu lösen."))
+            EmptyStateView("Merge-Konflikt", systemImage: "exclamationmark.triangle",
+                           description: "Die Datei enthält einen Konflikt. „Datei öffnen“, um ihn im Editor zu lösen.")
         case .tooLarge:
-            ContentUnavailableView("Datei zu groß", systemImage: "doc.badge.ellipsis",
-                                   description: Text("Dateien über \(FileDiff.maximumBytes / 1024 / 1024) MB werden nicht verglichen."))
+            EmptyStateView("Datei zu groß", systemImage: "doc.badge.ellipsis",
+                           description: "Dateien über \(FileDiff.maximumBytes / 1024 / 1024) MB werden nicht verglichen.")
         case let .text(lines) where diff.addedCount == 0 && diff.removedCount == 0:
-            ContentUnavailableView(
+            EmptyStateView(
                 lines.isEmpty ? "Noch kein Inhalt gespeichert" : "Keine inhaltlichen Änderungen",
                 systemImage: lines.isEmpty ? "doc" : "equal.circle",
-                description: Text(lines.isEmpty
+                description: lines.isEmpty
                     ? "Die Datei ist auf der Platte leer. Ungespeicherter Text erscheint hier erst nach dem Speichern (⌘S)."
-                    : "Geändert haben sich z. B. nur die Dateirechte.")
+                    : "Geändert haben sich z. B. nur die Dateirechte."
             )
         case let .text(lines):
             DiffLinesView(lines: lines, expanded: expandedBinding)
@@ -151,6 +155,7 @@ private struct DiffLinesView: View {
 
     let lines: [DiffLine]
     @Binding var expanded: Set<Int>
+    @Environment(\.interfaceScale) private var scale
 
     var body: some View {
         let rows = DiffLayout.rows(for: lines, expanded: expanded)
@@ -174,7 +179,7 @@ private struct DiffLinesView: View {
     private var numberWidth: CGFloat {
         let largest = lines.last.map { max($0.oldNumber ?? 0, $0.newNumber ?? 0) } ?? 0
         let digits = max(Self.minimumNumberDigits, String(largest).count)
-        return CGFloat(digits) * Self.digitWidth + Self.numberPadding
+        return (CGFloat(digits) * Self.digitWidth + Self.numberPadding) * scale
     }
 }
 
@@ -185,6 +190,7 @@ private struct DiffLineRow: View {
 
     let line: DiffLine
     let numberWidth: CGFloat
+    @Environment(\.interfaceScale) private var scale
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 0) {
@@ -192,13 +198,14 @@ private struct DiffLineRow: View {
             number(line.newNumber)
             Text(sign)
                 .foregroundStyle(tint ?? .secondary)
-                .frame(width: Self.signWidth)
+                .frame(width: Self.signWidth * scale)
             Text(attributedText)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
         }
-        .font(Font(EditorAppearance.font))
+        // Wie im Editor: dessen Schrift folgt demselben Zoom
+        .font(Font(EditorAppearance.font(for: Double(scale))))
         .padding(.trailing, 8)
         .background(tint.map { $0.opacity(Self.lineOpacity) } ?? .clear)
     }
@@ -248,7 +255,7 @@ private struct CollapsedRow: View {
                 Text(count == 1 ? "1 unveränderte Zeile" : "\(count) unveränderte Zeilen")
                 Spacer()
             }
-            .font(.caption)
+            .scaledFont(.caption)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 4)

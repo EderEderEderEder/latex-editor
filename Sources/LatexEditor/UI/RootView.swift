@@ -25,10 +25,13 @@ enum ViewMode: String, CaseIterable {
 struct RootView: View {
     private static let editorMinWidth: CGFloat = 320
     private static let pdfMinWidth: CGFloat = 280
+    private static let sidebarWidths = (min: CGFloat(200), ideal: CGFloat(270), max: CGFloat(450))
 
     let model: AppModel
 
     @AppStorage("viewMode") private var viewMode = ViewMode.split
+    /// Nur für die Breite der Seitenleiste; die Views lesen den Zoom aus der Umgebung
+    @AppStorage(InterfaceZoom.key) private var zoom = InterfaceZoom.standard
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var isCreatingBranch = false
     @State private var newBranchName = ""
@@ -36,10 +39,13 @@ struct RootView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(model: model)
-                .navigationSplitViewColumnWidth(min: 200, ideal: 270, max: 450)
+                .navigationSplitViewColumnWidth(
+                    min: Self.sidebarWidths.min * zoom, ideal: Self.sidebarWidths.ideal * zoom, max: Self.sidebarWidths.max * zoom
+                )
         } detail: {
             workspace
         }
+        .interfaceZoomRoot()
         .navigationTitle(model.project.rootURL?.lastPathComponent ?? "LatexEditor")
         .toolbar { toolbarContent }
         .task { await model.restoreLastProject() }

@@ -32,7 +32,7 @@ final class CompletionPanel: NSPanel {
         backgroundColor = .clear
         isOpaque = false
         hidesOnDeactivate = true
-        contentView = NSHostingView(rootView: CompletionListView(model: model))
+        contentView = NSHostingView(rootView: CompletionListView(model: model).interfaceZoomRoot())
     }
 }
 
@@ -42,6 +42,7 @@ struct CompletionListView: View {
     private static let cornerRadius: CGFloat = 8
 
     let model: CompletionListModel
+    @Environment(\.interfaceScale) private var scale
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -55,7 +56,7 @@ struct CompletionListView: View {
                             .onTapGesture { model.onChoose?(index) }
                     }
                 }
-                .padding(Self.padding)
+                .padding(Self.padding * scale)
             }
             .scrollIndicators(.never)
             .onChange(of: model.selectedIndex) { _, index in proxy.scrollTo(index) }
@@ -69,32 +70,35 @@ private struct CompletionRow: View {
     private static let iconWidth: CGFloat = 16
     private static let detailMaximumWidth: CGFloat = 190
 
+    private static let iconSize: CGFloat = 11
+
     let item: CompletionItem
     let isSelected: Bool
+    @Environment(\.interfaceScale) private var scale
 
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: symbol)
-                .font(.system(size: 11))
+                .scaledFont(size: Self.iconSize)
                 .foregroundStyle(isSelected ? .white : color)
-                .frame(width: Self.iconWidth)
+                .frame(width: Self.iconWidth * scale)
             Text(title)
-                .font(.system(.callout, design: .monospaced))
+                .scaledFont(.callout, design: .monospaced)
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer(minLength: 8)
             if !item.detail.isEmpty {
                 Text(item.detail)
-                    .font(.caption)
+                    .scaledFont(.caption)
                     .foregroundStyle(isSelected ? AnyShapeStyle(.white.opacity(0.85)) : AnyShapeStyle(.secondary))
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .frame(maxWidth: Self.detailMaximumWidth, alignment: .trailing)
+                    .frame(maxWidth: Self.detailMaximumWidth * scale, alignment: .trailing)
             }
         }
         .foregroundStyle(isSelected ? .white : .primary)
         .padding(.horizontal, 6)
-        .frame(height: CompletionListView.rowHeight)
+        .frame(height: CompletionListView.rowHeight * scale)
         .background(RoundedRectangle(cornerRadius: 4).fill(isSelected ? Color.accentColor : .clear))
     }
 

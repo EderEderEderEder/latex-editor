@@ -87,8 +87,9 @@ final class AppModel {
         pdf.onCommandClick = { [weak self] page, point in self?.showInEditor(page: page, point: point) }
     }
 
-    /// Schriftgröße für alle offenen Dateien; Speichern beim Wechsel in eine andere App (falls eingestellt).
+    /// Zoom (Schriftgröße) für alle offenen Dateien; Speichern beim Wechsel in eine andere App (falls eingestellt).
     private func observeAppAndFont() {
+        InterfaceZoom.migrateLegacySetting()
         let center = NotificationCenter.default
         center.addObserver(forName: EditorAppearance.fontDidChange, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { AppModel.shared.editor.applyEditorFont() }

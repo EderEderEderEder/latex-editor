@@ -49,7 +49,8 @@ Wichtig: **nicht** `swift test` direkt aufrufen. Ohne die Flags aus dem Skript w
 | `CompletionOptionTests` | Optionen in `[…]`: Erkennung (Bilder, Gleitumgebungen, tabular, Zitate mit zwei Klammern, Klasse/Paket mit Namen dahinter, Schlüssel vs. Wert) und Abgrenzung (`\section[`, `\\[`, Kommentar, `itemize`); Einfügen (`key=`, vorhandenes `=`, Wert, Schalter in Listen, `]` bei Einzelwerten); Scanner gegen HgbThesis-Ausschnitte (`\DeclareKeys` ohne veraltete auch über zwei Zeilen, Registrierung, true/false, Themes, Studienrichtungen, Kommentar-Werte); Vorschläge; echter Editor: `\includegraphics[wi` → `width=` → Werte → `0.8\textwidth`, `\begin{figure}[` → `H]` |
 | `BibliographyTests` (mehrere Suites, App-Ebene unter `AppModelSuite`) | `.bib`-Parser (verschachtelt, `"…"`, Zahl, `#`, Kommentare), Katalog mit Autor/Jahr, Autoren-Umwandlung, Schlüssel (Umlaute, eindeutig, Titelwort), Formatierung und Maskierung, Zieldatei aus `\bibliography`, Abstand beim Anhängen; „Quelle“: Formular Buch exakt, Pflichtfelder, Webseite mit heutigem Abrufdatum, BibTeX einfügen (Felder unverändert, Schlüssel ersetzt), eigener Schlüssel; Zitat-Suche nach Autor/Titel/Jahr; App: Eintrag ans Ende der `.bib` + `\cite[S.~3]{…}` im Editor, offene geänderte `.bib` im Editor mit Undo |
 | `TextEditingTests`, `TypingTests` | Klammern (Paar, überspringen, `$`, `\{`, Auswahl umschließen, Paar löschen), Enter (Einrückung, `\end` mit Argumenten, kein doppeltes, `\item` fortsetzen/beenden), Kommentar (Einrückung, gemischt), Ein-/Ausrücken (Leerzeichen), Zeilen verschieben/verdoppeln/löschen am Rand, Formatierung umschalten; echter Editor mit **echten Tastatur-Ereignissen**: Klammern zusammen mit der Vervollständigung, Enter in `itemize`, Tab/⇧Tab, Menübefehle mit Undo, abschaltbar |
-| `RecoveryTests`, `FontSizeTests` | Sicherung kurz nach der Eingabe, Speichern löscht; Absturz → Wiederherstellen (ungespeichert) bzw. Verwerfen; „Nicht speichern“ löscht, veraltete verschwinden (Regression: Tabs-Wiederherstellen löschte die Sicherung vor der Rückfrage); Schriftgröße für Editor, Datei und Ruler, Grenzen |
+| `RecoveryTests` | Sicherung kurz nach der Eingabe, Speichern löscht; Absturz → Wiederherstellen (ungespeichert) bzw. Verwerfen; „Nicht speichern“ löscht, veraltete verschwinden (Regression: Tabs-Wiederherstellen löschte die Sicherung vor der Rückfrage) |
+| `InterfaceZoomTests`, `FontSizeTests` (Zoom) | Stufen und Enden, Übernahme der alten Editorschrift, Text/leerer Zustand/Tab-Leiste wachsen bei 150 %, Wurzel liest den gemerkten Zoom; Editor, offene Datei und Ruler folgen dem Zoom |
 | `StabilizationTests` (teils App-Ebene unter `AppModelSuite`) | Text ohne Text-View ersetzen mit Undo/Redo; Verweise anpassen in geänderter offener Datei ist eigener Rückgängig-Schritt, früheres Tippen bleibt rückgängig machbar; Git erholt sich nach kaputtem `HEAD`; Quelle anlegen mit `.bib` vorne (Zitieren blockiert); aufgeklappte Ordner überstehen Tabwechsel, Projektwechsel setzt zurück; Build-Dauer mit Komma; Einfügen-Blocker |
 | `PerformanceTests` | 10.000-Zeilen-Dokument mit festen Budgets (siehe unten) |
 
@@ -370,3 +371,12 @@ Vorher einmal kompilieren (⌘B), damit `main.synctex.gz` existiert.
 | 170 | Rechtsklick auf „Bereitgestellt“/„Nicht bereitgestellt“ | „Alle auf letzten Commit zurücksetzen …“ nur dort, im Kopf nur + bzw. − |
 | 171 | Kommentare im hellen Modus lesen | Deutlich lesbar, aber zurückgenommen gegenüber dem Text |
 | 172 | Git im Terminal kurz kaputt machen (z. B. `.git/HEAD` umbenennen und zurück), dann eine Datei speichern | Änderungen-Tab erholt sich ohne Neustart |
+
+### Sitzung 12: Zoom
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 173 | ⌘+ mehrmals, dann ⌘− und ⌥⌘0 | Editor, Zeilennummern, Seitenleiste (Symbole, Statistik, Listen, Filter), Tab-Leiste, Pfadzeile, PDF-Leiste wachsen und schrumpfen gemeinsam; bei 200 % bzw. 85 % ist der Menüpunkt ausgegraut |
+| 174 | Zoom auf 150 %, App beenden und neu starten | Zoom bleibt, auch die Zeilennummern sind sofort groß |
+| 175 | Bei 150 %: Diff öffnen, `\sec` tippen | Diff-Zeilen und Vervollständigungsliste in passender Größe, Liste sitzt unter dem Cursor |
+| 176 | Bei 150 %: Einfügen-Fenster, Umbenennen-Dialog | Dialoge in normaler Größe |

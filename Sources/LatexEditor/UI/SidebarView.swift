@@ -21,6 +21,8 @@ struct SidebarView: View {
                 Divider()
                 SidebarFilterField(text: filterBinding, placeholder: filterPlaceholder)
             }
+            // Grundschrift aller Listen (Zeilen ohne eigene Schrift)
+            .scaledFont(.body)
         }
     }
 
@@ -54,14 +56,10 @@ private struct NoProjectView: View {
     let openProject: () -> Void
 
     var body: some View {
-        ContentUnavailableView {
-            Label("Kein Projekt geöffnet", systemImage: "folder.badge.questionmark")
-        } description: {
-            Text("Einen LaTeX-Projektordner öffnen, um Dateien, Gliederung und Fehler zu sehen.")
-        } actions: {
+        EmptyStateView("Kein Projekt geöffnet", systemImage: "folder.badge.questionmark",
+                       description: "Einen LaTeX-Projektordner öffnen, um Dateien, Gliederung und Fehler zu sehen.") {
             Button("Projekt öffnen …", action: openProject)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -72,6 +70,8 @@ private struct SidebarTabBar: View {
     let sidebar: SidebarStore
     let build: BuildStore
     let git: GitStore
+
+    @Environment(\.interfaceScale) private var scale
 
     var body: some View {
         HStack(spacing: 2) {
@@ -86,7 +86,7 @@ private struct SidebarTabBar: View {
             }
         }
         .padding(.horizontal, 8)
-        .frame(height: Self.barHeight)
+        .frame(height: Self.barHeight * scale)
     }
 
     private var badgeCount: Int {
@@ -107,7 +107,7 @@ private struct SidebarTabBar: View {
             sidebar.tab = tab
         } label: {
             Image(systemName: symbol)
-                .font(.system(size: Self.iconSize))
+                .scaledFont(size: Self.iconSize)
                 .symbolVariant(isSelected ? .fill : .none)
                 .foregroundStyle(isSelected ? Color.accentColor : .secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -121,13 +121,15 @@ private struct SidebarTabBar: View {
 }
 
 private struct TabBadge: View {
+    private static let fontSize: CGFloat = 9
+
     let count: Int
     let color: Color
 
     var body: some View {
         if count > 0 {
             Text(count < 100 ? "\(count)" : "99+")
-                .font(.system(size: 9, weight: .bold))
+                .scaledFont(size: Self.fontSize, weight: .bold)
                 .monospacedDigit()
                 .foregroundStyle(.white)
                 .padding(.horizontal, 4)
@@ -152,7 +154,7 @@ private struct SidebarStatistics: View {
             row("Meldungen", value: issueSummary, tab: .issues)
                 .help("Meldungen des letzten Builds. Boxen: Zeilen, die zu breit oder zu locker gesetzt sind")
         }
-        .font(.caption)
+        .scaledFont(.caption)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
     }
@@ -192,8 +194,7 @@ struct NoFilterMatches: View {
     let filter: String
 
     var body: some View {
-        ContentUnavailableView("Keine Treffer", systemImage: "magnifyingglass", description: Text("Nichts passt zu „\(filter)“."))
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        EmptyStateView("Keine Treffer", systemImage: "magnifyingglass", description: "Nichts passt zu „\(filter)“.")
     }
 }
 
@@ -214,7 +215,7 @@ private struct SidebarFilterField: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .font(.callout)
+        .scaledFont(.callout)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
     }

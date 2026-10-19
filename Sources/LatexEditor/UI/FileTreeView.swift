@@ -195,6 +195,7 @@ private struct FileRow: View {
     let node: FileNode
     let label: String
     let git: GitStore
+    @Environment(\.interfaceScale) private var scale
 
     var body: some View {
         Label {
@@ -203,8 +204,11 @@ private struct FileRow: View {
                 Spacer(minLength: 4)
                 gitMarker
             }
+            // `.sidebar`-Listen ignorieren die vererbte Schrift, deshalb an jeder Zeile
+            .scaledFont(.body)
         } icon: {
             Image(systemName: node.isDirectory ? "folder" : node.kind.symbolName)
+                .scaledFont(.body)
                 .foregroundStyle(iconColor)
         }
         .help(node.isDirectory || node.kind.isEditable ? node.name : "\(node.name) – Doppelklick öffnet extern")
@@ -217,7 +221,7 @@ private struct FileRow: View {
             if git.containsChanges(node.url) {
                 Circle()
                     .fill(Color.secondary)
-                    .frame(width: Self.folderDotSize, height: Self.folderDotSize)
+                    .frame(width: Self.folderDotSize * scale, height: Self.folderDotSize * scale)
                     .help("Enthält Änderungen")
             }
         } else if let kind = git.marker(for: node.url) {

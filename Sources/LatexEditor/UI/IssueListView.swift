@@ -23,7 +23,7 @@ struct IssueListView: View {
                 }
             }
             .buttonStyle(.borderless)
-            .font(.callout)
+            .scaledFont(.callout)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
         }
@@ -32,9 +32,9 @@ struct IssueListView: View {
     @ViewBuilder
     private var content: some View {
         if case let .unavailable(message) = model.build.status {
-            ContentUnavailableView("Kompilieren nicht möglich", systemImage: "exclamationmark.triangle", description: Text(message))
+            EmptyStateView("Kompilieren nicht möglich", systemImage: "exclamationmark.triangle", description: message)
         } else if model.build.issues.isEmpty {
-            ContentUnavailableView(emptyTitle, systemImage: emptySymbol, description: Text(emptyDescription))
+            EmptyStateView(emptyTitle, systemImage: emptySymbol, description: emptyDescription)
         } else if filteredIssues.isEmpty {
             NoFilterMatches(filter: filter)
         } else {
@@ -98,12 +98,14 @@ private struct IssueRow: View {
                         .lineLimit(3)
                     if let location {
                         Text(location)
-                            .font(.caption)
+                            .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
                 Spacer(minLength: 0)
             }
+            // `.sidebar`-Listen ignorieren die vererbte Schrift, deshalb an jeder Zeile
+            .scaledFont(.body)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

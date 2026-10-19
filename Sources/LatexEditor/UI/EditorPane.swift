@@ -48,10 +48,10 @@ private struct EditorContent: View {
                 onCursorMoved: editor.reportCursor
             )
             if editor.current == nil, editor.tabs.active?.diffURL == nil {
-                ContentUnavailableView(
+                EmptyStateView(
                     "Keine Datei geöffnet",
                     systemImage: "doc.text",
-                    description: Text("Eine Datei in der Seitenleiste auswählen.")
+                    description: "Eine Datei in der Seitenleiste auswählen."
                 )
                 .background(.background)
             }
@@ -60,7 +60,11 @@ private struct EditorContent: View {
 }
 
 private struct PathBar: View {
+    private static let height: CGFloat = 26
+    private static let dotSize: CGFloat = 8
+
     let model: AppModel
+    @Environment(\.interfaceScale) private var scale
 
     var body: some View {
         HStack(spacing: 4) {
@@ -69,7 +73,7 @@ private struct PathBar: View {
                 if session.isDirty {
                     Circle()
                         .fill(.orange)
-                        .frame(width: 8, height: 8)
+                        .frame(width: Self.dotSize * scale, height: Self.dotSize * scale)
                         .help("Ungespeicherte Änderungen (⌘S)")
                 }
                 if session.hasExternalChange {
@@ -85,9 +89,9 @@ private struct PathBar: View {
             }
             Spacer()
         }
-        .font(.callout)
+        .scaledFont(.callout)
         .padding(.horizontal, 10)
-        .frame(height: 26)
+        .frame(height: Self.height * scale)
         .background(.bar)
     }
 
@@ -96,7 +100,7 @@ private struct PathBar: View {
         return ForEach(Array(chain.enumerated()), id: \.offset) { index, url in
             if index > 0 {
                 Image(systemName: "chevron.right")
-                    .font(.caption2)
+                    .scaledFont(.caption2)
                     .foregroundStyle(.secondary)
             }
             Button(url.lastPathComponent) {

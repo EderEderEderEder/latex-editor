@@ -26,7 +26,7 @@ struct InsertSheet: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     Divider()
-                    CodePreview(text: store.preview)
+                    CodePreview(text: store.preview, language: store.kind == .source ? .bibtex : .latex)
                         .frame(height: Self.previewHeight)
                 }
                 .background(Color(nsColor: .windowBackgroundColor))
@@ -173,16 +173,17 @@ private struct KindSidebar: View {
 
 // MARK: - Vorschau
 
-/// Der erzeugte LaTeX-Code mit denselben Farben wie im Editor.
+/// Der erzeugte LaTeX-Code (bzw. BibTeX-Eintrag) mit denselben Farben wie im Editor.
 private struct CodePreview: View {
     private static let fontSize: CGFloat = 12
 
     let text: String
+    let language: SyntaxLanguage
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Label("LaTeX-Code", systemImage: "chevron.left.forwardslash.chevron.right")
+                Label(language == .bibtex ? "BibTeX-Eintrag" : "LaTeX-Code", systemImage: "chevron.left.forwardslash.chevron.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -209,7 +210,7 @@ private struct CodePreview: View {
         let storage = NSTextStorage(string: text, attributes: [.font: font, .foregroundColor: NSColor.textColor])
         let source = text as NSString
         let lines = LineIndex(text: source)
-        var highlighter = SyntaxHighlighter()
+        var highlighter = SyntaxHighlighter(language: language)
         let tokens = highlighter.highlightAll(source, lines: lines)
         SyntaxTheme.apply(tokens, in: NSRange(location: 0, length: storage.length), to: storage)
         return (try? AttributedString(storage, including: \.appKit)) ?? AttributedString(text)

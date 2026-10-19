@@ -81,7 +81,8 @@ final class DocumentSession {
     @ObservationIgnored var onEdited: (() -> Void)?
 
     convenience init(url: URL, text: String, encoding: String.Encoding = .utf8) {
-        self.init(url: url, prepared: Self.prepare(text: text, encoding: encoding, diskData: text.data(using: encoding) ?? Data()))
+        let diskData = text.data(using: encoding) ?? Data()
+        self.init(url: url, prepared: Self.prepare(text: text, encoding: encoding, diskData: diskData, language: SyntaxLanguage(url: url)))
     }
 
     private init(url: URL, prepared: PreparedDocument) {
@@ -105,7 +106,7 @@ final class DocumentSession {
     static func load(url: URL) async throws -> DocumentSession {
         let prepared = try await Task.detached(priority: .userInitiated) {
             let loaded = try Self.readText(from: url)
-            return Self.prepare(text: loaded.text, encoding: loaded.encoding, diskData: loaded.data)
+            return Self.prepare(text: loaded.text, encoding: loaded.encoding, diskData: loaded.data, language: SyntaxLanguage(url: url))
         }.value
         return DocumentSession(url: url, prepared: prepared)
     }
@@ -209,8 +210,17 @@ final class DocumentSession {
         textStorage.replaceCharacters(in: range, with: NSAttributedString(string: replacement, attributes: EditorAppearance.textAttributes))
     }
 
+    /// Wechselt die Endung zwischen `.tex` und `.bib`, werden die Farben für die andere Sprache neu berechnet.
     func relocate(to newURL: URL) {
+        let language = SyntaxLanguage(url: newURL)
+        let languageChanged = language != SyntaxLanguage(url: url)
         url = newURL
+        guard languageChanged else { return }
+        highlighter = SyntaxHighlighter(language: language)
+        let tokens = highlighter.highlightAll(textStorage.mutableString, lines: lineIndex)
+        textStorage.beginEditing()
+        SyntaxTheme.apply(tokens, in: NSRange(location: 0, length: textStorage.length), to: textStorage)
+        textStorage.endEditing()
     }
 
     /// Syntax-Tokens der Zeilen, die `range` berühren (z. B. für die Rechtschreibprüfung).
@@ -232,11 +242,13 @@ final class DocumentSession {
         Signposts.logEdit(duration: ContinuousClock.now - start, tokenizedLines: update.tokenizedLineCount)
     }
 
-    private nonisolated static func prepare(text: String, encoding: String.Encoding, diskData: Data) -> PreparedDocument {
+    private nonisolated static func prepare(
+        text: String, encoding: String.Encoding, diskData: Data, language: SyntaxLanguage
+    ) -> PreparedDocument {
         Signposts.interval("PrepareDocument") {
             let string = text as NSString
             let lineIndex = LineIndex(text: string)
-            var highlighter = SyntaxHighlighter()
+            var highlighter = SyntaxHighlighter(language: language)
             let tokens = highlighter.highlightAll(string, lines: lineIndex)
             return PreparedDocument(
                 text: text, encoding: encoding, diskData: diskData, lineIndex: lineIndex, highlighter: highlighter, tokens: tokens

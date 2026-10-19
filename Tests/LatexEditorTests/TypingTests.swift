@@ -113,3 +113,62 @@ struct TypingTests {
         #expect(typing.text == "{")
     }
 }
+
+@Suite("Autokorrektur Groß-/Kleinschreibung im Editor", .serialized)
+@MainActor
+struct AutoCapitalizationTypingTests {
+    /// Die Korrektur läuft im nächsten Runloop-Durchlauf (eigener Undo-Schritt)
+    private func nextPass() async throws {
+        try await Task.sleep(for: .milliseconds(30))
+    }
+
+    @Test("Satzanfang und ZWei Großbuchstaben werden beim Weitertippen korrigiert; ⌘Z nimmt nur die Korrektur zurück")
+    func correctsWhileTyping() async throws {
+        let typing = TypingHarness()
+        try await typing.start("Das ist gut.")
+        typing.type(" das ")
+        try await nextPass()
+        #expect(typing.text == "Das ist gut. Das ")
+        #expect(typing.selection == NSRange(location: 17, length: 0))
+
+        typing.harness.session.undoManager.undo()
+        #expect(typing.text == "Das ist gut. das ", "Nur die Korrektur ist zurückgenommen, das Leerzeichen bleibt")
+        #expect(typing.selection == NSRange(location: 17, length: 0), "Cursor bleibt, das Wort ist nicht markiert")
+        typing.harness.session.undoManager.redo()
+        #expect(typing.text == "Das ist gut. Das ")
+        typing.harness.session.undoManager.undo()
+        #expect(typing.selection == NSRange(location: 17, length: 0))
+
+        try await nextPass()
+        typing.type("DIe")
+        typing.returnKey()
+        try await nextPass()
+        #expect(typing.text == "Das ist gut. das Die\n", "Auch mit Enter am Zeilenende")
+    }
+
+    @Test("Nicht in Befehlen, Schlüsseln, Mathe, Kommentaren, Code und nach Abkürzungen; abschaltbar")
+    func onlyProse() async throws {
+        let cases: [(start: String, typed: String)] = [
+            ("Satz. \\", "ref "),
+            ("Satz. $x. ", "y $"),
+            ("% Kommentar. ", "klein "),
+            ("\\begin{PythonCode}\nx = 1. ", "print "),
+            ("Siehe z. B. ", "dort "),
+        ]
+        for (start, typed) in cases {
+            let typing = TypingHarness()
+            try await typing.start(start)
+            typing.type(typed)
+            try await nextPass()
+            #expect(typing.text.hasPrefix(start + typed.prefix(1)), "„\(start)\(typed)“ → „\(typing.text)“")
+        }
+
+        UserDefaults.standard.set(false, forKey: Capitalization.automaticKey)
+        defer { UserDefaults.standard.removeObject(forKey: Capitalization.automaticKey) }
+        let typing = TypingHarness()
+        try await typing.start("Ende.")
+        typing.type(" klein ")
+        try await nextPass()
+        #expect(typing.text == "Ende. klein ")
+    }
+}

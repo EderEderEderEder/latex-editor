@@ -42,6 +42,8 @@ private struct EditorContent: View {
     let jumpHandler: (JumpTarget) -> Void
     let renameHandler: (String) -> Void
 
+    @AppStorage(WritingHints.enabledKey) private var showsWritingHints = true
+
     var body: some View {
         ZStack {
             EditorTextView(
@@ -52,6 +54,7 @@ private struct EditorContent: View {
                 issueMarks: editor.current.flatMap { build.marksByFile[$0.url] } ?? [:],
                 changeMarks: editor.current.map { changeMarks.marks(for: $0.url) } ?? ChangeMarks(),
                 referenceProblems: editor.current.map { referenceChecks.problems(for: $0.url) } ?? [],
+                writingHints: showsWritingHints ? editor.current.map { referenceChecks.hints(for: $0.url) } ?? [] : [],
                 completionProvider: completionProvider,
                 completionRequest: editor.completionRequest,
                 onCursorMoved: editor.reportCursor,

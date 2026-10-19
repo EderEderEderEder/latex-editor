@@ -35,6 +35,8 @@ struct AppCommands: Commands {
 
     @AppStorage(CompletionSettings.automaticKey) private var automaticCompletion = true
     @AppStorage(LatexTextView.autoPairKey) private var autoPairBrackets = true
+    @AppStorage(Capitalization.automaticKey) private var autoCapitalize = true
+    @AppStorage(WritingHints.enabledKey) private var showsWritingHints = true
     @AppStorage(AppModel.saveOnDeactivateKey) private var saveOnDeactivate = false
     @AppStorage(InterfaceZoom.key) private var zoom = InterfaceZoom.standard
 
@@ -46,6 +48,8 @@ struct AppCommands: Commands {
                 .disabled(!model.editor.canInsert)
             Toggle("Automatisch vervollständigen", isOn: $automaticCompletion)
             Toggle("Klammern automatisch schließen", isOn: $autoPairBrackets)
+            Toggle("Groß-/Kleinschreibung automatisch korrigieren", isOn: $autoCapitalize)
+            Toggle("Schreibhinweise anzeigen", isOn: $showsWritingHints)
             Divider()
             Button("Label umbenennen …") { model.beginLabelRename() }
                 .keyboardShortcut("r", modifiers: [.command, .option])

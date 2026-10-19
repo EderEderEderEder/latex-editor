@@ -93,13 +93,16 @@ final class LatexTextView: NSTextView {
 
     override func insertText(_ string: Any, replacementRange: NSRange) {
         // Nur echtes Tippen (kein Ersetzen per IME, kein Einfügen aus der Zwischenablage)
-        guard isAutoPairing, replacementRange.location == NSNotFound, !hasMarkedText(), let character = string as? String,
-              (character as NSString).length == 1, let storage = textStorage,
-              let edit = TextEditing.typed(character, in: storage.mutableString, selection: selectedRange()) else {
+        let isTyping = replacementRange.location == NSNotFound && !hasMarkedText()
+        let character = string as? String
+        let wordEnd = isTyping && character.map(Self.endsWord) == true ? collapsedCursor : nil
+        if isAutoPairing, isTyping, let character, (character as NSString).length == 1, let storage = textStorage,
+           let edit = TextEditing.typed(character, in: storage.mutableString, selection: selectedRange()) {
+            apply(edit, actionName: "Tippen")
+        } else {
             super.insertText(string, replacementRange: replacementRange)
-            return
         }
-        apply(edit, actionName: "Tippen")
+        if let wordEnd { scheduleCapitalization(wordEndingAt: wordEnd) }
     }
 
     override func deleteBackward(_ sender: Any?) {
@@ -117,7 +120,67 @@ final class LatexTextView: NSTextView {
             super.insertNewline(sender)
             return
         }
+        let wordEnd = collapsedCursor
         apply(TextEditing.newline(in: storage.mutableString, selection: selectedRange()), actionName: "Zeilenumbruch")
+        if let wordEnd { scheduleCapitalization(wordEndingAt: wordEnd) }
+    }
+
+    // MARK: Groß-/Kleinschreibung
+
+    /// Nur in .tex-Dateien (in .bib sind Titel absichtlich so geschrieben, wie sie sind)
+    var allowsProseCorrection: () -> Bool = { false }
+    /// Nach diesen Zeichen ist ein Wort fertig getippt
+    private static let wordTerminators: Set<String> = [" ", ",", ".", ";", ":", "!", "?", ")"]
+    private static let newline = UInt16(UInt8(ascii: "\n"))
+
+    private static func endsWord(_ typed: String) -> Bool {
+        wordTerminators.contains(typed)
+    }
+
+    private var collapsedCursor: Int? {
+        let selection = selectedRange()
+        return selection.length == 0 ? selection.location : nil
+    }
+
+    /// Satzanfang groß, „ZWei“ Großbuchstaben, als eigener Undo-Schritt: Der UndoManager gruppiert pro Ereignis, deshalb
+    /// erst im nächsten Durchlauf (sonst nähme ⌘Z das getippte Zeichen mit zurück). Bis dahin kann schon weitergetippt
+    /// worden sein, daher wird dort alles frisch geprüft.
+    private func scheduleCapitalization(wordEndingAt end: Int) {
+        guard Capitalization.isAutomatic, allowsProseCorrection(), let storage = textStorage else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.textStorage === storage else { return }
+            self.correctCapitalization(wordEndingAt: end, in: storage)
+        }
+    }
+
+    /// Nur im Fließtext (nicht in Befehlen, Schlüsseln, Mathe, Kommentaren, Code) und nur, wenn hinter dem Wort noch
+    /// das Zeichen steht, das es beendet hat.
+    private func correctCapitalization(wordEndingAt end: Int, in storage: NSTextStorage) {
+        let text = storage.mutableString
+        guard end < text.length, Self.endsWord(text.substring(with: NSRange(location: end, length: 1))) || text.character(at: end) == Self.newline,
+              let correction = Capitalization.correction(forWordEndingAt: end, in: text),
+              !isSyntax(correction.range), !LatexEnvironments.isInsideCode(at: correction.range.location, in: text) else { return }
+        replaceKeepingCursor(correction.range, with: correction.replacement, actionName: "Autokorrektur")
+    }
+
+    /// Ersetzt mit eigenem Rückgängig-Schritt: Das Rückgängig von NSTextView würde danach das Wort markieren, und
+    /// Weitertippen überschriebe es. So bleibt der Cursor in beide Richtungen, wo er ist (Wiederholen inklusive).
+    private func replaceKeepingCursor(_ range: NSRange, with replacement: String, actionName: String) {
+        guard let storage = textStorage, let undoManager, NSMaxRange(range) <= storage.length else { return }
+        let original = storage.mutableString.substring(with: range)
+        let selection = selectedRange()
+        let delta = (replacement as NSString).length - range.length
+        let cursor = selection.location >= NSMaxRange(range) ? selection.location + delta : selection.location
+        breakUndoCoalescing()
+        undoManager.disableUndoRegistration()
+        apply(TextEdit(range: range, text: replacement, selection: NSRange(location: cursor, length: selection.length)), actionName: actionName)
+        undoManager.enableUndoRegistration()
+        let replaced = NSRange(location: range.location, length: (replacement as NSString).length)
+        undoManager.registerUndo(withTarget: self) { textView in
+            textView.replaceKeepingCursor(replaced, with: original, actionName: actionName)
+        }
+        undoManager.setActionName(actionName)
+        breakUndoCoalescing()
     }
 
     /// Tab mit mehrzeiliger Auswahl rückt die Zeilen ein, sonst normaler Tabulator.

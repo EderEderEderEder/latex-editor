@@ -35,13 +35,15 @@ enum LexState: Hashable, Sendable {
     case math(MathDelimiter)
     case mathEnvironment(String)
     case verbatimEnvironment(String)
+    /// `.bib`-Dateien (`BibTokenizer`)
+    case bibtex(BibLexState)
 
     /// Mathe endet an einer Leerzeile (in TeX wäre eine Leerzeile dort ein Fehler).
     /// Das begrenzt das Umfärben beim Tippen eines offenen `$` auf den Absatz.
     var endsAtBlankLine: Bool {
         switch self {
         case .math, .mathEnvironment: true
-        case .normal, .verbatimEnvironment: false
+        case .normal, .verbatimEnvironment, .bibtex: false
         }
     }
 }
@@ -147,6 +149,8 @@ private struct LatexLineScanner {
             case .normal: scanNormal()
             case .math, .mathEnvironment: scanMath()
             case let .verbatimEnvironment(name): scanVerbatimEnvironment(name)
+            // Der Highlighter gibt `.bib`-Zeilen an den `BibTokenizer`
+            case .bibtex: return
             }
         }
     }

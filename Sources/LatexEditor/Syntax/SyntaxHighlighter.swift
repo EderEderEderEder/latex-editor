@@ -13,8 +13,14 @@ struct HighlightUpdate: Equatable, Sendable {
 struct SyntaxHighlighter: Sendable {
     /// Parallel zu `LineIndex`: ein Eintrag pro Zeile.
     private(set) var endStates: [LexState] = []
+    /// Zustand vor der ersten Zeile (LaTeX oder BibTeX)
+    private let initialState: LexState
 
     private static let estimatedTokensPerLine = 4
+
+    init(language: SyntaxLanguage = .latex) {
+        initialState = language.initialState
+    }
 
     mutating func highlightAll(_ text: NSString, lines: LineIndex) -> [SyntaxToken] {
         let characters = UTF16Buffer.read(text, range: NSRange(location: 0, length: text.length))
@@ -23,12 +29,12 @@ struct SyntaxHighlighter: Sendable {
         var states: [LexState] = []
         states.reserveCapacity(lines.lineCount)
 
-        var state = LexState.normal
+        var state = initialState
         characters.withUnsafeBufferPointer { all in
             for line in 0..<lines.lineCount {
                 let range = lines.contentRange(ofLine: line)
                 let content = UnsafeBufferPointer(rebasing: all[range.location..<NSMaxRange(range)])
-                state = LatexTokenizer.tokenize(content, lineOffset: range.location, from: state, into: &tokens)
+                state = Self.tokenize(content, lineOffset: range.location, from: state, into: &tokens)
                 states.append(state)
             }
         }
@@ -43,12 +49,12 @@ struct SyntaxHighlighter: Sendable {
         // damit der Vergleich dort sinnvoll ist.
         endStates.replaceSubrange(
             firstLine..<(firstLine + splice.removedLineCount),
-            with: repeatElement(LexState.normal, count: splice.insertedLineCount)
+            with: repeatElement(initialState, count: splice.insertedLineCount)
         )
         let lastChangedLine = firstLine + splice.insertedLineCount
 
         var tokens: [SyntaxToken] = []
-        var state = firstLine == 0 ? LexState.normal : endStates[firstLine - 1]
+        var state = firstLine == 0 ? initialState : endStates[firstLine - 1]
         var line = firstLine
         while true {
             state = Self.tokenizeLine(line, of: text, lines: lines, from: state, into: &tokens)
@@ -75,7 +81,7 @@ struct SyntaxHighlighter: Sendable {
         let lastLine = lines.line(containing: min(max(NSMaxRange(range) - 1, range.location), lines.length))
 
         var tokens: [SyntaxToken] = []
-        var state = firstLine == 0 ? LexState.normal : endStates[firstLine - 1]
+        var state = firstLine == 0 ? initialState : endStates[firstLine - 1]
         for line in firstLine...lastLine {
             state = Self.tokenizeLine(line, of: text, lines: lines, from: state, into: &tokens)
         }
@@ -92,7 +98,20 @@ struct SyntaxHighlighter: Sendable {
         let range = lines.contentRange(ofLine: line)
         let characters = UTF16Buffer.read(text, range: range)
         return characters.withUnsafeBufferPointer { content in
-            LatexTokenizer.tokenize(content, lineOffset: range.location, from: state, into: &tokens)
+            tokenize(content, lineOffset: range.location, from: state, into: &tokens)
         }
+    }
+
+    /// Der Zustand bestimmt die Sprache: `.bib`-Dateien beginnen mit `.bibtex`, und der `BibTokenizer` bleibt darin.
+    private static func tokenize(
+        _ content: UnsafeBufferPointer<UInt16>,
+        lineOffset: Int,
+        from state: LexState,
+        into tokens: inout [SyntaxToken]
+    ) -> LexState {
+        if case let .bibtex(bibState) = state {
+            return .bibtex(BibTokenizer.tokenize(content, lineOffset: lineOffset, from: bibState, into: &tokens))
+        }
+        return LatexTokenizer.tokenize(content, lineOffset: lineOffset, from: state, into: &tokens)
     }
 }

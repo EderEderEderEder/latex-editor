@@ -48,6 +48,24 @@ struct ReferenceCheckStoreTests {
         #expect(store.problems(for: bib.url).isEmpty)
     }
 
+    @Test("Schreibhinweise auch ohne gelesenen Index; .bib bekommt keine; geschlossene Dateien verlieren sie")
+    func writingHints() async throws {
+        let store = ReferenceCheckStore()
+        store.knownLabels = { nil }
+        let tex = session("Das das Ende. klein")
+        store.schedule(tex, immediately: true)
+        await store.waitUntilIdle()
+        #expect(store.hints(for: tex.url).map(\.kind) == [.repeatedWord, .lowercaseSentenceStart])
+
+        let bib = session("@book{a, title = {das das}}", name: "lit.bib")
+        store.schedule(bib, immediately: true)
+        await store.waitUntilIdle()
+        #expect(store.hints(for: bib.url).isEmpty)
+
+        store.retain([])
+        #expect(store.hints(for: tex.url).isEmpty)
+    }
+
     @Test("Hinweise: ungenutzte Labels und Quellen aus dem Index; \\nocite{*} und fehlender Index")
     func hints() {
         let store = ReferenceCheckStore()
@@ -103,7 +121,7 @@ struct ReferenceUnderlineTests {
         let range = (text as NSString).range(of: "fehlt")
         let problem = ReferenceProblem(kind: .unknownLabel, key: "fehlt", range: range)
 
-        harness.coordinator.updateReferenceProblems([problem])
+        harness.coordinator.updateTextMarks(problems: [problem], hints: [])
         try await Task.sleep(for: .milliseconds(60))
         #expect(underline(at: range.location, in: harness))
         #expect(underline(at: NSMaxRange(range) - 1, in: harness))
@@ -114,16 +132,41 @@ struct ReferenceUnderlineTests {
         #expect(tip?.contains("fehlt") == true)
         #expect(!harness.session.isDirty, "temporäre Attribute ändern den Text nicht")
 
-        harness.coordinator.updateReferenceProblems([])
+        harness.coordinator.updateTextMarks(problems: [], hints: [])
         try await Task.sleep(for: .milliseconds(60))
         #expect(!underline(at: range.location, in: harness))
+    }
+
+    @Test("Schreibhinweise blau gepunktet mit Tooltip; bei Überschneidung gewinnt der unbekannte Verweis")
+    func hintsUnderlined() async throws {
+        let text = "Das das Ende \\ref{fehlt}"
+        let harness = CompletionHarness(text: text)
+        try await harness.start()
+        let source = text as NSString
+        let word = source.range(of: "das")
+        let key = source.range(of: "fehlt")
+        let hints = [WritingHint(kind: .repeatedWord, range: word, message: "„das“ steht zweimal hintereinander."),
+                     WritingHint(kind: .missingSpace, range: key, message: "Hinweis")]
+        let problem = ReferenceProblem(kind: .unknownLabel, key: "fehlt", range: key)
+
+        harness.coordinator.updateTextMarks(problems: [problem], hints: hints)
+        try await Task.sleep(for: .milliseconds(60))
+        let layoutManager = try #require(harness.textView.layoutManager)
+        #expect(layoutManager.temporaryAttribute(.underlineColor, atCharacterIndex: word.location, effectiveRange: nil) as? NSColor == .systemBlue)
+        #expect(layoutManager.temporaryAttribute(.toolTip, atCharacterIndex: word.location, effectiveRange: nil) as? String
+                == "„das“ steht zweimal hintereinander.")
+        #expect(layoutManager.temporaryAttribute(.underlineColor, atCharacterIndex: key.location, effectiveRange: nil) as? NSColor == .systemRed)
+
+        harness.coordinator.updateTextMarks(problems: [], hints: [])
+        try await Task.sleep(for: .milliseconds(60))
+        #expect(!underline(at: word.location, in: harness))
     }
 
     @Test("Ränge hinter dem Textende werden ignoriert")
     func staleRanges() async throws {
         let harness = CompletionHarness(text: "kurz")
         try await harness.start()
-        harness.coordinator.updateReferenceProblems([ReferenceProblem(kind: .unknownLabel, key: "x", range: NSRange(location: 100, length: 5))])
+        harness.coordinator.updateTextMarks(problems: [ReferenceProblem(kind: .unknownLabel, key: "x", range: NSRange(location: 100, length: 5))], hints: [])
         try await Task.sleep(for: .milliseconds(60))
         #expect(!underline(at: 0, in: harness))
     }

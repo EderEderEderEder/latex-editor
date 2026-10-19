@@ -59,6 +59,8 @@ Wichtig: **nicht** `swift test` direkt aufrufen. Ohne die Flags aus dem Skript w
 | `JumpTargetTests`, `CommandClickTests`, `NavigationActionsTests` | Ziele im Text (Ränder, Listen, mehrzeilig), Dateiauflösung, Label umbenennen (nur dieses Label, keine Zitate, ungespeichert, ⌘Z, Platte bleibt), echter ⌘-Klick und Kontextmenü |
 | `InterfaceZoomTests`, `FontSizeTests` (Zoom) | Stufen und Enden, Übernahme der alten Editorschrift, Text/leerer Zustand/Tab-Leiste wachsen bei 150 %, Wurzel liest den gemerkten Zoom; Editor, offene Datei und Ruler folgen dem Zoom |
 | `StabilizationTests` (teils App-Ebene unter `AppModelSuite`) | Text ohne Text-View ersetzen mit Undo/Redo; Verweise anpassen in geänderter offener Datei ist eigener Rückgängig-Schritt, früheres Tippen bleibt rückgängig machbar; Git erholt sich nach kaputtem `HEAD`; Quelle anlegen mit `.bib` vorne (Zitieren blockiert); aufgeklappte Ordner überstehen Tabwechsel, Projektwechsel setzt zurück; Build-Dauer mit Komma; Einfügen-Blocker |
+| `BibTokenizerTests`, `BibSessionTests` | BibTeX-Farben: Typ, Schlüssel, Feldnamen, Klammern, `"`, `#`, `@string`-Makros, `\TeX` in Werten, Text außerhalb und `@comment` als Kommentar, runde Eintragsklammern, mehrzeilige Werte (Zustand), kaputter Eintrag erholt sich, Zufallsabgleich inkrementell gegen komplett; Sprache nach Endung, Sitzung färbt `.bib`, Umbenennen in `.tex` färbt neu (ohne „geändert“) |
+| `CapitalizationTests`, `WritingHintsTests`, `AutoCapitalizationTypingTests` | Satzanfang (nach `.!?`, Zeilenende, Absatz, Klammer/`\enquote` davor) und „ZWei“ Großbuchstaben; keine Korrektur nach Abkürzungen, Zahlen, „…“, Komma, am Textanfang, bei „IDs“/„API“/„LaTeX“/„iOS“, nach Befehlen, in Code-Umgebungen. Schreibhinweise je Regel samt Ausnahmen, nur Fließtext (Präambel, Mathe, Schlüssel, Optionen, Kommentare, Code, `\verb` frei). Im echten Editor: Korrektur beim Weitertippen und mit Enter, ⌘Z nimmt nur die Korrektur zurück und lässt den Cursor stehen, Wiederholen; Befehle/Mathe/Kommentar/Code/Abkürzung bleiben; abschaltbar |
 | `PerformanceTests` | 10.000-Zeilen-Dokument mit festen Budgets (siehe unten) |
 
 Testdaten entstehen in temporären Ordnern (`TemporaryProject`) oder als Kopie des Demo-Projekts `Testdaten/HgbDemo` (`DemoProject.copy(to:)`). `../Thesis` (die echte Abschlussarbeit) wird nie verwendet, auch nicht lesend.
@@ -76,6 +78,8 @@ Budgets gelten für den Debug-Build und haben etwa 3-fachen Puffer zum Messwert 
 | Zeilenindex aufbauen | 2,7 ms | 0,7 ms | 10 ms |
 | Zeilenindex, eine Bearbeitung | 0,033 ms | 0,014 ms | 0,25 ms |
 | Komplett tokenisieren (Hintergrund) | 40 ms | 6,7 ms | 120 ms |
+| BibTeX komplett färben, 2.000 Einträge (Hintergrund) | 47 ms | – | 150 ms |
+| Schreibhinweise komplett (Hintergrund, 0,6 s nach der Eingabe; fast nur ICU-Regex, Release kaum schneller) | 334 ms | – | 1.000 ms |
 | Datei öffnen inkl. Einfärben | 64 ms | 26 ms | 200 ms |
 | **Tastendruck** (Index + Highlighting + Attribute) | 0,125 ms | 0,06 ms | 0,5 ms |
 | `$` tippen und löschen (je ein Absatz neu) | 0,9 ms | 0,7 ms | 3 ms |
@@ -404,3 +408,15 @@ Vorher einmal kompilieren (⌘B), damit `main.synctex.gz` existiert.
 | 186 | Fehler-Tab nach einem Projektstart | Abschnitt „Hinweise“: ungenutzte Labels und nicht zitierte Quellen, Klick springt zur Stelle |
 | 187 | ⌘-Klick auf `\ref{…}`, `\cite{…}`, `\input{…}` | Sprung zum Label, zum Eintrag in der .bib bzw. zur Datei; bei gedrückter ⌘ zeigt der Mauszeiger über dem Ziel eine Hand (**nur hier prüfbar**); bei Tippfehler im Schlüssel ein Piepton |
 | 188 | Rechtsklick auf ein Label bzw. ⌥⌘R mit Cursor darin | „Label umbenennen …“ mit Zahl der Stellen; danach alle Dateien als ungespeicherte Änderung, ⌘Z nimmt zurück; vorhandener Name wird abgelehnt |
+
+### Sitzung 15: BibTeX-Farben, Autokorrektur, Schreibhinweise
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 189 | Sprung über Gliederung, Fehlerliste, Suche, ⌘L | Cursor steht in der Zielzeile, **kein gelbes Aufblitzen** mehr |
+| 190 | `hgbreferences.bib` öffnen (Hell und Dunkel) | `@book` blau, Schlüssel und Feldnamen lila, Klammern grau, Werte normal; Text zwischen Einträgen grau; Rechtschreibung prüft Titel, nicht Feldnamen |
+| 191 | Im Fließtext „Ende. das “ tippen, dann ⌘Z, dann weitertippen | „Das“ erscheint; ⌘Z macht nur „das“ daraus, Cursor bleibt hinter dem Leerzeichen, Weitertippen überschreibt nichts; Menü Bearbeiten zeigt „Autokorrektur widerrufen“ |
+| 192 | „DIe “, „z. B. das “, „3. kapitel “, `\ref{x}. das`, in `$…$` und in `% …` tippen | Nur „DIe“ wird „Die“; nach Abkürzung, Zahl, in Befehlen, Mathe und Kommentar bleibt alles klein |
+| 193 | Menü Bearbeiten → „Groß-/Kleinschreibung automatisch korrigieren“ aus | Nichts wird mehr korrigiert; nach Neustart bleibt es aus |
+| 194 | „das das“, „Wort ,Wort“, „z.B.“, „...“, `"Zitat"` im Fließtext; kurz warten; darüberfahren | Blau gepunktet unterstrichen, Tooltip erklärt den Hinweis (**nur hier prüfbar**); in Präambel, Mathe, Code-Umgebungen und Kommentaren nichts |
+| 195 | Menü Bearbeiten → „Schreibhinweise anzeigen“ aus und wieder an | Blaue Linien verschwinden sofort und kommen wieder; rote Linien unbekannter Verweise bleiben |

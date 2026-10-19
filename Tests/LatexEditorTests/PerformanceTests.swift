@@ -12,6 +12,11 @@ private enum Budget {
     static let lineIndexEdit = Duration.microseconds(250)
     /// gemessen 40 ms / 6,7 ms, läuft beim Öffnen im Hintergrund
     static let tokenizeFullDocument = Duration.milliseconds(120)
+    /// gemessen 334 ms (Debug ≈ Release: Maskieren 70, Tokens 64, die neun Regex-Durchläufe von ICU zusammen ca. 200),
+    /// läuft 0,6 s nach der letzten Eingabe im Hintergrund. Ein Kapitel mit 500 Zeilen braucht ca. 17 ms.
+    static let writingHintsFullDocument = Duration.milliseconds(1_000)
+    /// gemessen 47 ms: eine .bib mit 2.000 Einträgen (12.000 Zeilen) komplett färben, beim Öffnen im Hintergrund
+    static let tokenizeBibliography = Duration.milliseconds(150)
     /// gemessen 64 ms / 26 ms (Vorbereitung im Hintergrund + Attribute im Main-Thread)
     static let openDocument = Duration.milliseconds(200)
     /// gemessen 0,125 ms / 0,06 ms; ein Frame bei 60 Hz hat 16,7 ms
@@ -92,6 +97,25 @@ struct PerformanceTests {
             _ = highlighter.highlightAll(text, lines: lines)
         }
         check("Tokenisieren komplett", duration, within: Budget.tokenizeFullDocument)
+    }
+
+    @Test("Schreibhinweise für die ganze Datei")
+    func writingHintsFullDocument() {
+        let duration = medianDuration(iterations: Iterations.slow) { _ = WritingHints.hints(in: document) }
+        check("Schreibhinweise komplett", duration, within: Budget.writingHintsFullDocument)
+    }
+
+    @Test("BibTeX: große Literaturdatei komplett färben")
+    func tokenizeBibliography() {
+        let entry = "@book{key%d,\n\tauthor = {Nachname, Vorname and Zweite, Person},\n\ttitle = {Ein {\\LaTeX} Titel %d},\n"
+            + "\tpublisher = {Verlag},\n\tyear = {%d},\n}\n"
+        let text = (0..<2_000).map { String(format: entry, $0, $0, 1900 + $0 % 120) }.joined() as NSString
+        let lines = LineIndex(text: text)
+        let duration = medianDuration(iterations: Iterations.slow) {
+            var highlighter = SyntaxHighlighter(language: .bibtex)
+            _ = highlighter.highlightAll(text, lines: lines)
+        }
+        check("BibTeX färben komplett", duration, within: Budget.tokenizeBibliography)
     }
 
     @Test("Datei öffnen: Index, Tokens und Farben im NSTextStorage")

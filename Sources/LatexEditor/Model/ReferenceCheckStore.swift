@@ -1,8 +1,9 @@
 import Foundation
 import Observation
 
-/// Prüft offene .tex-Dateien auf Verweise und Zitate ohne Ziel (rote Unterstreichung im Text) und sammelt Hinweise auf
-/// ungenutzte Labels und Quellen. Gescannt wird entprellt im Hintergrund, nie pro Tastendruck.
+/// Prüft offene .tex-Dateien auf Verweise und Zitate ohne Ziel (rote Unterstreichung im Text) und auf Schreibhinweise
+/// (`WritingHints`, blau gepunktet) und sammelt Hinweise auf ungenutzte Labels und Quellen. Gescannt wird entprellt im
+/// Hintergrund, nie pro Tastendruck.
 @MainActor
 @Observable
 final class ReferenceCheckStore {
@@ -10,6 +11,8 @@ final class ReferenceCheckStore {
 
     /// Probleme pro offener Datei
     private(set) var problems: [URL: [ReferenceProblem]] = [:]
+    /// Schreibhinweise pro offener Datei
+    private(set) var hints: [URL: [WritingHint]] = [:]
     /// Labels, die nirgends verwendet werden (nach Datei und Zeile sortiert)
     private(set) var unusedLabels: [LabelEntry] = []
     /// Quellen der Literaturdatei, die nirgends zitiert werden
@@ -24,6 +27,10 @@ final class ReferenceCheckStore {
 
     func problems(for url: URL) -> [ReferenceProblem] {
         problems[url.standardizedFileURL] ?? []
+    }
+
+    func hints(for url: URL) -> [WritingHint] {
+        hints[url.standardizedFileURL] ?? []
     }
 
     /// Nach einer Textänderung oder beim Öffnen einer .tex-Datei
@@ -42,27 +49,28 @@ final class ReferenceCheckStore {
         for task in Array(scheduled.values) { await task.value }
     }
 
+    /// Verweise nur, wenn der Index gelesen ist; Schreibhinweise immer.
     private func check(_ session: DocumentSession, url: URL) async {
         let currentGeneration = generation
-        guard let labels = knownLabels() else {
-            setProblems([], for: url)
-            return
-        }
+        let labels = knownLabels()
         let citations = knownCitations()
         let text = session.textStorage.string
-        let found = await Task.detached(priority: .utility) {
-            ReferenceChecker.problems(in: text, labels: labels, citations: citations)
+        let (foundProblems, foundHints) = await Task.detached(priority: .utility) {
+            let problems = labels.map { ReferenceChecker.problems(in: text, labels: $0, citations: citations) } ?? []
+            return (problems, WritingHints.hints(in: text))
         }.value
         guard currentGeneration == generation, session.url.standardizedFileURL == url else { return }
         scheduled[url] = nil
-        setProblems(found, for: url)
+        Self.set(foundProblems, for: url, in: &problems)
+        Self.set(foundHints, for: url, in: &hints)
     }
 
-    private func setProblems(_ list: [ReferenceProblem], for url: URL) {
+    /// Nur bei Änderung setzen, damit der Editor nicht ohne Grund neu bewertet wird
+    private static func set<Element: Equatable>(_ list: [Element], for url: URL, in storage: inout [URL: [Element]]) {
         if list.isEmpty {
-            if problems[url] != nil { problems[url] = nil }
-        } else if problems[url] != list {
-            problems[url] = list
+            if storage[url] != nil { storage[url] = nil }
+        } else if storage[url] != list {
+            storage[url] = list
         }
     }
 
@@ -78,6 +86,7 @@ final class ReferenceCheckStore {
     /// Tabs haben sich geändert: Probleme geschlossener Dateien vergessen.
     func retain(_ urls: Set<URL>) {
         for url in problems.keys where !urls.contains(url) { problems[url] = nil }
+        for url in hints.keys where !urls.contains(url) { hints[url] = nil }
     }
 
     func reset() {
@@ -85,6 +94,7 @@ final class ReferenceCheckStore {
         scheduled.values.forEach { $0.cancel() }
         scheduled = [:]
         if !problems.isEmpty { problems = [:] }
+        if !hints.isEmpty { hints = [:] }
         unusedLabels = []
         unusedSources = []
     }

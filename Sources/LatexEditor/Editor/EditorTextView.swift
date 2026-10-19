@@ -13,6 +13,8 @@ struct EditorTextView: NSViewRepresentable {
     var changeMarks = ChangeMarks()
     /// Verweise und Zitate ohne Ziel in der angezeigten Datei (rote Unterstreichung)
     var referenceProblems: [ReferenceProblem] = []
+    /// Schreibhinweise in der angezeigten Datei (blau gepunktet)
+    var writingHints: [WritingHint] = []
     /// Vorschläge für die Autovervollständigung (Projektindex)
     var completionProvider: CompletionProvider?
     /// Neue ID: Vervollständigung von Hand öffnen (Menü, ⌃Leertaste)
@@ -38,7 +40,7 @@ struct EditorTextView: NSViewRepresentable {
         context.coordinator.update(session: session, jump: jump, insert: insertRequest)
         context.coordinator.updateIssueMarks(issueMarks)
         context.coordinator.updateChangeMarks(changeMarks)
-        context.coordinator.updateReferenceProblems(referenceProblems)
+        context.coordinator.updateTextMarks(problems: referenceProblems, hints: writingHints)
         context.coordinator.updateCompletion(provider: completionProvider, request: completionRequest)
         selectionProviderOwner.selectionProvider = { [weak coordinator = context.coordinator] in
             coordinator?.selectedText ?? ""
@@ -66,9 +68,10 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
     private var lineNumberRuler: LineNumberRulerView!
     private let placeholderStorage = NSTextStorage()
     private var session: DocumentSession?
-    private static let referenceProblemAttributes: [NSAttributedString.Key] = [.underlineStyle, .underlineColor, .toolTip]
+    private static let textMarkAttributes: [NSAttributedString.Key] = [.underlineStyle, .underlineColor, .toolTip]
     private var appliedProblems: [ReferenceProblem] = []
-    private weak var problemsSession: DocumentSession?
+    private var appliedHints: [WritingHint] = []
+    private weak var textMarksSession: DocumentSession?
     private var lastHandledJumpID: UUID?
     private var lastHandledInsertID: UUID?
     private var lastHandledCompletionRequest: UUID?
@@ -108,6 +111,9 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         textView.onRenameLabel = { [weak self] key in self?.renameLabelHandler?(key) }
         textView.syntaxTokensProvider = { [weak self] range in
             self?.session?.syntaxTokens(in: range) ?? []
+        }
+        textView.allowsProseCorrection = { [weak self] in
+            self?.session.map { FileKind(url: $0.url) == .tex } ?? false
         }
         self.textView = textView
 
@@ -246,31 +252,40 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         textView.window?.makeFirstResponder(textView)
         textView.setSelectedRange(NSRange(location: lineRange.location, length: 0))
         textView.scrollRangeToVisible(lineRange)
-        textView.showFindIndicator(for: lineRange)
     }
 
     func updateIssueMarks(_ marks: [Int: BuildIssue.Severity]) {
         if lineNumberRuler.issueMarks != marks { lineNumberRuler.issueMarks = marks }
     }
 
-    /// Unterstreicht die Schlüssel als temporäre Attribute des Layout-Managers (nicht im Text, nicht in `SyntaxTheme`):
-    /// Sie ändern weder den Text noch den Undo-Verlauf und verschwinden beim Dateiwechsel mit der Sitzung.
-    func updateReferenceProblems(_ problems: [ReferenceProblem]) {
-        guard problems != appliedProblems || problemsSession !== session else { return }
+    /// Unterstreicht unbekannte Verweise (rot gestrichelt) und Schreibhinweise (blau gepunktet) als temporäre Attribute
+    /// des Layout-Managers (nicht im Text, nicht in `SyntaxTheme`): Sie ändern weder den Text noch den Undo-Verlauf und
+    /// verschwinden beim Dateiwechsel mit der Sitzung. Beides gemeinsam, weil es dieselben Attribute nutzt.
+    func updateTextMarks(problems: [ReferenceProblem], hints: [WritingHint]) {
+        guard problems != appliedProblems || hints != appliedHints || textMarksSession !== session else { return }
         appliedProblems = problems
-        problemsSession = session
+        appliedHints = hints
+        textMarksSession = session
         // Nicht synchron aus `updateNSView`: Das Layout soll nicht mitten in einem SwiftUI-Update angestoßen werden.
-        DispatchQueue.main.async { [weak self] in self?.applyReferenceProblems() }
+        DispatchQueue.main.async { [weak self] in self?.applyTextMarks() }
     }
 
-    private func applyReferenceProblems() {
+    private func applyTextMarks() {
         guard let layoutManager = textView.layoutManager, let storage = textView.textStorage else { return }
         let whole = NSRange(location: 0, length: storage.length)
-        for key in Self.referenceProblemAttributes { layoutManager.removeTemporaryAttribute(key, forCharacterRange: whole) }
-        let underline = NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDash.rawValue
+        for key in Self.textMarkAttributes { layoutManager.removeTemporaryAttribute(key, forCharacterRange: whole) }
+        let dotted = NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDot.rawValue
+        for hint in appliedHints where NSMaxRange(hint.range) <= storage.length {
+            layoutManager.addTemporaryAttributes(
+                [.underlineStyle: dotted, .underlineColor: NSColor.systemBlue, .toolTip: hint.message],
+                forCharacterRange: hint.range
+            )
+        }
+        // Verweise zuletzt: Sie sind wichtiger und gewinnen bei Überschneidungen
+        let dashed = NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDash.rawValue
         for problem in appliedProblems where NSMaxRange(problem.range) <= storage.length {
             layoutManager.addTemporaryAttributes(
-                [.underlineStyle: underline, .underlineColor: NSColor.systemRed, .toolTip: problem.message],
+                [.underlineStyle: dashed, .underlineColor: NSColor.systemRed, .toolTip: problem.message],
                 forCharacterRange: problem.range
             )
         }

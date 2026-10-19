@@ -6,6 +6,8 @@ enum BuildStatus: Equatable, Sendable {
     case running
     case succeeded
     case failed
+    /// Vom Nutzer abgebrochen: Meldungen und PDF stammen noch vom Build davor
+    case cancelled
     /// MacTeX fehlt oder latexmk ließ sich nicht starten
     case unavailable(String)
 }
@@ -61,6 +63,8 @@ final class BuildStore {
     private(set) var marksByFile: [URL: [Int: BuildIssue.Severity]] = [:]
     private(set) var rawLog = ""
     private(set) var lastDuration: Duration?
+    /// Zuletzt angesprungene Meldung (Klick in der Liste oder „Nächste Meldung“), wird im Listenbild hervorgehoben
+    var selectedIssueID: Int?
     /// Sheet mit dem rohen Log sichtbar (UI-Zustand, nicht gespeichert)
     var isLogVisible = false
     var compileOnSave: Bool {
@@ -71,6 +75,7 @@ final class BuildStore {
     @ObservationIgnored var onFinished: (() -> Void)?
     @ObservationIgnored private(set) var isRunning = false
     @ObservationIgnored private var pendingRequest: LatexBuildRequest?
+    @ObservationIgnored private var buildTask: Task<Void, Never>?
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private let runner: Runner
     @ObservationIgnored private let defaults: UserDefaults
@@ -91,15 +96,25 @@ final class BuildStore {
         isRunning = true
         if status != .running { status = .running }
         let currentGeneration = generation
-        Task { await processQueue(generation: currentGeneration) }
+        buildTask = Task { await processQueue(generation: currentGeneration) }
+    }
+
+    /// Bricht den laufenden Build ab (latexmk bekommt wie bei Ctrl-C ein Abbruchsignal); Vorgemerktes entfällt.
+    func cancelBuild() {
+        guard isRunning else { return }
+        pendingRequest = nil
+        buildTask?.cancel()
     }
 
     /// Beim Projektwechsel: Ergebnisse verwerfen; ein laufender Build darf danach nichts mehr setzen.
     func reset() {
         generation += 1
         pendingRequest = nil
+        buildTask?.cancel()
+        buildTask = nil
         isRunning = false
         status = .idle
+        selectedIssueID = nil
         issues = []
         marksByFile = [:]
         rawLog = ""
@@ -107,18 +122,21 @@ final class BuildStore {
     }
 
     private func processQueue(generation queueGeneration: Int) async {
-        while let request = pendingRequest, queueGeneration == generation {
+        while let request = pendingRequest, queueGeneration == generation, !Task.isCancelled {
             pendingRequest = nil
             await perform(request, generation: queueGeneration)
         }
         guard queueGeneration == generation else { return }
         isRunning = false
-        onFinished?()
+        buildTask = nil
+        // Nach einem Abbruch ist das PDF unter Umständen unvollständig: nicht neu laden
+        if status != .cancelled { onFinished?() }
     }
 
     private func perform(_ request: LatexBuildRequest, generation buildGeneration: Int) async {
         do {
             let result = try await runner(request)
+            try Task.checkCancellation()
             let report = await Task.detached(priority: .userInitiated) {
                 BuildReport.make(from: result, mainFile: request.mainFile)
             }.value
@@ -126,6 +144,10 @@ final class BuildStore {
             apply(report, duration: result.duration)
         } catch {
             guard buildGeneration == generation else { return }
+            if error is CancellationError || Task.isCancelled {
+                status = .cancelled
+                return
+            }
             let message = (error as? LatexBuildError) == .toolchainMissing
                 ? LatexToolchain.missingMessage
                 : "latexmk konnte nicht gestartet werden: \(error.localizedDescription)"
@@ -134,6 +156,7 @@ final class BuildStore {
     }
 
     private func apply(_ report: BuildReport, duration: Duration) {
+        selectedIssueID = nil
         issues = report.issues
         marksByFile = report.marksByFile
         rawLog = report.rawLog

@@ -17,6 +17,10 @@ struct BibEntry: Identifiable, Hashable, Sendable {
     var year = ""
     /// Rohwert für die Suche (alle Namen)
     var allAuthors = ""
+    /// Literaturdatei und Zeile des Eintrags (für den Sprung); fehlt bei Einträgen aus reinem Text
+    var file: URL?
+    /// 1-basiert
+    var line = 1
 
     var id: String { key }
 
@@ -47,7 +51,7 @@ struct ProjectCatalog: Sendable, Equatable {
             guard let text = readText(file) else { continue }
             switch FileKind(url: file) {
             case .tex: catalog.labels += labels(in: text, file: file)
-            case .bib: catalog.bibEntries += bibEntries(in: text)
+            case .bib: catalog.bibEntries += bibEntries(in: text, file: file)
             default: break
             }
         }
@@ -88,13 +92,36 @@ struct ProjectCatalog: Sendable, Equatable {
 
     // MARK: Literatur
 
-    static func bibEntries(in text: String) -> [BibEntry] {
-        BibParser.parse(text).map { record in
+    static func bibEntries(in text: String, file: URL? = nil) -> [BibEntry] {
+        let lines = file == nil ? [:] : entryLines(in: text)
+        return BibParser.parse(text).map { record in
             let authors = record.value("author") ?? record.value("editor") ?? record.value("organization") ?? ""
             let year = String((record.value("date") ?? record.value("year") ?? "").prefix(4))
             return BibEntry(key: record.key, title: cleaned(record.value("title") ?? ""), authors: cleaned(BibAuthors.short(authors)),
-                            year: year, allAuthors: cleaned(authors))
+                            year: year, allAuthors: cleaned(authors), file: file, line: lines[record.key] ?? 1)
         }
+    }
+
+    private static let entryStart = try! NSRegularExpression(pattern: #"^\s*@[A-Za-z]+\s*[{(]\s*([^,\s]+)\s*,"#, options: .anchorsMatchLines)
+
+    /// Zeile (1-basiert) des ersten Eintrags zu jedem Schlüssel
+    private static func entryLines(in text: String) -> [String: Int] {
+        let source = text as NSString
+        var lines: [String: Int] = [:]
+        var line = 1
+        var scanned = 0
+        entryStart.enumerateMatches(in: text, range: NSRange(location: 0, length: source.length)) { match, _, _ in
+            guard let match else { return }
+            // Ab dem Schlüssel zählen: `^\s*` darf vorangehende Leerzeilen mit verschlucken
+            let keyRange = match.range(at: 1)
+            while scanned < keyRange.location {
+                if source.character(at: scanned) == 0x0A { line += 1 }
+                scanned += 1
+            }
+            let key = source.substring(with: keyRange)
+            if lines[key] == nil { lines[key] = line }
+        }
+        return lines
     }
 
     /// Geschweifte Klammern (Schutz der Großschreibung) entfernen

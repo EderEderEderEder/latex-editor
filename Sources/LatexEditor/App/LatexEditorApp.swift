@@ -47,6 +47,15 @@ struct AppCommands: Commands {
             Toggle("Automatisch vervollständigen", isOn: $automaticCompletion)
             Toggle("Klammern automatisch schließen", isOn: $autoPairBrackets)
             Divider()
+            Button("Label umbenennen …") { model.beginLabelRename() }
+                .keyboardShortcut("r", modifiers: [.command, .option])
+                .disabled(model.editor.current == nil)
+            Button("Im Projekt suchen …") { model.presentProjectSearch() }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+                .disabled(model.project.rootURL == nil)
+            Button("Gehe zu Zeile …") { model.presentGoToLine() }
+                .keyboardShortcut("l")
+                .disabled(model.editor.current == nil)
             editorCommand("Kommentar ein/aus", #selector(LatexTextView.toggleComment(_:)), key: "/")
             editorCommand("Einrücken", #selector(LatexTextView.indentLines(_:)), key: "]")
             editorCommand("Ausrücken", #selector(LatexTextView.outdentLines(_:)), key: "[")
@@ -84,7 +93,13 @@ struct AppCommands: Commands {
             Button("Neuer Ordner …") { model.beginNewFolder() }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
                 .disabled(model.project.rootURL == nil)
+            Divider()
+            Button("Schnell öffnen …") { model.presentQuickOpen() }
+                .keyboardShortcut("p")
+                .disabled(model.project.rootURL == nil)
         }
+        // Die App druckt nicht: ⌘P gehört „Schnell öffnen“
+        CommandGroup(replacing: .printItem) {}
         CommandGroup(after: .sidebar) {
             Divider()
             Button("Im PDF zeigen") { model.showCursorInPDF() }
@@ -127,12 +142,24 @@ struct AppCommands: Commands {
             Button("Kompilieren") { model.compile() }
                 .keyboardShortcut("b")
                 .disabled(model.project.mainFileURL == nil)
+            Button("Kompilieren abbrechen") { model.build.cancelBuild() }
+                .keyboardShortcut(".")
+                .disabled(model.build.status != .running)
+            // Pfeiltasten statt F8/⌘': F8 ist auf Mac-Tastaturen oft Play, ⌘' liegt auf deutscher Tastatur auf ⇧#
+            Button("Nächste Meldung") { model.showAdjacentIssue(1) }
+                .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+                .disabled(model.build.issues.isEmpty)
+            Button("Vorherige Meldung") { model.showAdjacentIssue(-1) }
+                .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+                .disabled(model.build.issues.isEmpty)
             Toggle("Beim Speichern kompilieren", isOn: Binding(
                 get: { model.build.compileOnSave },
                 set: { model.build.compileOnSave = $0 }
             ))
             Toggle("Beim Verlassen der App speichern", isOn: $saveOnDeactivate)
             Button("Build-Log anzeigen") { model.build.isLogVisible = true }
+            Button("Hilfsdateien löschen …") { Task { await model.cleanBuildFiles() } }
+                .disabled(model.project.mainFileURL == nil || model.build.status == .running)
         }
     }
 }

@@ -46,6 +46,7 @@ final class RecentProjectsStore {
 enum SidebarTab: String, CaseIterable, Hashable, Sendable {
     case files
     case outline
+    case search
     case issues
     case changes
 }

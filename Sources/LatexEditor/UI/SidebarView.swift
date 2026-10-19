@@ -18,8 +18,11 @@ struct SidebarView: View {
                 Divider()
                 content
                     .frame(maxHeight: .infinity)
-                Divider()
-                SidebarFilterField(text: filterBinding, placeholder: filterPlaceholder)
+                // „Suchen“ hat eigene Felder oben
+                if model.sidebar.tab != .search {
+                    Divider()
+                    SidebarFilterField(text: filterBinding, placeholder: filterPlaceholder)
+                }
             }
             // Grundschrift aller Listen (Zeilen ohne eigene Schrift)
             .scaledFont(.body)
@@ -32,6 +35,7 @@ struct SidebarView: View {
         switch model.sidebar.tab {
         case .files: FileTreeView(model: model, filter: filter)
         case .outline: OutlineListView(outline: model.outline, editor: model.editor, sidebar: model.sidebar, filter: filter)
+        case .search: SearchListView(model: model)
         case .issues: IssueListView(model: model, filter: filter)
         case .changes: ChangesListView(model: model, filter: filter)
         }
@@ -41,6 +45,7 @@ struct SidebarView: View {
         switch model.sidebar.tab {
         case .files: "Dateien filtern"
         case .outline: "Gliederung filtern"
+        case .search: "Suchen"
         case .issues: "Meldungen filtern"
         case .changes: "Änderungen filtern"
         }
@@ -77,6 +82,7 @@ private struct SidebarTabBar: View {
         HStack(spacing: 2) {
             tabButton(.files, symbol: "folder", title: "Dateien")
             tabButton(.outline, symbol: "list.bullet.indent", title: "Gliederung")
+            tabButton(.search, symbol: "magnifyingglass", title: "Im Projekt suchen (⇧⌘F)")
             tabButton(.issues, symbol: "exclamationmark.triangle", title: "Fehler und Warnungen", badge: badgeCount,
                       badgeColor: build.errorCount > 0 ? .red : .orange)
             if showsChangesTab {
@@ -163,6 +169,7 @@ private struct SidebarStatistics: View {
         switch build.status {
         case .idle: return "nicht kompiliert"
         case .running: return "kompiliert …"
+        case .cancelled: return "abgebrochen"
         case .unavailable: return "MacTeX fehlt"
         case .succeeded, .failed:
             let warnings = build.warningCount == 1 ? "1 Warnung" : "\(build.warningCount) Warnungen"

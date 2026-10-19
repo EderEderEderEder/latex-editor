@@ -137,6 +137,116 @@ final class LatexTextView: NSTextView {
         selection.length > 0 && text.substring(with: selection).contains("\n")
     }
 
+    // MARK: ⌘-Klick auf Verweise
+
+    /// ⌘-Klick auf `\ref`, `\cite`, `\input` …: zum Ziel springen
+    var onJumpToTarget: ((JumpTarget) -> Void)?
+    /// „Label umbenennen …“ im Kontextmenü
+    var onRenameLabel: ((String) -> Void)?
+    private var jumpTrackingArea: NSTrackingArea?
+
+    override func mouseDown(with event: NSEvent) {
+        guard let target = commandClickTarget(for: event) else {
+            super.mouseDown(with: event)
+            return
+        }
+        onJumpToTarget?(target)
+    }
+
+    /// Das Ziel, wenn der Klick ein ⌘-Klick (ohne weitere Taste) auf einen Verweis, ein Zitat oder einen Dateipfad ist.
+    func commandClickTarget(for event: NSEvent) -> JumpTarget? {
+        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command, onJumpToTarget != nil else { return nil }
+        return jumpTarget(atWindowPoint: event.locationInWindow)
+    }
+
+    private func jumpTarget(atWindowPoint point: NSPoint) -> JumpTarget? {
+        guard let storage = textStorage else { return nil }
+        let local = convert(point, from: nil)
+        guard bounds.contains(local) else { return nil }
+        return JumpTargetFinder.target(at: characterIndexForInsertion(at: local), in: storage.mutableString)?.target
+    }
+
+    /// Mit gedrückter ⌘-Taste über einem Ziel: Hand statt Textcursor.
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let jumpTrackingArea { removeTrackingArea(jumpTrackingArea) }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        jumpTrackingArea = area
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        updateJumpCursor(flags: event.modifierFlags, windowPoint: event.locationInWindow)
+    }
+
+    override func flagsChanged(with event: NSEvent) {
+        super.flagsChanged(with: event)
+        guard let window else { return }
+        if !updateJumpCursor(flags: event.modifierFlags, windowPoint: window.mouseLocationOutsideOfEventStream) {
+            // ⌘ losgelassen: den Textcursor wieder von AppKit bestimmen lassen
+            window.invalidateCursorRects(for: self)
+        }
+    }
+
+    @discardableResult
+    private func updateJumpCursor(flags: NSEvent.ModifierFlags, windowPoint: NSPoint) -> Bool {
+        guard flags.intersection(.deviceIndependentFlagsMask) == .command, onJumpToTarget != nil,
+              jumpTarget(atWindowPoint: windowPoint) != nil else { return false }
+        NSCursor.pointingHand.set()
+        return true
+    }
+
+    /// Rechtsklick auf ein Label oder einen Verweis: „Label umbenennen …“
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = super.menu(for: event)
+        guard onRenameLabel != nil, let storage = textStorage else { return menu }
+        let location = characterIndexForInsertion(at: convert(event.locationInWindow, from: nil))
+        guard let key = JumpTargetFinder.label(at: location, in: storage.mutableString) else { return menu }
+        let item = NSMenuItem(title: "Label „\(key)“ umbenennen …", action: #selector(renameLabelFromMenu(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = key
+        menu?.insertItem(.separator(), at: 0)
+        menu?.insertItem(item, at: 0)
+        return menu
+    }
+
+    @objc private func renameLabelFromMenu(_ sender: NSMenuItem) {
+        guard let key = sender.representedObject as? String else { return }
+        onRenameLabel?(key)
+    }
+
+    // MARK: Suchen im Editor
+
+    /// ⌘F, ⌥⌘F (Ersetzen), ⌘G, ⇧⌘G und ⌘E gehen zuerst durch die Textansicht und erst danach ins Menü: So
+    /// funktionieren sie auch, wenn das Menü der App keinen Suchen-Eintrag mit diesem Kürzel hat. ⇧⌘F (Projekt) bleibt im Menü.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard let key = event.charactersIgnoringModifiers, let action = Self.findAction(key: key, flags: event.modifierFlags) else {
+            return super.performKeyEquivalent(with: event)
+        }
+        showFinder(action)
+        return true
+    }
+
+    static func findAction(key: String, flags: NSEvent.ModifierFlags) -> NSTextFinder.Action? {
+        let modifiers = flags.intersection(.deviceIndependentFlagsMask).subtracting([.capsLock, .numericPad, .function])
+        switch (key.lowercased(), modifiers) {
+        case ("f", .command): return .showFindInterface
+        case ("f", [.command, .option]): return .showReplaceInterface
+        case ("g", .command): return .nextMatch
+        case ("g", [.command, .shift]): return .previousMatch
+        case ("e", .command): return .setSearchString
+        default: return nil
+        }
+    }
+
+    /// `performTextFinderAction` liest die Aktion aus dem `tag` des Absenders.
+    func showFinder(_ action: NSTextFinder.Action) {
+        let sender = NSMenuItem()
+        sender.tag = action.rawValue
+        performTextFinderAction(sender)
+    }
+
     // MARK: Menübefehle (über die Responder-Kette, wirken auf den Editor mit dem Fokus)
 
     @objc func toggleComment(_ sender: Any?) { perform(TextEditing.toggleComment, actionName: "Kommentar") }

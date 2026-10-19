@@ -11,6 +11,8 @@ final class OutlineStore {
     private(set) var currentEntryID: String?
 
     @ObservationIgnored private var cursor: (file: URL, line: Int)?
+    /// Nach einer geänderten Gliederung oder anderen Include-Struktur (z. B. für die Projekt-Wortzahl)
+    @ObservationIgnored var onChanged: (() -> Void)?
 
     @ObservationIgnored private let parser = OutlineParser()
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
@@ -66,6 +68,9 @@ final class OutlineStore {
             tree = OutlineTree.build(result.entries)
             updateCurrentEntry()
         }
-        if result.includingFile != includingFile { includingFile = result.includingFile }
+        if result.includingFile != includingFile {
+            includingFile = result.includingFile
+            onChanged?()
+        }
     }
 }

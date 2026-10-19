@@ -34,10 +34,16 @@ final class AppModel {
     let changeMarks = ChangeMarkStore()
     let completionProvider = CompletionProvider()
     let recovery = RecoveryStore()
+    let palette = PaletteStore()
+    let wordCounts = WordCountStore()
+    let search = SearchStore()
+    let referenceChecks = ReferenceCheckStore()
 
     private static let lastProjectKey = "lastProjectPath"
     /// Einstellung „Beim Verlassen der App speichern“ (Menü Ablage, Standard aus)
     static let saveOnDeactivateKey = "saveOnDeactivate"
+    /// Längere Auswahl wird nicht als Suchbegriff übernommen
+    static let maximumPrefilledQueryLength = 200
 
     private var watcher: FSEventsWatcher?
     /// Überwacht `.git`, wenn es außerhalb des Projektordners liegt (Projekt ist Unterordner eines Repositorys)
@@ -58,6 +64,10 @@ final class AppModel {
     var confirmCommitAll: @MainActor (_ fileCount: Int) -> Bool = AppModel.showCommitAllAlert
     /// Nachfrage vor dem Zurücksetzen auf den letzten Commit (in Tests ersetzbar)
     var confirmReset: @MainActor (_ title: String, _ details: [String]) -> Bool = AppModel.showResetAlert
+    /// Nachfrage vor dem Ersetzen mehrerer Treffer (in Tests ersetzbar)
+    var confirmReplace: @MainActor (_ hitCount: Int, _ fileCount: Int, _ replacement: String) -> Bool = AppModel.showReplaceAlert
+    /// Nachfrage vor dem Löschen der Hilfsdateien (in Tests ersetzbar)
+    var confirmCleanup: @MainActor () -> Bool = AppModel.showCleanupAlert
     /// Nachfrage, ob gesicherte ungespeicherte Texte wiederhergestellt werden sollen (in Tests ersetzbar)
     var confirmRecovery: @MainActor (_ backups: [RecoveryBackup]) -> Bool = AppModel.showRecoveryAlert
     /// Zuletzt gemeldete Cursorposition (für ⌘J „Im PDF zeigen“)
@@ -72,6 +82,22 @@ final class AppModel {
         editor.onSessionTextChanged = { [weak self] session in
             self?.changeMarks.schedule(session)
             self?.recovery.schedule(session)
+            self?.wordCounts.schedule(session)
+            self?.referenceChecks.schedule(session)
+        }
+        // Hauptdatei und was sie einbindet; ohne Include-Struktur nur die Hauptdatei
+        wordCounts.projectFiles = { [weak self] in
+            guard let self, let main = project.mainFileURL else { return [] }
+            return [main] + outline.includingFile.keys.filter { FileKind(url: $0) == .tex && $0 != main }
+        }
+        outline.onChanged = { [weak self] in self?.wordCounts.refreshProject() }
+        search.sources = { [weak self] in self?.searchSources() ?? [] }
+        referenceChecks.knownLabels = { [weak self] in self?.completionProvider.knownLabels() }
+        referenceChecks.knownCitations = { [weak self] in self?.completionProvider.knownCitations() }
+        completionProvider.onIndexChanged = { [weak self] in
+            guard let self else { return }
+            referenceChecks.indexChanged(completionProvider.index, isLoaded: completionProvider.hasIndex,
+                                         openSessions: editor.openSessions)
         }
         completionProvider.unsavedDocuments = { [weak self] in
             self?.editor.dirtySessions.map { (url: $0.url, text: $0.textStorage.string) } ?? []
@@ -248,6 +274,7 @@ final class AppModel {
 
     private func didSave() {
         for session in editor.openSessions where !session.isDirty { recovery.remove(for: session.url) }
+        refreshSearchResults()
         Task { await reloadCompletionIndex() }
         refreshOutline()
         guard build.compileOnSave, !isSavingForBuild, let main = project.mainFileURL else { return }
@@ -300,6 +327,9 @@ final class AppModel {
         synctex.reset()
         git.reset()
         changeMarks.reset()
+        wordCounts.reset()
+        search.reset()
+        referenceChecks.reset()
         completionProvider.reset()
         lastCursor = nil
 
@@ -312,6 +342,7 @@ final class AppModel {
         pdf.setMainFile(project.mainFileURL)
         synctex.reload(mainFile: project.mainFileURL)
         outline.refresh(mainFile: project.mainFileURL)
+        wordCounts.refreshProject()
         await reloadCompletionIndex(immediately: true)
         await restoreTabs(in: root)
         await offerRecovery(in: root)
@@ -334,6 +365,8 @@ final class AppModel {
     private func tabsChanged(_ tabs: EditorTabs) {
         persist(tabs)
         changeMarks.retain(Set(tabs.fileURLs))
+        wordCounts.retain(Set(tabs.fileURLs))
+        referenceChecks.retain(Set(tabs.fileURLs))
         git.updateDiffTabs(open: Set(tabs.items.compactMap(\.diffURL)), active: tabs.active?.diffURL)
     }
 
@@ -503,7 +536,11 @@ final class AppModel {
         // Eigene Speichervorgänge erkennt die Sitzung am Inhalt und lädt dann nicht neu.
         if !changedFiles.isEmpty { Task { await editor.syncWithDisk(changedFiles) } }
         if needsTreeReload { project.reloadTree() }
-        if needsOutlineRefresh || needsTreeReload { refreshOutline() }
+        if needsOutlineRefresh || needsTreeReload {
+            refreshOutline()
+            wordCounts.refreshProject()
+        }
+        if needsOutlineRefresh || needsCompletionReload || needsTreeReload { refreshSearchResults() }
         if needsOutlineRefresh || needsTreeReload || needsCompletionReload { Task { await reloadCompletionIndex() } }
         if needsPDFRefresh, !build.isRunning { reloadBuildOutputs() }
     }
@@ -515,6 +552,11 @@ final class AppModel {
         guard editor.tabs.isEmpty, let main = project.mainFileURL,
               FileManager.default.fileExists(atPath: main.path) else { return }
         Task { await editor.open(main, asPreview: false) }
+    }
+
+    /// Die Trefferliste soll nach Speichern und Dateiänderungen nicht veraltet stehen bleiben.
+    private func refreshSearchResults() {
+        if !search.query.isEmpty { search.scheduleSearch() }
     }
 
     func refreshOutline() {

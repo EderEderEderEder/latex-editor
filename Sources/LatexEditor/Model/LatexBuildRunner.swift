@@ -51,6 +51,10 @@ enum LatexBuildError: Error, Equatable {
 /// Startet `latexmk` für die Hauptdatei. Läuft vollständig abseits des Main-Threads.
 enum LatexBuildRunner {
     static let arguments = ["-pdf", "-synctex=1", "-interaction=nonstopmode", "-file-line-error", "-cd"]
+    /// Löscht die beim Kompilieren erzeugten Hilfsdateien (aux, log, toc, bbl …), das PDF bleibt.
+    static let cleanArguments = ["-c", "-cd"]
+    /// So lange darf latexmk nach „Abbrechen“ aufräumen, bevor es hart beendet wird
+    private static let interruptGracePeriod = Duration.seconds(3)
     /// Dateisysteme speichern Änderungszeiten teils nur sekundengenau.
     private static let timestampTolerance: TimeInterval = 1
 
@@ -64,7 +68,9 @@ enum LatexBuildRunner {
             .appendingPathComponent("latexmk-\(UUID().uuidString).txt")
         defer { try? FileManager.default.removeItem(at: outputURL) }
 
-        let exitCode = try await launch(latexmk, request: request, outputURL: outputURL)
+        let exitCode = try await launch(latexmk, arguments: arguments, mainFile: request.mainFile, outputURL: outputURL)
+        // Nach „Abbrechen“ sind Logs und PDF halb geschrieben: nichts davon auswerten.
+        try Task.checkCancellation()
         // Erfolg ohne Neulauf („alles aktuell“): Das vorhandene Log ist gültig. Nach einem Fehlschlag
         // nur Logs dieses Builds lesen, sonst stammen die Meldungen vom letzten Lauf.
         let minimumDate = exitCode == 0 ? Date.distantPast : startDate
@@ -77,31 +83,63 @@ enum LatexBuildRunner {
         )
     }
 
-    private static func launch(_ latexmk: URL, request: LatexBuildRequest, outputURL: URL) async throws -> Int32 {
+    /// Hilfsdateien löschen (`latexmk -c`); Ausgabe wird verworfen. Liefert den Exit-Code.
+    static func clean(mainFile: URL, latexmk: URL? = LatexToolchain.latexmk()) async throws -> Int32 {
+        guard let latexmk else { throw LatexBuildError.toolchainMissing }
+        let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent("latexmk-clean-\(UUID().uuidString).txt")
+        defer { try? FileManager.default.removeItem(at: outputURL) }
+        return try await launch(latexmk, arguments: cleanArguments, mainFile: mainFile, outputURL: outputURL)
+    }
+
+    /// Prozess für den Abbruch: `Process` ist nicht `Sendable`, `interrupt`/`terminate` sind aber von jedem Thread erlaubt.
+    private final class ProcessBox: @unchecked Sendable {
+        let process = Process()
+    }
+
+    private static func launch(_ latexmk: URL, arguments: [String], mainFile: URL, outputURL: URL) async throws -> Int32 {
         FileManager.default.createFile(atPath: outputURL.path, contents: nil)
         let output = try FileHandle(forWritingTo: outputURL)
         defer { try? output.close() }
 
-        let process = Process()
+        let box = ProcessBox()
+        let process = box.process
         process.executableURL = latexmk
-        process.arguments = arguments + [request.mainFile.lastPathComponent]
-        process.currentDirectoryURL = request.mainFile.deletingLastPathComponent()
+        process.arguments = arguments + [mainFile.lastPathComponent]
+        process.currentDirectoryURL = mainFile.deletingLastPathComponent()
         process.environment = LatexToolchain.environment(base: ProcessInfo.processInfo.environment)
         // Ausgabe in eine Datei statt in eine Pipe: Eine volle Pipe würde latexmk blockieren.
         process.standardOutput = output
         process.standardError = output
         process.standardInput = FileHandle.nullDevice
 
-        return try await withCheckedThrowingContinuation { continuation in
-            process.terminationHandler = { finished in
-                continuation.resume(returning: finished.terminationStatus)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                guard !Task.isCancelled else {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+                process.terminationHandler = { finished in
+                    continuation.resume(returning: finished.terminationStatus)
+                }
+                do {
+                    try process.run()
+                } catch {
+                    process.terminationHandler = nil
+                    continuation.resume(throwing: LatexBuildError.launchFailed(error.localizedDescription))
+                }
             }
-            do {
-                try process.run()
-            } catch {
-                process.terminationHandler = nil
-                continuation.resume(throwing: LatexBuildError.launchFailed(error.localizedDescription))
-            }
+        } onCancel: {
+            interrupt(box)
+        }
+    }
+
+    /// Wie Ctrl-C im Terminal: latexmk beendet seine Kindprozesse (pdflatex, biber) selbst. Reagiert es nicht, wird es hart beendet.
+    private static func interrupt(_ box: ProcessBox) {
+        guard box.process.isRunning else { return }
+        box.process.interrupt()
+        Task.detached {
+            try? await Task.sleep(for: interruptGracePeriod)
+            if box.process.isRunning { box.process.terminate() }
         }
     }
 

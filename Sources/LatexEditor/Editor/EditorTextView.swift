@@ -11,11 +11,17 @@ struct EditorTextView: NSViewRepresentable {
     let issueMarks: [Int: BuildIssue.Severity]
     /// Git-Änderungen der angezeigten Datei gegenüber HEAD
     var changeMarks = ChangeMarks()
+    /// Verweise und Zitate ohne Ziel in der angezeigten Datei (rote Unterstreichung)
+    var referenceProblems: [ReferenceProblem] = []
     /// Vorschläge für die Autovervollständigung (Projektindex)
     var completionProvider: CompletionProvider?
     /// Neue ID: Vervollständigung von Hand öffnen (Menü, ⌃Leertaste)
     var completionRequest: UUID?
-    let onCursorMoved: (URL, Int) -> Void
+    let onCursorMoved: (CursorInfo) -> Void
+    /// ⌘-Klick auf Verweis, Zitat oder Dateipfad
+    var onJumpToTarget: ((JumpTarget) -> Void)?
+    /// „Label umbenennen …“ im Kontextmenü
+    var onRenameLabel: ((String) -> Void)?
 
     func makeCoordinator() -> EditorCoordinator {
         EditorCoordinator()
@@ -27,12 +33,18 @@ struct EditorTextView: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         context.coordinator.onCursorMoved = onCursorMoved
+        context.coordinator.jumpHandler = onJumpToTarget
+        context.coordinator.renameLabelHandler = onRenameLabel
         context.coordinator.update(session: session, jump: jump, insert: insertRequest)
         context.coordinator.updateIssueMarks(issueMarks)
         context.coordinator.updateChangeMarks(changeMarks)
+        context.coordinator.updateReferenceProblems(referenceProblems)
         context.coordinator.updateCompletion(provider: completionProvider, request: completionRequest)
         selectionProviderOwner.selectionProvider = { [weak coordinator = context.coordinator] in
             coordinator?.selectedText ?? ""
+        }
+        selectionProviderOwner.cursorLocationProvider = { [weak coordinator = context.coordinator] in
+            coordinator?.cursorLocation ?? 0
         }
     }
 }
@@ -43,13 +55,20 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
     private static let textInset = NSSize(width: 8, height: 8)
     private static let cursorReportDelay = Duration.milliseconds(150)
 
-    var onCursorMoved: ((URL, Int) -> Void)?
+    var onCursorMoved: ((CursorInfo) -> Void)?
+    var jumpHandler: ((JumpTarget) -> Void)?
+    var renameLabelHandler: ((String) -> Void)?
+
+    var cursorLocation: Int { textView?.selectedRange().location ?? 0 }
 
     private var scrollView: NSScrollView!
     private var textView: LatexTextView!
     private var lineNumberRuler: LineNumberRulerView!
     private let placeholderStorage = NSTextStorage()
     private var session: DocumentSession?
+    private static let referenceProblemAttributes: [NSAttributedString.Key] = [.underlineStyle, .underlineColor, .toolTip]
+    private var appliedProblems: [ReferenceProblem] = []
+    private weak var problemsSession: DocumentSession?
     private var lastHandledJumpID: UUID?
     private var lastHandledInsertID: UUID?
     private var lastHandledCompletionRequest: UUID?
@@ -85,6 +104,8 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
             MainActor.assumeIsolated { self?.applyFontSize() }
         }
         textView.onCompletionRequested = { [weak self] in self?.completion.trigger() }
+        textView.onJumpToTarget = { [weak self] target in self?.jumpHandler?(target) }
+        textView.onRenameLabel = { [weak self] key in self?.renameLabelHandler?(key) }
         textView.syntaxTokensProvider = { [weak self] range in
             self?.session?.syntaxTokens(in: range) ?? []
         }
@@ -232,6 +253,29 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         if lineNumberRuler.issueMarks != marks { lineNumberRuler.issueMarks = marks }
     }
 
+    /// Unterstreicht die Schlüssel als temporäre Attribute des Layout-Managers (nicht im Text, nicht in `SyntaxTheme`):
+    /// Sie ändern weder den Text noch den Undo-Verlauf und verschwinden beim Dateiwechsel mit der Sitzung.
+    func updateReferenceProblems(_ problems: [ReferenceProblem]) {
+        guard problems != appliedProblems || problemsSession !== session else { return }
+        appliedProblems = problems
+        problemsSession = session
+        // Nicht synchron aus `updateNSView`: Das Layout soll nicht mitten in einem SwiftUI-Update angestoßen werden.
+        DispatchQueue.main.async { [weak self] in self?.applyReferenceProblems() }
+    }
+
+    private func applyReferenceProblems() {
+        guard let layoutManager = textView.layoutManager, let storage = textView.textStorage else { return }
+        let whole = NSRange(location: 0, length: storage.length)
+        for key in Self.referenceProblemAttributes { layoutManager.removeTemporaryAttribute(key, forCharacterRange: whole) }
+        let underline = NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDash.rawValue
+        for problem in appliedProblems where NSMaxRange(problem.range) <= storage.length {
+            layoutManager.addTemporaryAttributes(
+                [.underlineStyle: underline, .underlineColor: NSColor.systemRed, .toolTip: problem.message],
+                forCharacterRange: problem.range
+            )
+        }
+    }
+
     func updateChangeMarks(_ marks: ChangeMarks) {
         if lineNumberRuler.changeMarks != marks { lineNumberRuler.changeMarks = marks }
     }
@@ -263,8 +307,13 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
 
     private func reportCursor() {
         guard let session else { return }
-        let line = session.lineIndex.clampedLine(containing: textView.selectedRange().location) + 1
-        onCursorMoved?(session.url, line)
+        let selection = textView.selectedRange().clamped(toLength: session.textStorage.length)
+        let lineIndex = session.lineIndex
+        let line = lineIndex.clampedLine(containing: selection.location)
+        let words = selection.length > 0 && selection.length <= Self.maximumSelectedTextLength
+            ? WordCounter.count(in: session.textStorage.mutableString.substring(with: selection)) : 0
+        onCursorMoved?(CursorInfo(file: session.url, line: line + 1, column: selection.location - lineIndex.start(ofLine: line) + 1,
+                                  selectedCharacters: selection.length, selectedWords: words))
     }
 
     // MARK: NSTextViewDelegate

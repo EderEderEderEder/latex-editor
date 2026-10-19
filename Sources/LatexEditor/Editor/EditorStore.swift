@@ -1,6 +1,18 @@
 import Foundation
 import Observation
 
+/// Cursor und Auswahl der angezeigten Datei (entprellt gemeldet) für die Statusleiste.
+struct CursorInfo: Equatable, Sendable {
+    let file: URL
+    /// 1-basiert
+    let line: Int
+    /// 1-basiert, in UTF-16-Einheiten ab Zeilenanfang
+    let column: Int
+    let selectedCharacters: Int
+    /// Wörter der Auswahl (bei sehr großer Auswahl 0)
+    let selectedWords: Int
+}
+
 struct JumpRequest: Equatable {
     let id = UUID()
     /// 1-basiert
@@ -27,6 +39,8 @@ final class EditorStore {
     private(set) var insertRequest: InsertRequest?
     /// Neue ID: Vervollständigung von Hand öffnen (Menü Bearbeiten, ⌃Leertaste)
     private(set) var completionRequest: UUID?
+    /// Zuletzt gemeldeter Cursor; die Statusleiste zeigt ihn nur, wenn er zur angezeigten Datei gehört
+    private(set) var cursor: CursorInfo?
     private(set) var tabs = EditorTabs() {
         didSet { if tabs != oldValue { onTabsChanged?(tabs) } }
     }
@@ -36,6 +50,8 @@ final class EditorStore {
     @ObservationIgnored private var latestRequestedURL: URL?
     /// Liefert den markierten Text der angezeigten Datei (vom Editor-Coordinator gesetzt)
     @ObservationIgnored var selectionProvider: (() -> String)?
+    /// Liefert die aktuelle Cursorposition (UTF-16) der angezeigten Datei, ohne die Entprellung der Statusleiste
+    @ObservationIgnored var cursorLocationProvider: (() -> Int)?
     @ObservationIgnored var onDidSave: (() -> Void)?
     /// Entprellt gemeldete Cursorposition (Datei, 1-basierte Zeile), z. B. für den aktuellen Abschnitt.
     @ObservationIgnored var onCursorMoved: ((URL, Int) -> Void)?
@@ -231,6 +247,10 @@ final class EditorStore {
         selectionProvider?() ?? ""
     }
 
+    func cursorLocation() -> Int? {
+        cursorLocationProvider?()
+    }
+
     /// Fügt Text an der Cursorposition ein (ein Undo-Schritt). Gibt `false` zurück, wenn nichts angezeigt wird.
     @discardableResult
     func insert(_ text: String, isBlock: Bool, replacesSelection: Bool) -> Bool {
@@ -244,8 +264,9 @@ final class EditorStore {
         completionRequest = UUID()
     }
 
-    func reportCursor(file: URL, line: Int) {
-        onCursorMoved?(file, line)
+    func reportCursor(_ info: CursorInfo) {
+        if cursor != info { cursor = info }
+        onCursorMoved?(info.file, info.line)
     }
 
     func saveCurrent() {

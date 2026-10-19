@@ -17,6 +17,8 @@ final class SidebarStore {
     /// Views, weil die beim Wechsel des Seitenleisten-Tabs neu entstehen (sonst klappte alles zurück).
     var expandedFolders: Set<URL> = []
     var collapsedOutlineEntries: Set<String> = []
+    /// Aufgeklappte Hinweisgruppen in der Fehlerliste („labels“, „sources“)
+    var expandedHintGroups: Set<String> = []
 
     @ObservationIgnored private var project: URL?
     @ObservationIgnored private let defaults: UserDefaults
@@ -29,6 +31,7 @@ final class SidebarStore {
         project = nil
         expandedFolders = []
         collapsedOutlineEntries = []
+        expandedHintGroups = []
         tab = newProject.map { SidebarTabMemory.tab(for: $0, defaults: defaults) } ?? .files
         project = newProject
     }

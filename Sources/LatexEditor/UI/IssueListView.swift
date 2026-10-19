@@ -33,16 +33,85 @@ struct IssueListView: View {
     private var content: some View {
         if case let .unavailable(message) = model.build.status {
             EmptyStateView("Kompilieren nicht möglich", systemImage: "exclamationmark.triangle", description: message)
-        } else if model.build.issues.isEmpty {
+        } else if model.build.issues.isEmpty, !hasHints {
             EmptyStateView(emptyTitle, systemImage: emptySymbol, description: emptyDescription)
-        } else if filteredIssues.isEmpty {
+        } else if filteredIssues.isEmpty, filteredLabels.isEmpty, filteredSources.isEmpty, !filter.isEmpty {
             NoFilterMatches(filter: filter)
         } else {
-            List(filteredIssues) { issue in
-                IssueRow(issue: issue, projectRoot: model.project.rootURL, open: open)
+            List {
+                if !filteredIssues.isEmpty || hasHints {
+                    Section {
+                        if model.build.issues.isEmpty {
+                            Label(emptyTitle, systemImage: emptySymbol).foregroundStyle(.secondary).scaledFont(.callout)
+                        }
+                        ForEach(filteredIssues) { issue in
+                            IssueRow(issue: issue, canOpen: model.canOpen(issue), isSelected: issue.id == model.build.selectedIssueID,
+                                     open: model.openIssue)
+                        }
+                    } header: {
+                        if hasHints { Text("Build-Meldungen").scaledFont(.subheadline, weight: .semibold) }
+                    }
+                }
+                if hasHints { hints }
             }
             .listStyle(.sidebar)
         }
+    }
+
+    // MARK: Hinweise (kein Fehler, nur aufgeräumt wäre schöner)
+
+    private var hasHints: Bool {
+        !model.referenceChecks.unusedLabels.isEmpty || !model.referenceChecks.unusedSources.isEmpty
+    }
+
+    private var filteredLabels: [LabelEntry] {
+        guard !filter.isEmpty else { return model.referenceChecks.unusedLabels }
+        return model.referenceChecks.unusedLabels.filter { $0.label.localizedCaseInsensitiveContains(filter) }
+    }
+
+    private var filteredSources: [BibEntry] {
+        guard !filter.isEmpty else { return model.referenceChecks.unusedSources }
+        return model.referenceChecks.unusedSources.filter {
+            $0.key.localizedCaseInsensitiveContains(filter) || $0.title.localizedCaseInsensitiveContains(filter)
+        }
+    }
+
+    @ViewBuilder
+    private var hints: some View {
+        Section {
+            if !filteredLabels.isEmpty {
+                hintGroup("labels", title: "Ungenutzte Labels (\(filteredLabels.count))") {
+                    ForEach(filteredLabels) { entry in
+                        HintRow(title: entry.label, detail: "\(entry.file.lastPathComponent):\(entry.line)") {
+                            Task { await model.editor.open(entry.file, line: entry.line) }
+                        }
+                    }
+                }
+            }
+            if !filteredSources.isEmpty {
+                hintGroup("sources", title: "Nicht zitierte Quellen (\(filteredSources.count))") {
+                    ForEach(filteredSources) { entry in
+                        HintRow(title: entry.key, detail: entry.title) {
+                            guard let file = entry.file else { return }
+                            Task { await model.editor.open(file, line: entry.line) }
+                        }
+                    }
+                }
+            }
+        } header: {
+            Text("Hinweise").scaledFont(.subheadline, weight: .semibold)
+                .help("Kein Fehler: Diese Labels und Quellen werden im Text nirgends verwendet.")
+        }
+    }
+
+    private func hintGroup<Content: View>(_ id: String, title: String, @ViewBuilder content: @escaping () -> Content) -> some View {
+        let sidebar = model.sidebar
+        // Bei aktivem Filter immer aufgeklappt, sonst sähe man die Treffer nicht
+        let expanded = Binding(
+            get: { !filter.isEmpty || sidebar.expandedHintGroups.contains(id) },
+            set: { if $0 { sidebar.expandedHintGroups.insert(id) } else { sidebar.expandedHintGroups.remove(id) } }
+        )
+        return DisclosureGroup(isExpanded: expanded) { content() } label: { Text(title).scaledFont(.callout) }
     }
 
     private var filteredIssues: [BuildIssue] {
@@ -70,25 +139,37 @@ struct IssueListView: View {
         let seconds = Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
         return seconds.formatted(.number.precision(.fractionLength(1)).locale(Locale(identifier: "de_AT"))) + " s"
     }
+}
 
-    private func open(_ issue: BuildIssue) {
-        guard let file = issue.fileURL else {
-            model.build.isLogVisible = true
-            return
+private struct HintRow: View {
+    let title: String
+    let detail: String
+    let open: () -> Void
+
+    var body: some View {
+        Button(action: open) {
+            HStack(spacing: 6) {
+                Text(title).lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: 4)
+                Text(detail).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
+            }
+            .scaledFont(.callout)
+            .contentShape(Rectangle())
         }
-        Task { await model.editor.open(file, line: issue.line) }
+        .buttonStyle(.plain)
     }
 }
 
 private struct IssueRow: View {
     let issue: BuildIssue
-    let projectRoot: URL?
+    let canOpen: Bool
+    let isSelected: Bool
     let open: (BuildIssue) -> Void
 
     var body: some View {
         // Nicht `.disabled`: Das graut auch den Text aus. Meldungen aus Paketen bleiben lesbar, öffnen aber nichts.
         Button {
-            if canOpen { open(issue) }
+            if canOpen || issue.fileURL == nil { open(issue) }
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: symbol)
@@ -109,14 +190,8 @@ private struct IssueRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .listRowBackground(isSelected ? Color.accentColor.opacity(0.15).clipShape(RoundedRectangle(cornerRadius: 5)) : nil)
         .help((issue.detail ?? issue.message) + (canOpen ? "" : "\n\nStammt aus einem Paket außerhalb des Projekts."))
-    }
-
-    /// Nur Dateien im Projekt öffnen; Meldungen aus Paketen (TeX-Live-Pfade) bleiben Info.
-    private var canOpen: Bool {
-        guard let file = issue.fileURL else { return true }
-        guard let projectRoot else { return false }
-        return file.path.hasPrefix(projectRoot.path + "/")
     }
 
     private var location: String? {

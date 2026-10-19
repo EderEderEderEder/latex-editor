@@ -51,6 +51,18 @@ struct RootView: View {
         .task { await model.restoreLastProject() }
         .sheet(isPresented: logBinding) { BuildLogSheet(build: model.build) }
         .sheet(item: promptBinding) { prompt in NameSheet(model: model, prompt: prompt) }
+        .sheet(item: labelRenameBinding) { prompt in LabelRenameSheet(model: model, prompt: prompt) }
+        .alert("Hinweis", isPresented: noticeBinding) {
+            Button("OK") { model.fileActions.notice = nil }
+        } message: {
+            Text(model.fileActions.notice ?? "")
+        }
+        .sheet(item: paletteBinding) { palette in
+            switch palette {
+            case .quickOpen: QuickOpenSheet(model: model)
+            case .goToLine: GoToLineSheet(model: model)
+            }
+        }
         .alert("Datei", isPresented: fileErrorBinding) {
             Button("OK") { model.fileActions.errorMessage = nil }
         } message: {
@@ -132,6 +144,18 @@ struct RootView: View {
 
     private var promptBinding: Binding<NamePrompt?> {
         Binding(get: { model.fileActions.prompt }, set: { model.fileActions.prompt = $0 })
+    }
+
+    private var labelRenameBinding: Binding<LabelRenamePrompt?> {
+        Binding(get: { model.fileActions.labelRename }, set: { model.fileActions.labelRename = $0 })
+    }
+
+    private var noticeBinding: Binding<Bool> {
+        Binding(get: { model.fileActions.notice != nil }, set: { if !$0 { model.fileActions.notice = nil } })
+    }
+
+    private var paletteBinding: Binding<Palette?> {
+        Binding(get: { model.palette.active }, set: { model.palette.active = $0 })
     }
 
     private var fileErrorBinding: Binding<Bool> {

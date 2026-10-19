@@ -7,6 +7,10 @@ final class CompletionProvider {
     static let reloadDelay = Duration.milliseconds(500)
 
     private(set) var index = CompletionIndex.empty
+    /// Der Index wurde mindestens einmal gelesen (sonst wären alle Labels „unbekannt“)
+    private(set) var hasIndex = false
+    /// Nach jedem neuen Index (Prüfung auf unbekannte Verweise, Hinweise)
+    var onIndexChanged: (() -> Void)?
     /// Offene Dateien mit ungespeicherten Änderungen (Datei, aktueller Text)
     var unsavedDocuments: () -> [(url: URL, text: String)] = { [] }
 
@@ -32,23 +36,26 @@ final class CompletionProvider {
         await reload(files: files, projectRoot: projectRoot, mainFile: mainFile, generation: generation)
     }
 
+
     private func reload(files: [URL], projectRoot: URL, mainFile: URL?, generation expected: Int) async {
         let built = await Task.detached(priority: .utility) {
             CompletionIndex.build(files: files, styleFiles: CompletionIndex.styleFiles(in: projectRoot),
                                   projectRoot: projectRoot, mainFile: mainFile)
         }.value
         guard expected == generation else { return }
-        apply(built)
+        apply(built, isLoaded: true)
     }
 
     func reset() {
         generation += 1
         reloadTask?.cancel()
-        apply(.empty)
+        apply(.empty, isLoaded: false)
     }
 
-    private func apply(_ newIndex: CompletionIndex) {
+    private func apply(_ newIndex: CompletionIndex, isLoaded: Bool) {
         index = newIndex
+        hasIndex = isLoaded
+        defer { onIndexChanged?() }
         let known = Set(CommandCatalog.commands.map(\.text))
         commandItems = CommandCatalog.commands + newIndex.userCommands.filter { !known.contains($0) }
             .map { CompletionItem.command($0, detail: "aus dem Projekt") }
@@ -111,13 +118,28 @@ final class CompletionProvider {
     }
 
     /// Labels von der Platte, für ungespeicherte Dateien aus dem Editortext.
-    private func labelItems() -> [CompletionItem] {
+    func allLabels() -> [LabelEntry] {
         let unsaved = unsavedDocuments()
         let unsavedFiles = Set(unsaved.map { $0.url.standardizedFileURL })
         var labels = index.catalog.labels.filter { !unsavedFiles.contains($0.file.standardizedFileURL) }
         for document in unsaved { labels += ProjectCatalog.labels(in: document.text, file: document.url) }
         labels.sort { $0.label.localizedStandardCompare($1.label) == .orderedAscending }
-        return labels.map { CompletionItem(kind: .label, text: $0.label, detail: "\($0.file.lastPathComponent):\($0.line)") }
+        return labels
+    }
+
+    private func labelItems() -> [CompletionItem] {
+        allLabels().map { CompletionItem(kind: .label, text: $0.label, detail: "\($0.file.lastPathComponent):\($0.line)") }
+    }
+
+    /// Bekannte Labels für die Prüfung; `nil`, solange der Index nicht gelesen ist
+    func knownLabels() -> Set<String>? {
+        hasIndex ? Set(allLabels().map(\.label)) : nil
+    }
+
+    /// Bekannte Literaturschlüssel; `nil` ohne Index oder ohne Einträge (z. B. Literaturdatei außerhalb des Projekts)
+    func knownCitations() -> Set<String>? {
+        guard hasIndex, !index.catalog.bibEntries.isEmpty else { return nil }
+        return Set(index.catalog.bibEntries.map(\.key))
     }
 }
 

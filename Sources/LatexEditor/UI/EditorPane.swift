@@ -17,11 +17,16 @@ struct EditorPane: View {
                 // Der Editor bleibt bestehen; bei einem Diff-Tab hat er keine Sitzung (nicht editierbar),
                 // Auswahl und Scrollposition der Dateien liegen in ihren Sitzungen.
                 EditorContent(editor: model.editor, build: model.build, changeMarks: model.changeMarks,
-                              completionProvider: model.completionProvider)
+                              completionProvider: model.completionProvider, referenceChecks: model.referenceChecks,
+                              jumpHandler: model.jump(to:), renameHandler: { model.beginLabelRename(key: $0) })
                 if let diffURL = model.editor.tabs.active?.diffURL {
                     DiffView(git: model.git, url: diffURL)
                         .id(diffURL)
                 }
+            }
+            if let session = model.editor.current {
+                Divider()
+                EditorStatusBar(editor: model.editor, counts: model.wordCounts, session: session)
             }
         }
     }
@@ -33,6 +38,9 @@ private struct EditorContent: View {
     let build: BuildStore
     let changeMarks: ChangeMarkStore
     let completionProvider: CompletionProvider
+    let referenceChecks: ReferenceCheckStore
+    let jumpHandler: (JumpTarget) -> Void
+    let renameHandler: (String) -> Void
 
     var body: some View {
         ZStack {
@@ -43,9 +51,12 @@ private struct EditorContent: View {
                 selectionProviderOwner: editor,
                 issueMarks: editor.current.flatMap { build.marksByFile[$0.url] } ?? [:],
                 changeMarks: editor.current.map { changeMarks.marks(for: $0.url) } ?? ChangeMarks(),
+                referenceProblems: editor.current.map { referenceChecks.problems(for: $0.url) } ?? [],
                 completionProvider: completionProvider,
                 completionRequest: editor.completionRequest,
-                onCursorMoved: editor.reportCursor
+                onCursorMoved: editor.reportCursor,
+                onJumpToTarget: jumpHandler,
+                onRenameLabel: renameHandler
             )
             if editor.current == nil, editor.tabs.active?.diffURL == nil {
                 EmptyStateView(

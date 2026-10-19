@@ -25,14 +25,21 @@ struct InsertMenu: View {
     }
 }
 
-/// „Kompilieren“ (⌘B). Die Option „Beim Speichern kompilieren“ liegt im Menü Ablage.
+/// „Kompilieren“ (⌘B); während eines Builds „Abbrechen“ (⌘.). Die Option „Beim Speichern kompilieren“ liegt im Menü Ablage.
 struct CompileButton: View {
     let model: AppModel
 
+    private var isRunning: Bool { model.build.status == .running }
+
     var body: some View {
-        Button("Kompilieren", systemImage: "hammer") { model.compile() }
-            .disabled(model.project.mainFileURL == nil)
-            .help("Kompilieren (⌘B)")
+        if isRunning {
+            Button("Abbrechen", systemImage: "xmark.circle") { model.build.cancelBuild() }
+                .help("Kompilieren abbrechen (⌘.)")
+        } else {
+            Button("Kompilieren", systemImage: "hammer") { model.compile() }
+                .disabled(model.project.mainFileURL == nil)
+                .help("Kompilieren (⌘B)")
+        }
     }
 }
 
@@ -67,6 +74,8 @@ struct BuildStatusView: View {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         case .failed:
             Image(systemName: "xmark.octagon.fill").foregroundStyle(.red)
+        case .cancelled:
+            Image(systemName: "stop.circle.fill").foregroundStyle(.secondary)
         case .unavailable:
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
         case .idle:
@@ -81,6 +90,7 @@ struct BuildStatusView: View {
         case .running: "Kompiliert …"
         case .succeeded: build.warningCount == 0 ? "Erfolgreich" : "Erfolgreich · \(warnings)"
         case .failed: "\(build.errorCount) Fehler · \(warnings)"
+        case .cancelled: "Abgebrochen"
         case .unavailable: "MacTeX fehlt"
         }
     }
@@ -93,6 +103,7 @@ struct BuildStatusView: View {
         switch build.status {
         case let .unavailable(message): return message
         case .idle: return "Seit dem Öffnen des Projekts wurde nicht kompiliert, das PDF kann veraltet sein. ⌘B kompiliert."
+        case .cancelled: return "Das Kompilieren wurde abgebrochen. Meldungen und PDF stammen vom Build davor."
         default: return "Meldungen in der Seitenleiste anzeigen"
         }
     }

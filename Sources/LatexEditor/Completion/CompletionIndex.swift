@@ -14,6 +14,11 @@ struct CompletionIndex: Equatable, Sendable {
     var environments: [String] = []
     /// Optionen der Klassen und Pakete im Projekt (Dateiname ohne Endung → Optionen)
     var packageOptions: [String: PackageOptions] = [:]
+    /// Labels, die irgendwo mit `\ref` & Co. verwendet werden, und zitierte Schlüssel (für „ungenutzt“-Hinweise)
+    var usedLabels: Set<String> = []
+    var usedCitations: Set<String> = []
+    /// `\nocite{*}` irgendwo: Alle Quellen gelten als benutzt
+    var citesEverything = false
 
     static let empty = CompletionIndex()
 
@@ -38,6 +43,15 @@ struct CompletionIndex: Equatable, Sendable {
             guard let text = readText(file) else { continue }
             commands.formUnion(definedCommands(in: text))
             environments.formUnion(definedEnvironments(in: text))
+            guard FileKind(url: file) == .tex else { continue }
+            for occurrence in LatexReferences.scan(text) {
+                switch occurrence.kind {
+                case .labelUse: index.usedLabels.insert(occurrence.key)
+                case .citation: index.usedCitations.insert(occurrence.key)
+                case .labelDefinition: break
+                }
+            }
+            if LatexReferences.citesEverything(text) { index.citesEverything = true }
         }
         index.userCommands = commands.sorted()
         index.environments = environments.sorted()

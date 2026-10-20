@@ -5,3 +5,5 @@ build/
 .swiftpm/
 # Demo-Projekte für Tests und Handtests liegen nur lokal; Tests überspringen sich, wenn sie fehlen
 Testdaten/
+# Lokale Fehlersammlung beim Arbeiten mit der App
+FEHLER.md

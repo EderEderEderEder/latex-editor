@@ -5,9 +5,14 @@ import SwiftUI
 /// bis sie bearbeitet oder per Doppelklick festgehalten werden.
 struct TabBar: View {
     private static let height: CGFloat = 30
+    /// Breite des Verlaufs an einem Rand, hinter dem noch Tabs liegen
+    private static let fadeWidth: CGFloat = 24
+    /// Ab so viel verdecktem Inhalt gilt ein Rand als „hier geht es weiter“
+    private static let overflowTolerance: CGFloat = 1
 
     let model: AppModel
     @Environment(\.interfaceScale) private var scale
+    @State private var overflow = TabOverflow()
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -20,6 +25,15 @@ struct TabBar: View {
                     Spacer(minLength: 0)
                 }
             }
+            .onScrollGeometryChange(for: TabOverflow.self) { geometry in
+                TabOverflow(
+                    leading: geometry.contentOffset.x > Self.overflowTolerance,
+                    trailing: geometry.contentOffset.x + geometry.containerSize.width < geometry.contentSize.width - Self.overflowTolerance
+                )
+            } action: { _, new in
+                overflow = new
+            }
+            .mask { EdgeFade(overflow: overflow, width: Self.fadeWidth * scale) }
             .onChange(of: model.editor.tabs.active) { _, active in
                 guard let active else { return }
                 withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(active) }
@@ -27,6 +41,28 @@ struct TabBar: View {
         }
         .frame(height: Self.height * scale)
         .background(.bar)
+    }
+}
+
+/// Liegen links bzw. rechts noch Tabs außerhalb der sichtbaren Leiste?
+struct TabOverflow: Equatable {
+    var leading = false
+    var trailing = false
+}
+
+/// Maske der Tab-Leiste: an einem Rand mit verdeckten Tabs ein kurzer Verlauf ins Transparente, sonst voll sichtbar.
+private struct EdgeFade: View {
+    let overflow: TabOverflow
+    let width: CGFloat
+
+    var body: some View {
+        HStack(spacing: 0) {
+            LinearGradient(colors: [overflow.leading ? .clear : .black, .black], startPoint: .leading, endPoint: .trailing)
+                .frame(width: width)
+            Rectangle().fill(.black)
+            LinearGradient(colors: [.black, overflow.trailing ? .clear : .black], startPoint: .leading, endPoint: .trailing)
+                .frame(width: width)
+        }
     }
 }
 
@@ -74,7 +110,9 @@ private struct TabItem: View {
         .padding(.horizontal, 10)
         .frame(minWidth: Self.minimumWidth * scale, maxWidth: (isDiff ? Self.maximumDiffWidth : Self.maximumWidth) * scale)
         .frame(maxHeight: .infinity)
-        .background(isActive ? Color(nsColor: .textBackgroundColor) : (isHovering ? Color.primary.opacity(0.06) : .clear))
+        // Nicht in den Sicherheitsbereich: Sonst reicht die Fläche bis unter die Titelleiste
+        .background(isActive ? Color(nsColor: .textBackgroundColor) : (isHovering ? Color.primary.opacity(0.06) : .clear),
+                    ignoresSafeAreaEdges: [])
         .overlay(alignment: .trailing) { Divider() }
         .overlay(alignment: .top) {
             Rectangle().fill(Color.accentColor).frame(height: 2).opacity(isActive ? 1 : 0)

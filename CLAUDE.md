@@ -19,10 +19,11 @@ Kein Xcode, nur Command Line Tools (Swift 6.3). Keine externen Abhängigkeiten, 
 swift build                      # Debug-Build, muss ohne Warnungen durchlaufen
 scripts/test.sh                  # alle Tests (Swift Testing), muss komplett grün sein
 scripts/build-app.sh             # Universal-App (arm64 + x86_64) -> build/LatexEditor.app, ad-hoc signiert
+scripts/install-app.sh           # baut und installiert nach /Applications (ersetzt die alte, entfernt die Kopie in build/)
 open build/LatexEditor.app
 ```
 
-Das Build-Skript baut jede Architektur separat (`.build-arm64`, `.build-x86_64`) und setzt sie mit `lipo` zusammen.
+Das Build-Skript baut jede Architektur separat (`.build-arm64`, `.build-x86_64`) und setzt sie mit `lipo` zusammen. Es schreibt Commit und Build-Zeit in die Info.plist (`NSHumanReadableCopyright`, `CFBundleVersion` = Zeitstempel); das Standardfenster „Über LatexEditor“ zeigt sie an, damit klar ist, welche Version läuft (es gab Verwechslungen zwischen Xcode-Build, `build/` und `/Applications`). Der Nutzer verwendet die App aus `/Applications`; nach Änderungen dorthin mit `install-app.sh` installieren (läuft sie noch, bricht das Skript ab, nie selbst beenden).
 
 **Tests nie mit nacktem `swift test` starten.** Swift Testing liegt bei reinen Command Line Tools außerhalb der Suchpfade. Ohne die Flags aus `scripts/test.sh` schlägt der Build fehl ("no such module 'Testing'"). Mit Flags nur im Package würde der SwiftPM-Runner still 0 Tests ausführen. `scripts/test.sh` reicht die Flags durch und bricht ab, wenn kein Testlauf erkannt wird. Details und manuelle UI-Checkliste: `TESTING.md`.
 Zuletzt geöffnetes Projekt liegt in UserDefaults (`de.maxieder.LatexEditor`, Key `lastProjectPath`).
@@ -123,6 +124,7 @@ Kompilieren nach Pause, Fehlermarkierungen o. Ä. hängen sich an `DocumentSessi
   - `HSplitView`-Kinder und den `HSplitView` selbst mit `maxWidth/maxHeight: .infinity` versehen, sonst nimmt er nur die ideale Höhe und wird vertikal zentriert.
   - Keine Tap-Gesten (`onTapGesture`, `simultaneousGesture(TapGesture(count: 2))`) an Zeilen einer `List`: Sie schlucken die Einfachklick-Auswahl auf ihrer Fläche (im Dateibaum war nur noch der obere Zeilenrand klickbar). Doppelklick über `contextMenu(forSelectionType:menu:primaryAction:)` an der Liste.
   - Overlays in einem `ZStack` (Diff über dem Editor) brauchen `.frame(maxWidth: .infinity, maxHeight: .infinity)` **vor** dem Hintergrund. `ContentUnavailableView` ist sonst nur so groß wie sein Text, und der Editor scheint daneben durch.
+  - `.background(Farbe)` reicht in SwiftUI standardmäßig in den Sicherheitsbereich: Der Hintergrund eines Tabs lief so bis unter die Titelleiste. Hintergründe von Leisten-Elementen mit `ignoresSafeAreaEdges: []`.
   - Toolbar-Elemente, die zeitweise nichts zeigen, per `if` weglassen statt mit `opacity(0)` auszublenden; macOS 26 zeichnet sonst eine leere Glas-Kapsel. Den Seitenleisten-Button liefert `NavigationSplitView` selbst (⌃⌘S), keinen eigenen hinzufügen.
 - **Tests mit `AppModel.shared` müssen unter `AppModelSuite` stehen** (serielles Dach in `WindowLayoutTests.swift`): Verschiedene Test-Gruppen laufen parallel, sonst zieht eine Gruppe der anderen das Projekt weg (zufällige „außerhalb des Projekts“-Fehler).
 - **Mehrere Fenster teilen sich `AppModel.shared`**: Jede Editor-Ansicht schreibt beim Sitzungswechsel ihre Auswahl in die gemeinsame Sitzung. In der App gibt es ein Fenster; in Tests müssen Fenster früherer Tests aufgeräumt werden (`WindowLayoutTests.discardWindowsOfEarlierTests`), sonst überschreiben sie die gemerkte Auswahl.
@@ -166,7 +168,7 @@ Fertig (Sitzung 4): SyncTeX ohne externe Werkzeuge
 
 Fertig (Sitzung 7): Dateien anlegen, umbenennen, verschieben, duplizieren, in den Papierkorb legen, mit Anpassung der Verweise (siehe Architektur). Nicht dabei: Rückgängig für Dateioperationen (Papierkorb ist das Netz), Umbenennen direkt in der Zeile (stattdessen Dialog), mehrere Einträge gleichzeitig, Verweise in `.bib` oder `.cls`.
 
-Fertig (Sitzung 15): Keine gelbe Markierung mehr im PDF (⌘J, ⌘-Klick, „PDF folgt Cursor“); „Umbenennen …“ für Labels, Quellen (auch in der .bib), Abkürzungen, eigene Befehle und Umgebungen sowie für ein `\begin`/`\end`-Paar (ersetzt „Label umbenennen“); ⌘-Klick im Editor auf normalen Text zeigt die Stelle im PDF (wie TeXShop/Texifier); kein gelbes Aufblitzen mehr beim Springen (`showFindIndicator` in `scroll(toLine:)` entfernt, war für den Nutzer störend); BibTeX-Farben, Autokorrektur der Groß-/Kleinschreibung und Schreibhinweise (siehe Architektur). 480 Tests.
+Fertig (Sitzung 15): „Über LatexEditor“ zeigt Commit und Build-Zeit, `scripts/install-app.sh`; Tab-Leiste blendet an Rändern mit verdeckten Tabs kurz aus (`EdgeFade`, `onScrollGeometryChange`), Hover-Fläche eines Tabs nicht mehr bis in die Titelleiste; keine gelbe Markierung mehr im PDF (⌘J, ⌘-Klick, „PDF folgt Cursor“); „Umbenennen …“ für Labels, Quellen (auch in der .bib), Abkürzungen, eigene Befehle und Umgebungen sowie für ein `\begin`/`\end`-Paar (ersetzt „Label umbenennen“); ⌘-Klick im Editor auf normalen Text zeigt die Stelle im PDF (wie TeXShop/Texifier); kein gelbes Aufblitzen mehr beim Springen (`showFindIndicator` in `scroll(toLine:)` entfernt, war für den Nutzer störend); BibTeX-Farben, Autokorrektur der Groß-/Kleinschreibung und Schreibhinweise (siehe Architektur). 480 Tests.
 
 Fertig (Sitzung 14): Die echte Thesis wird nicht mehr zum Entwickeln und Testen benutzt. Dafür das Demo-Projekt `Testdaten/HgbDemo` (eigener Nachbau im Stil der HgbThesis), `scripts/demo-projekt.sh` für eine Arbeitskopie mit Git, `DemoProject.copy(to:)` für Tests; `GitThesisTests` wurde zu `GitDemoProjectTests`, `InsertionCompileTests` kompiliert die Demo-Kopie. Nebenbei: `SearchStore.waitUntilIdle` wartet auf die jeweils letzte Suche (eine durch ein Dateiereignis ausgelöste neue Suche brach die laufende ab, der Test sah dann 0 Treffer). 448 Tests.
 

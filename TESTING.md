@@ -227,7 +227,7 @@ Vorher einmal kompilieren (⌘B), damit `main.synctex.gz` existiert.
 
 | # | Aktion | Erwartung |
 | --- | --- | --- |
-| 60 | In `einleitung.tex` Cursor in eine Textzeile, ⌘J (oder Darstellung → Im PDF zeigen) | PDF springt auf die Seite, Stelle etwa mittig, reines Gelb (#FFFF00) hinter dem Text, nach ca. 0,7 s weiches Ausblenden (ca. 0,6 s) |
+| 60 | In `einleitung.tex` Cursor in eine Textzeile, ⌘J (oder Darstellung → Im PDF zeigen) | PDF springt auf die Seite, Stelle etwa mittig, **ohne gelbe Markierung** |
 | 61 | Dasselbe in mehreren Kapiteln nacheinander | Jedes Mal die richtige Seite |
 | 62 | Pfeil-Schalter in der PDF-Leiste einschalten, durch ein Kapitel scrollen/klicken | PDF folgt nach kurzer Pause; solange die Stelle schon sichtbar ist, bleibt das PDF ruhig |
 | 63 | Schalter aus, App neu starten | Schalter bleibt aus; an → bleibt an |
@@ -421,7 +421,7 @@ Vorher einmal kompilieren (⌘B), damit `main.synctex.gz` existiert.
 | 193 | Menü Bearbeiten → „Groß-/Kleinschreibung automatisch korrigieren“ aus | Nichts wird mehr korrigiert; nach Neustart bleibt es aus |
 | 194 | „das das“, „Wort ,Wort“, „z.B.“, „...“, `"Zitat"` im Fließtext; kurz warten; darüberfahren | Blau gepunktet unterstrichen, Tooltip erklärt den Hinweis (**nur hier prüfbar**); in Präambel, Mathe, Code-Umgebungen und Kommentaren nichts |
 | 195 | Menü Bearbeiten → „Schreibhinweise anzeigen“ aus und wieder an | Blaue Linien verschwinden sofort und kommen wieder; rote Linien unbekannter Verweise bleiben |
-| 196 | Nach dem Kompilieren ⌘-Klick auf ein Wort im Fließtext; dann ⌘-Klick auf `\ref{…}` | PDF springt zur Stelle und markiert sie kurz, Cursor steht am Klickpunkt; beim `\ref` springt der Editor zum Label statt ins PDF |
+| 196 | Nach dem Kompilieren ⌘-Klick auf ein Wort im Fließtext; dann ⌘-Klick auf `\ref{…}` | PDF springt zur Stelle (ohne gelbe Markierung), Cursor steht am Klickpunkt; beim `\ref` springt der Editor zum Label statt ins PDF |
 | 197 | Rechtsklick auf `@book{schluessel,` in der .bib bzw. auf `\cite{schluessel}`, „Quelle … umbenennen …“ | Dialog nennt Stellen und Dateien; danach .bib und alle .tex mit Zitaten als ungespeicherte Tabs, ⌘Z pro Datei; vorhandener Schlüssel wird abgelehnt |
 | 198 | Rechtsklick auf `\begin{itemize}` | „Umgebung „itemize“ umbenennen (dieses Paar) …“, „enumerate“ eingeben: nur dieses `\begin` und das passende `\end` ändern sich (auch bei verschachtelten Listen) |
 | 199 | Eigener Befehl (`\newcommand{\tool}`), eigene Umgebung (`\newenvironment`) und `\ac{…}` umbenennen | Definition und alle Verwendungen im Projekt; bei der eigenen Umgebung zwei Einträge (Paar / überall); auf `\section` oder Befehlen der Vorlage gibt es keinen Eintrag |

@@ -156,12 +156,7 @@ struct WindowLayoutTests {
         try await settle(window)
         #expect(model.pdf.currentPage == target.page)
         let page = try #require(pdfView.document?.page(at: target.page - 1))
-        let highlight = try #require(page.annotations.first { $0.type == "Highlight" })
-        #expect(highlight.color.usingColorSpace(.sRGB) == PDFPreviewStore.highlightColor.usingColorSpace(.sRGB))
-        let alphas = try await sampleHighlightAlpha(highlight, on: page)
-        #expect(!page.annotations.contains { $0.type == "Highlight" }, "Markierung muss am Ende verschwinden")
-        #expect(zip(alphas, alphas.dropFirst()).allSatisfy { $0 >= $1 }, "Deckkraft darf nur abnehmen: \(alphas)")
-        #expect(Set(alphas.filter { $0 > 0.05 && $0 < 0.95 }).count >= 3, "weiches Ausblenden statt Sprung: \(alphas)")
+        #expect(!page.annotations.contains { $0.type == "Highlight" }, "Keine gelbe Markierung im PDF")
 
         // PDF folgt Cursor: Wechsel nach Kapitel 1 scrollt das PDF auf Seite 1
         model.synctex.followCursor = true
@@ -181,16 +176,6 @@ struct WindowLayoutTests {
         let windowContent = try #require(window.contentView)
         let textView = try #require(firstSubview(of: LatexTextView.self, in: windowContent) { _ in true })
         #expect(session.lineIndex.line(containing: textView.selectedRange().location) + 1 == 62)
-    }
-
-    /// Liest die Deckkraft der Markierung in kurzen Abständen, bis sie entfernt ist (höchstens 3 s).
-    private func sampleHighlightAlpha(_ annotation: PDFAnnotation, on page: PDFPage) async throws -> [CGFloat] {
-        var alphas: [CGFloat] = []
-        for _ in 0..<150 where page.annotations.contains(where: { $0 === annotation }) {
-            alphas.append(annotation.color.alphaComponent)
-            try await Task.sleep(for: .milliseconds(20))
-        }
-        return alphas
     }
 
     @Test("Einfügen-Fenster durch AppModel: Tabelle, Bild-Kopie, Gleichung mit Markierung, Verweis, Zitat")

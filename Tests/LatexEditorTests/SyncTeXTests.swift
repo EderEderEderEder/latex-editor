@@ -221,28 +221,6 @@ struct SyncTeXStoreTests {
     }
 }
 
-@Suite("PDF-Markierung")
-struct HighlightFadeTests {
-    @Test("Ausblenden: voll zu Beginn, weich fallend, unsichtbar am Ende")
-    @MainActor
-    func fadeCurve() {
-        let samples = stride(from: 0.0, through: 1.0, by: 0.05).map(PDFPreviewStore.fadeAlpha(progress:))
-        #expect(samples.first == 1)
-        #expect(samples.last == 0)
-        #expect(abs(PDFPreviewStore.fadeAlpha(progress: 0.5) - 0.5) < 0.0001)
-        #expect(zip(samples, samples.dropFirst()).allSatisfy { $0 > $1 })
-        #expect(PDFPreviewStore.fadeAlpha(progress: -1) == 1)
-        #expect(PDFPreviewStore.fadeAlpha(progress: 2) == 0)
-    }
-
-    @Test("Farbe ist reines Gelb #FFFF00")
-    @MainActor
-    func pureYellow() throws {
-        let color = try #require(PDFPreviewStore.highlightColor.usingColorSpace(.sRGB))
-        #expect(color.redComponent == 1 && color.greenComponent == 1 && color.blueComponent == 0 && color.alphaComponent == 1)
-    }
-}
-
 // MARK: - Gegenprobe mit echtem MacTeX
 
 private let synctexCommand = URL(fileURLWithPath: "/Library/TeX/texbin/synctex")

@@ -17,17 +17,9 @@ final class PDFPreviewStore {
     @ObservationIgnored weak var pdfView: PDFView?
     /// ⌘-Klick ins PDF: Seite (1-basiert) und Punkt in SyncTeX-Koordinaten (oben links).
     @ObservationIgnored var onCommandClick: ((Int, CGPoint) -> Void)?
-    @ObservationIgnored private var highlight: (annotation: PDFAnnotation, page: PDFPage)?
     @ObservationIgnored private var candidateURLs: [URL] = []
 
     private static let zoomStep: CGFloat = 1.25
-    /// Reines Gelb #FFFF00. Als Highlight-Annotation wird es multipliziert, der Text bleibt lesbar.
-    static let highlightColor = NSColor(srgbRed: 1, green: 1, blue: 0, alpha: 1)
-    /// Markierung zuerst voll zeigen, dann weich ausblenden.
-    private static let highlightHold = Duration.milliseconds(700)
-    private static let highlightFade = Duration.milliseconds(600)
-    private static let highlightFadeSteps = 30
-    private static let highlightPadding: CGFloat = 2
     private static let horizontalMargin: CGFloat = 20
     private static let outputDirectoryNames = ["", "build", "out"]
 
@@ -91,9 +83,9 @@ final class PDFPreviewStore {
     // MARK: SyncTeX
 
     enum RevealMode {
-        /// Tastenkürzel: immer hinscrollen und markieren
+        /// Tastenkürzel, ⌘-Klick im Editor: immer hinscrollen
         case explicit
-        /// „PDF folgt Cursor“: nur scrollen (und markieren), wenn die Stelle nicht sichtbar ist
+        /// „PDF folgt Cursor“: nur scrollen, wenn die Stelle nicht sichtbar ist
         case follow
     }
 
@@ -102,8 +94,8 @@ final class PDFPreviewStore {
               let page = document.page(at: min(max(box.page - 1, 0), document.pageCount - 1)) else { return }
         let rect = SyncTeXCoordinates.pdfRect(from: box.rect, mediaBox: page.bounds(for: .mediaBox))
         if mode == .follow, pdfView.bounds.contains(pdfView.convert(rect, from: page)) { return }
+        // Ohne gelbe Markierung: Sie war beim Arbeiten störend (Nutzerwunsch)
         scroll(pdfView, toCenter: rect, on: page)
-        showHighlight(rect, on: page)
     }
 
     /// Vom PDF-View bei ⌘-Klick aufgerufen (Punkt in PDFKit-Seitenkoordinaten).
@@ -118,38 +110,5 @@ final class PDFPreviewStore {
         let top = rect.midY + visibleHeight / 2
         pdfView.go(to: PDFDestination(page: page, at: CGPoint(x: rect.minX - Self.horizontalMargin, y: top)))
         syncStatus()
-    }
-
-    private func showHighlight(_ rect: CGRect, on page: PDFPage) {
-        if let previous = highlight { previous.page.removeAnnotation(previous.annotation) }
-        let padded = rect.insetBy(dx: -Self.highlightPadding, dy: -Self.highlightPadding)
-        let annotation = PDFAnnotation(bounds: padded, forType: .highlight, withProperties: nil)
-        annotation.color = Self.highlightColor
-        page.addAnnotation(annotation)
-        highlight = (annotation, page)
-        Task { [weak self] in await self?.fadeOut(annotation, on: page) }
-    }
-
-    /// Hält die Markierung kurz und blendet sie dann in kleinen Schritten aus. Eine neue Markierung
-    /// (erneutes ⌘J) bricht das Ausblenden der alten ab.
-    private func fadeOut(_ annotation: PDFAnnotation, on page: PDFPage) async {
-        try? await Task.sleep(for: Self.highlightHold)
-        let stepDuration = Self.highlightFade / Self.highlightFadeSteps
-        for step in 1...Self.highlightFadeSteps {
-            guard highlight?.annotation === annotation else { return }
-            let progress = Double(step) / Double(Self.highlightFadeSteps)
-            annotation.color = Self.highlightColor.withAlphaComponent(Self.fadeAlpha(progress: progress))
-            pdfView?.annotationsChanged(on: page)
-            try? await Task.sleep(for: stepDuration)
-        }
-        guard highlight?.annotation === annotation else { return }
-        page.removeAnnotation(annotation)
-        highlight = nil
-    }
-
-    /// Deckkraft beim Ausblenden: weich (Smoothstep), 1 bei Beginn, 0 am Ende.
-    static func fadeAlpha(progress: Double) -> CGFloat {
-        let clamped = min(max(progress, 0), 1)
-        return CGFloat(1 - clamped * clamped * (3 - 2 * clamped))
     }
 }

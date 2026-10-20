@@ -76,10 +76,7 @@ struct OutlineTreeTests {
 @MainActor
 struct ProjectPreferencesTests {
     private func makeDefaults() -> UserDefaults {
-        let name = "LatexEditorTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: name)!
-        defaults.removePersistentDomain(forName: name)
-        return defaults
+        temporaryDefaults()
     }
 
     @Test("Neueste zuerst, ohne Duplikate, begrenzt")

@@ -12,9 +12,15 @@ struct TextEdit: Equatable, Sendable {
 /// einen Undo-Schritt an.
 enum TextEditing {
     static let commentPrefix = "% "
-    static let indentUnit = "\t"
-    /// Ein Ausrücken entfernt einen Tabulator oder bis zu so vielen Leerzeichen
-    static let spacesPerIndent = 4
+    /// Aus den Einstellungen (Tabulator, 2 oder 4 Leerzeichen); der Editor reicht sie als `unit` weiter
+    static var indentUnit: String { EditorSettings.indentation.unit }
+    static let tabUnit = "\t"
+    /// Ein Ausrücken entfernt einen Tabulator oder bis zu so vielen Leerzeichen (bei Tabulator-Einrückung vier)
+    private static let spacesPerTab = 4
+
+    private static func spacesPerIndent(_ unit: String) -> Int {
+        unit == tabUnit ? spacesPerTab : unit.count
+    }
     static let pairs: [String: String] = ["{": "}", "[": "]", "(": ")", "$": "$"]
     private static let closers: Set<String> = ["}", "]", ")", "$"]
     /// Vor diesen Zeichen (oder am Zeilenende) schließt eine Klammer automatisch
@@ -87,7 +93,7 @@ enum TextEditing {
 
     /// Enter: Einrückung der Zeile übernehmen; nach `\begin{x}` das passende `\end{x}` ergänzen;
     /// in Listen mit `\item` weitermachen, ein leeres `\item` beendet die Liste.
-    static func newline(in text: NSString, selection: NSRange) -> TextEdit {
+    static func newline(in text: NSString, selection: NSRange, unit: String = indentUnit) -> TextEdit {
         let lineStart = text.lineRange(for: NSRange(location: selection.location, length: 0)).location
         let prefix = text.substring(with: NSRange(location: lineStart, length: selection.location - lineStart))
         let indent = String(prefix.prefix { $0 == " " || $0 == "\t" })
@@ -96,7 +102,7 @@ enum TextEditing {
         let trimmed = prefix.trimmingCharacters(in: .whitespaces)
         if rest.trimmingCharacters(in: .whitespaces).isEmpty, let environment = openedEnvironment(in: trimmed),
            !isClosed(environment, in: text, after: NSMaxRange(selection)) {
-            let head = "\n" + indent + indentUnit + (environmentBodies[environment] ?? "")
+            let head = "\n" + indent + unit + (environmentBodies[environment] ?? "")
             return edit(replacing: selection, with: head + "\n" + indent + "\\end{\(environment)}", caretOffset: head)
         }
         if trimmed == listItem, rest.trimmingCharacters(in: .whitespaces).isEmpty, selection.length == 0 {
@@ -171,21 +177,21 @@ enum TextEditing {
         return String(line[..<percent]) + rest
     }
 
-    /// ⌘] bzw. Tab mit Auswahl: einen Tabulator vor jede nicht leere Zeile.
-    static func indent(in text: NSString, selection: NSRange) -> TextEdit {
+    /// ⌘] bzw. Tab mit Auswahl: eine Einrückung (Tabulator oder Leerzeichen) vor jede nicht leere Zeile.
+    static func indent(in text: NSString, selection: NSRange, unit: String = indentUnit) -> TextEdit {
         let block = lineBlock(in: text, selection: selection)
         let lines = text.substring(with: block).components(separatedBy: "\n")
-        let changed = lines.map { $0.trimmingCharacters(in: .whitespaces).isEmpty ? $0 : indentUnit + $0 }
+        let changed = lines.map { $0.trimmingCharacters(in: .whitespaces).isEmpty ? $0 : unit + $0 }
         return blockEdit(block, lines: changed, original: selection, in: text)
     }
 
-    /// ⌘[ bzw. ⇧Tab: einen Tabulator oder bis zu vier Leerzeichen am Zeilenanfang entfernen.
-    static func outdent(in text: NSString, selection: NSRange) -> TextEdit {
+    /// ⌘[ bzw. ⇧Tab: einen Tabulator oder bis zu einer Einrückung an Leerzeichen am Zeilenanfang entfernen.
+    static func outdent(in text: NSString, selection: NSRange, unit: String = indentUnit) -> TextEdit {
         let block = lineBlock(in: text, selection: selection)
         let lines = text.substring(with: block).components(separatedBy: "\n")
         let changed = lines.map { line -> String in
-            if line.hasPrefix(indentUnit) { return String(line.dropFirst()) }
-            return String(line.dropFirst(min(spacesPerIndent, line.prefix { $0 == " " }.count)))
+            if line.hasPrefix(tabUnit) { return String(line.dropFirst()) }
+            return String(line.dropFirst(min(spacesPerIndent(unit), line.prefix { $0 == " " }.count)))
         }
         return blockEdit(block, lines: changed, original: selection, in: text)
     }

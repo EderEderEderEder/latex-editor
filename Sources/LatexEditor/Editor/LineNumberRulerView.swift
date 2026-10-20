@@ -79,6 +79,7 @@ final class LineNumberRulerView: NSRulerView {
 
     /// Zeilennummern zwei Punkt kleiner als der Text, aber nie unter der Grundgröße.
     func updateFont() {
+        // Immer 2 pt kleiner als die Editorschrift (Grundgröße × Zoom), mindestens 11 pt
         let size = max(Self.fontSize, EditorAppearance.fontSize - (EditorAppearance.defaultFontSize - Self.fontSize))
         numberFont = NSFont.monospacedDigitSystemFont(ofSize: size, weight: .regular)
         currentNumberFont = NSFont.monospacedDigitSystemFont(ofSize: size, weight: .semibold)

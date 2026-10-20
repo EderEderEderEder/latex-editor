@@ -19,6 +19,8 @@ private enum Budget {
     static let tokenizeBibliography = Duration.milliseconds(150)
     /// gemessen 64 ms / 26 ms (Vorbereitung im Hintergrund + Attribute im Main-Thread)
     static let openDocument = Duration.milliseconds(200)
+    /// gemessen 9,6 ms: Schrift und Absatzstil einer offenen Datei nach einer Einstellungsänderung (Main-Thread, selten)
+    static let applyEditorFont = Duration.milliseconds(30)
     /// gemessen 0,125 ms / 0,06 ms; ein Frame bei 60 Hz hat 16,7 ms
     static let keystroke = Duration.microseconds(500)
     /// gemessen 0,9 ms / 0,7 ms für zwei Bearbeitungen, die je einen Absatz neu färben
@@ -116,6 +118,13 @@ struct PerformanceTests {
             _ = highlighter.highlightAll(text, lines: lines)
         }
         check("BibTeX färben komplett", duration, within: Budget.tokenizeBibliography)
+    }
+
+    @Test("Einstellung geändert: Schrift und Absatzstil einer großen Datei übernehmen")
+    func applyEditorFont() {
+        let session = DocumentSession(url: URL(fileURLWithPath: "/tmp/perf-font.tex"), text: document)
+        let duration = medianDuration(iterations: Iterations.medium) { session.applyEditorFont() }
+        check("Schrift übernehmen", duration, within: Budget.applyEditorFont)
     }
 
     @Test("Datei öffnen: Index, Tokens und Farben im NSTextStorage")

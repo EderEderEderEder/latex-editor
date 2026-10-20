@@ -101,7 +101,7 @@ struct DiffView: View {
             // Immer die ganze Fläche füllen: Der Editor liegt darunter und darf nicht durchscheinen
             // (Hinweise wie „Keine inhaltlichen Änderungen“ wären sonst nur so groß wie ihr Text).
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(nsColor: .textBackgroundColor))
+            .background(Color(nsColor: EditorTheme.background))
     }
 
     @ViewBuilder
@@ -173,7 +173,7 @@ private struct DiffLinesView: View {
             }
             .padding(.vertical, 4)
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(Color(nsColor: EditorTheme.background))
     }
 
     private var numberWidth: CGFloat {

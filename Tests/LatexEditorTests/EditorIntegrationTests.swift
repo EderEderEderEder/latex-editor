@@ -26,7 +26,7 @@ struct EditorIntegrationTests {
         #expect(fixture.color(at: 0) == SyntaxTheme.color(for: .command))
         #expect(fixture.color(at: 7) == SyntaxTheme.color(for: .keyArgument))
         #expect(fixture.color(at: 10) == SyntaxTheme.color(for: .comment))
-        #expect(fixture.color(at: 18) == NSColor.textColor)
+        #expect(fixture.color(at: 18) == EditorTheme.text)
     }
 
     @Test("Beim Öffnen ist die ganze Datei eingefärbt")
@@ -34,7 +34,7 @@ struct EditorIntegrationTests {
         let fixture = EditorFixture(text: "a\n\\begin{equation}\nx = 1\n\\end{equation}\n")
         let mathLocation = fixture.session.lineIndex.start(ofLine: 2)
 
-        #expect(fixture.color(at: 0) == NSColor.textColor)
+        #expect(fixture.color(at: 0) == EditorTheme.text)
         #expect(fixture.color(at: mathLocation) == SyntaxTheme.color(for: .math))
     }
 
@@ -69,7 +69,7 @@ struct EditorIntegrationTests {
 @Suite("Zeilennummern")
 @MainActor
 struct LineNumberRulerTests {
-    private static let narrowSize = NSSize(width: 200, height: 400)
+    private static let narrowSize = NSSize(width: 200, height: 700)
 
     @Test("Umbrochene Zeile bekommt nur eine Nummer")
     func wrappedLineHasOneNumber() {

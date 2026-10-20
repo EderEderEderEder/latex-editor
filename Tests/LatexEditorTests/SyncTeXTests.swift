@@ -194,7 +194,7 @@ struct SyncTeXStoreTests {
         let dataURL = project.url("main.synctex.gz")
         let complete = try Fixture.compressedData()
         try complete.write(to: dataURL)
-        let store = SyncTeXStore(defaults: UserDefaults(suiteName: "LatexEditorTests-\(UUID().uuidString)")!)
+        let store = SyncTeXStore(defaults: temporaryDefaults())
 
         store.reload(mainFile: main)
         await store.waitUntilLoaded()
@@ -213,7 +213,7 @@ struct SyncTeXStoreTests {
 
     @Test("„PDF folgt Cursor“ ist standardmäßig aus und wird gemerkt")
     func followCursorPreference() {
-        let defaults = UserDefaults(suiteName: "LatexEditorTests-\(UUID().uuidString)")!
+        let defaults = temporaryDefaults()
         let store = SyncTeXStore(defaults: defaults)
         #expect(!store.followCursor)
         store.followCursor = true

@@ -30,7 +30,7 @@ struct InsertionCompileTests {
         try writePNG(to: download)
         try project.write("hgbreferences.bib", "@book{knuth1984, author={Knuth, Donald}, title={The {TeX}book}, year={1984}, publisher={Addison-Wesley}}\n")
 
-        let store = await MainActor.run { InsertStore(defaults: UserDefaults(suiteName: "it-\(UUID().uuidString)")!) }
+        let store = await MainActor.run { InsertStore(defaults: temporaryDefaults()) }
         let main = project.url("main.tex")
         let chapter = project.url("chapters/einleitung.tex")
         let catalogFiles = [main, chapter, project.url("hgbreferences.bib")]

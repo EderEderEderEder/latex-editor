@@ -34,7 +34,7 @@ private func waitUntilFinished(_ store: BuildStore) async throws {
 
 @MainActor
 private func makeDefaults() -> UserDefaults {
-    UserDefaults(suiteName: "LatexEditorTests-\(UUID().uuidString)")!
+    temporaryDefaults()
 }
 
 @Suite("Build-Store", .serialized)

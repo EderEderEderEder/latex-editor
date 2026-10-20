@@ -3,7 +3,8 @@ import Foundation
 /// Erzeugt den LaTeX-Code der Bausteine im Stil der HgbThesis-Vorlage (Tabulatoren, Beschriftung vor
 /// dem Label, `booktabs`, Code in `program` mit Sprachumgebung – `lstlisting` ist dort gesperrt).
 enum InsertionGenerator {
-    private static let indent = "\t"
+    /// Wie im Editor eingestellt (Standard: Tabulator wie in der HgbThesis)
+    private static var indent: String { TextEditing.indentUnit }
     private static let rowEnd = " \\\\"
     private static let referencePrefixes: [String: String] = [
         "fig": "Abbildung", "tab": "Tabelle", "prog": "Programm", "sec": "Abschnitt", "chap": "Kapitel", "eq": "Gleichung"

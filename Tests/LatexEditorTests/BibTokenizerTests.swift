@@ -169,7 +169,7 @@ struct BibSessionTests {
 
         session.relocate(to: URL(fileURLWithPath: "/tmp/demo.tex"))
         let afterRename = session.textStorage.attribute(.foregroundColor, at: 9, effectiveRange: nil) as? NSColor
-        #expect(afterRename == NSColor.textColor, "In LaTeX ist das Fließtext")
+        #expect(afterRename == EditorTheme.text, "In LaTeX ist das Fließtext")
         #expect(!session.isDirty)
     }
 }

@@ -63,7 +63,7 @@ struct InterfaceDetailTests {
 
     @Test("Was das Einfügen ohne .tex-Datei vorne blockiert")
     func insertBlocker() {
-        let store = InsertStore(defaults: UserDefaults(suiteName: "InterfaceDetailTests")!)
+        let store = InsertStore(defaults: temporaryDefaults())
         store.kind = .list
         #expect(store.blocker(canInsertIntoEditor: true) == nil)
         #expect(store.blocker(canInsertIntoEditor: false) == InsertStore.needsTeXMessage)

@@ -8,13 +8,13 @@ enum EditorAppearance {
     static let fontDidChange = Notification.Name("EditorFontDidChange")
     private static let currentLineAlpha: CGFloat = 0.035
 
-    /// Folgt dem Zoom der Oberfläche (⌘+ / ⌘−, `InterfaceZoom`)
+    /// Grundgröße aus den Einstellungen mal Zoom der Oberfläche (⌘+ / ⌘−, `InterfaceZoom`)
     static var fontSize: CGFloat {
         fontSize(for: InterfaceZoom.current)
     }
 
     static func fontSize(for zoom: Double) -> CGFloat {
-        (defaultFontSize * CGFloat(zoom)).rounded()
+        (CGFloat(EditorSettings.fontSize) * CGFloat(zoom)).rounded()
     }
 
     static var font: NSFont {
@@ -22,11 +22,27 @@ enum EditorAppearance {
     }
 
     static func font(for zoom: Double) -> NSFont {
-        NSFont.monospacedSystemFont(ofSize: fontSize(for: zoom), weight: .regular)
+        EditorSettings.font(size: fontSize(for: zoom))
     }
 
+    /// Zeilenabstand und Tabulatorbreite aus den Einstellungen
+    static var paragraphStyle: NSParagraphStyle {
+        paragraphStyle(font: font, lineSpacing: EditorSettings.lineSpacing, tabWidth: EditorSettings.tabWidth)
+    }
+
+    /// Tabulatorbreite in Zeichen der Schrift (Leerzeichenbreite × `tabWidth`)
+    static func paragraphStyle(font: NSFont, lineSpacing: LineSpacing, tabWidth: Int) -> NSParagraphStyle {
+        let style = NSMutableParagraphStyle()
+        style.lineHeightMultiple = lineSpacing.lineHeightMultiple
+        let spaceWidth = (" " as NSString).size(withAttributes: [.font: font]).width
+        style.tabStops = []
+        style.defaultTabInterval = spaceWidth * CGFloat(tabWidth)
+        return style
+    }
+
+    @MainActor
     static var textAttributes: [NSAttributedString.Key: Any] {
-        [.font: font, .foregroundColor: NSColor.textColor]
+        [.font: font, .foregroundColor: EditorTheme.text, .paragraphStyle: paragraphStyle]
     }
 
     /// Sehr dezenter Streifen für die aktuelle Zeile (passt sich Hell/Dunkel an).
@@ -125,10 +141,13 @@ final class DocumentSession {
         if hasExternalChange { hasExternalChange = false }
     }
 
-    /// Neue Schriftgröße: nur das Schrift-Attribut, kein Bearbeitungsschritt (Farben, Undo und „geändert“ bleiben).
+    /// Neue Schrift, Größe, Zeilenabstand oder Tabbreite: nur Schrift und Absatzstil, kein Bearbeitungsschritt
+    /// (Farben, Undo und „geändert“ bleiben).
     func applyEditorFont() {
+        let whole = NSRange(location: 0, length: textStorage.length)
         textStorage.beginEditing()
-        textStorage.addAttribute(.font, value: EditorAppearance.font, range: NSRange(location: 0, length: textStorage.length))
+        textStorage.addAttribute(.font, value: EditorAppearance.font, range: whole)
+        textStorage.addAttribute(.paragraphStyle, value: EditorAppearance.paragraphStyle, range: whole)
         textStorage.endEditing()
     }
 

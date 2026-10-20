@@ -35,6 +35,19 @@ struct TemporaryProject {
     }
 }
 
+/// UserDefaults nur für einen Test. Der Suite-Name ist ein absoluter Pfad in einem eigenen Temp-Ordner: So landet die
+/// .plist dort und nicht in ~/Library/Preferences (`removePersistentDomain` leert eine normale Suite nur, die Datei
+/// bliebe liegen – so hatten sich dort Hunderte angesammelt). Den Temp-Ordner räumt macOS selbst auf.
+func temporaryDefaults() -> UserDefaults {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("LatexEditorTests-Einstellungen-\(UUID().uuidString)", isDirectory: true)
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    guard let defaults = UserDefaults(suiteName: directory.appendingPathComponent("einstellungen").path) else {
+        preconditionFailure("UserDefaults für Tests konnten nicht angelegt werden")
+    }
+    return defaults
+}
+
 /// Erzeugt ein realistisches LaTeX-Dokument mit gemischten Konstrukten.
 enum LargeDocument {
     static let defaultLineCount = 10_000

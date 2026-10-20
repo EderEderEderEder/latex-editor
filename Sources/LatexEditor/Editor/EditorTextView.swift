@@ -58,7 +58,8 @@ struct EditorTextView: NSViewRepresentable {
 
 @MainActor
 final class EditorCoordinator: NSObject, NSTextViewDelegate {
-    private static let preferredSpellingLanguages = ["de_AT", "de_DE", "de"]
+    /// Bei abgeschaltetem Umbruch: so breit, dass keine Zeile umbricht
+    private static let unwrappedWidth = CGFloat.greatestFiniteMagnitude
     private static let textInset = NSSize(width: 8, height: 8)
     private static let cursorReportDelay = Duration.milliseconds(150)
 
@@ -111,7 +112,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         configure(textView)
         completion = CompletionController(textView: textView) { [weak self] in self?.session }
         NotificationCenter.default.addObserver(forName: EditorAppearance.fontDidChange, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.applyFontSize() }
+            MainActor.assumeIsolated { self?.applyEditorSettings() }
         }
         textView.onCompletionRequested = { [weak self] in self?.completion.trigger() }
         textView.onJumpToTarget = { [weak self] target in self?.jumpHandler?(target) }
@@ -136,6 +137,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         scrollView.documentView = textView
         self.scrollView = scrollView
         attachLineNumbers(to: scrollView, textView: textView)
+        applyEditorSettings()
         return scrollView
     }
 
@@ -162,22 +164,72 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
         textView.isAutomaticSpellingCorrectionEnabled = false
-        textView.isContinuousSpellCheckingEnabled = true
         textView.isGrammarCheckingEnabled = false
+        textView.drawsBackground = true
+        textView.backgroundColor = EditorTheme.background
+        textView.insertionPointColor = EditorTheme.text
         textView.minSize = NSSize(width: 0, height: 0)
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = .width
-        configureSpellingLanguage()
     }
 
-    private func configureSpellingLanguage() {
+    // MARK: Einstellungen
+
+    /// Übernimmt die Einstellungen (Schrift, Abstand, Tabbreite, Farbschema, Zeilennummern, Umbruch, Rechtschreibung)
+    /// in die Ansicht. Den Text aller offenen Dateien passt `AppModel` an (`EditorStore.applyEditorFont`).
+    private func applyEditorSettings() {
+        textView.font = EditorAppearance.font
+        textView.typingAttributes = EditorAppearance.textAttributes
+        textView.defaultParagraphStyle = EditorAppearance.paragraphStyle
+        textView.indentUnit = EditorSettings.indentation.unit
+        textView.highlightsCurrentLine = EditorSettings.highlightsCurrentLine
+        showLineNumbers(EditorSettings.showsLineNumbers)
+        applyLineWrapping(EditorSettings.wrapsLines)
+        applySpelling(checks: EditorSettings.checksSpelling, language: EditorSettings.spellingLanguage)
+        lineNumberRuler.updateFont()
+        // Farbschema: Die Farben sind dynamisch, ein Neuzeichnen genügt
+        textView.needsDisplay = true
+        lineNumberRuler.needsDisplay = true
+        textView.scheduleCurrentLineHighlightUpdate()
+    }
+
+    func showLineNumbers(_ shows: Bool) {
+        if scrollView.rulersVisible != shows { scrollView.rulersVisible = shows }
+    }
+
+    func applyLineWrapping(_ wraps: Bool) {
+        guard let container = textView.textContainer, container.widthTracksTextView != wraps || !wraps else { return }
+        if wraps {
+            textView.isHorizontallyResizable = false
+            textView.autoresizingMask = .width
+            container.widthTracksTextView = true
+            textView.setFrameSize(NSSize(width: scrollView.contentSize.width, height: textView.frame.height))
+            scrollView.hasHorizontalScroller = false
+        } else {
+            container.widthTracksTextView = false
+            container.containerSize = NSSize(width: Self.unwrappedWidth, height: Self.unwrappedWidth)
+            textView.isHorizontallyResizable = true
+            textView.autoresizingMask = []
+            scrollView.hasHorizontalScroller = true
+        }
+    }
+
+    private(set) var appliedSpellingLanguage: String?
+
+    func applySpelling(checks: Bool, language preferred: SpellingLanguage) {
         let checker = NSSpellChecker.shared
-        let available = checker.availableLanguages
-        guard let language = Self.preferredSpellingLanguages.first(where: available.contains) else { return }
-        checker.automaticallyIdentifiesLanguages = false
-        checker.setLanguage(language)
+        let language = preferred.candidates.first(where: checker.availableLanguages.contains)
+        let languageChanged = language != appliedSpellingLanguage
+        if let language, languageChanged {
+            checker.automaticallyIdentifiesLanguages = false
+            checker.setLanguage(language)
+            appliedSpellingLanguage = language
+        }
+        // Aus und wieder an prüft den sichtbaren Text in der neuen Sprache neu
+        if languageChanged, checks, textView.isContinuousSpellCheckingEnabled { textView.isContinuousSpellCheckingEnabled = false }
+        if textView.isContinuousSpellCheckingEnabled != checks { textView.isContinuousSpellCheckingEnabled = checks }
     }
 
     // MARK: Aktualisierung
@@ -312,14 +364,6 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
 
     func updateChangeMarks(_ marks: ChangeMarks) {
         if lineNumberRuler.changeMarks != marks { lineNumberRuler.changeMarks = marks }
-    }
-
-    /// Die Schrift aller offenen Dateien setzt `AppModel` (`EditorStore.applyEditorFont`), hier nur die Ansicht.
-    private func applyFontSize() {
-        textView.font = EditorAppearance.font
-        textView.typingAttributes = EditorAppearance.textAttributes
-        lineNumberRuler.updateFont()
-        textView.scheduleCurrentLineHighlightUpdate()
     }
 
     func updateCompletion(provider: CompletionProvider?, request: UUID?) {

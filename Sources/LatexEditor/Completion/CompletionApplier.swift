@@ -59,7 +59,7 @@ enum CompletionApplier {
                                   selection: NSRange(location: range.location + (inserted as NSString).length, length: 0))
         }
         let body = environmentBodies[name] ?? ""
-        let head = name + "}\n" + indent + "\t" + body
+        let head = name + "}\n" + indent + TextEditing.indentUnit + body
         let inserted = head + "\n" + indent + "\\end{\(name)}"
         return CompletionEdit(range: replaced, text: inserted,
                               selection: NSRange(location: range.location + (head as NSString).length, length: 0))

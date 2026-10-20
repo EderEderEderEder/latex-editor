@@ -172,3 +172,39 @@ struct AutoCapitalizationTypingTests {
         #expect(typing.text == "Ende. klein ")
     }
 }
+
+@Suite("Einrückung aus den Einstellungen im Editor", .serialized)
+@MainActor
+struct IndentationTypingTests {
+    @Test("Mit „2 Leerzeichen“: Tab-Taste, Enter nach \\begin, ⌘] und ⌘[ nutzen Leerzeichen")
+    func twoSpaces() async throws {
+        let typing = TypingHarness()
+        try await typing.start()
+        typing.harness.textView.indentUnit = "  "
+
+        typing.tab()
+        #expect(typing.text == "  ", "Tab-Taste fügt die Leerzeichen ein")
+        typing.backspace()
+        typing.backspace()
+        typing.type("\\begin{center}")
+        typing.press("\u{1B}", keyCode: 53)
+        typing.returnKey()
+        typing.type("x")
+        #expect(typing.text == "\\begin{center}\n  x\n\\end{center}")
+
+        typing.harness.textView.setSelectedRange(NSRange(location: 0, length: (typing.text as NSString).length))
+        typing.send(#selector(LatexTextView.indentLines(_:)))
+        #expect(typing.text == "  \\begin{center}\n    x\n  \\end{center}")
+        typing.send(#selector(LatexTextView.outdentLines(_:)))
+        #expect(typing.text == "\\begin{center}\n  x\n\\end{center}")
+    }
+
+    @Test("Standard: Tabulator wie in der HgbThesis")
+    func tabByDefault() async throws {
+        let typing = TypingHarness()
+        try await typing.start()
+        #expect(typing.harness.textView.indentUnit == "\t")
+        typing.tab()
+        #expect(typing.text == "\t")
+    }
+}

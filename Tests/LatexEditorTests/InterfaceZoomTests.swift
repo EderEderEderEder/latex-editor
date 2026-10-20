@@ -20,7 +20,7 @@ struct InterfaceZoomTests {
 
     @Test("Frühere Editorschrift wird einmalig als Zoomstufe übernommen")
     func migratesLegacyFontSize() throws {
-        let defaults = try #require(UserDefaults(suiteName: "InterfaceZoomTests-\(UUID().uuidString)"))
+        let defaults = temporaryDefaults()
         defaults.set(17.0, forKey: "editorFontSize")
         InterfaceZoom.migrateLegacySetting(defaults: defaults)
         #expect(defaults.double(forKey: InterfaceZoom.key) == 1.3, "17 pt ≈ 13 pt × 130 %")

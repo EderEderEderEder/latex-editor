@@ -143,7 +143,7 @@ struct EditorTabsCloseTests {
 struct TabMemoryTests {
     @Test("Tabs und aktiver Tab werden pro Projekt gespeichert")
     func roundTrip() {
-        let defaults = UserDefaults(suiteName: "LatexEditorTests-\(UUID().uuidString)")!
+        let defaults = temporaryDefaults()
         let project = URL(fileURLWithPath: "/Users/x/5 Semster/Thesis")
         #expect(TabMemory.load(for: project, defaults: defaults) == nil)
         TabMemory.save(tabs("a", "b", active: "a"), for: project, defaults: defaults)

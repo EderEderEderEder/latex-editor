@@ -16,7 +16,7 @@ private actor HangingThenFastLatexmk {
 @Suite("Kompilieren abbrechen", .serialized)
 @MainActor
 struct BuildCancelTests {
-    private func makeDefaults() -> UserDefaults { UserDefaults(suiteName: "BuildCancelTests-\(UUID().uuidString)")! }
+    private func makeDefaults() -> UserDefaults { temporaryDefaults() }
 
     @Test("Abbrechen: Status „abgebrochen“, Vorgemerktes entfällt, kein PDF-Neuladen; danach geht es wieder")
     func cancelStopsBuild() async throws {

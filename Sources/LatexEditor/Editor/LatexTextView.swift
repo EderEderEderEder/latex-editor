@@ -67,6 +67,7 @@ final class LatexTextView: NSTextView {
     }
 
     private func computeCurrentLineRect() -> NSRect {
+        guard highlightsCurrentLine else { return .zero }
         guard let layoutManager, let textContainer, let storage = textStorage else { return .zero }
         let selection = selectedRange().clamped(toLength: storage.length)
         guard selection.length == 0 else { return .zero }
@@ -121,7 +122,7 @@ final class LatexTextView: NSTextView {
             return
         }
         let wordEnd = collapsedCursor
-        apply(TextEditing.newline(in: storage.mutableString, selection: selectedRange()), actionName: "Zeilenumbruch")
+        apply(TextEditing.newline(in: storage.mutableString, selection: selectedRange(), unit: indentUnit), actionName: "Zeilenumbruch")
         if let wordEnd { scheduleCapitalization(wordEndingAt: wordEnd) }
     }
 
@@ -183,10 +184,21 @@ final class LatexTextView: NSTextView {
         breakUndoCoalescing()
     }
 
-    /// Tab mit mehrzeiliger Auswahl rückt die Zeilen ein, sonst normaler Tabulator.
+    /// Einrückung aus den Einstellungen (setzt der Coordinator): Tab-Taste, ⌘]/⌘[, Enter
+    var indentUnit = TextEditing.tabUnit
+    /// „Aktuelle Zeile hervorheben“ (setzt der Coordinator)
+    var highlightsCurrentLine = true {
+        didSet { if highlightsCurrentLine != oldValue { scheduleCurrentLineHighlightUpdate() } }
+    }
+
+    /// Tab mit mehrzeiliger Auswahl rückt die Zeilen ein, sonst ein Tabulator bzw. die eingestellten Leerzeichen.
     override func insertTab(_ sender: Any?) {
         guard let storage = textStorage, spansLines(selectedRange(), in: storage.mutableString) else {
-            super.insertTab(sender)
+            if indentUnit == TextEditing.tabUnit || hasMarkedText() {
+                super.insertTab(sender)
+            } else {
+                insertText(indentUnit, replacementRange: selectedRange())
+            }
             return
         }
         indentLines(sender)
@@ -331,8 +343,13 @@ final class LatexTextView: NSTextView {
     // MARK: Menübefehle (über die Responder-Kette, wirken auf den Editor mit dem Fokus)
 
     @objc func toggleComment(_ sender: Any?) { perform(TextEditing.toggleComment, actionName: "Kommentar") }
-    @objc func indentLines(_ sender: Any?) { perform(TextEditing.indent, actionName: "Einrücken") }
-    @objc func outdentLines(_ sender: Any?) { perform(TextEditing.outdent, actionName: "Ausrücken") }
+    @objc func indentLines(_ sender: Any?) {
+        perform({ TextEditing.indent(in: $0, selection: $1, unit: indentUnit) }, actionName: "Einrücken")
+    }
+
+    @objc func outdentLines(_ sender: Any?) {
+        perform({ TextEditing.outdent(in: $0, selection: $1, unit: indentUnit) }, actionName: "Ausrücken")
+    }
     @objc func moveLinesUp(_ sender: Any?) { perform({ TextEditing.moveLines(up: true, in: $0, selection: $1) }, actionName: "Zeilen verschieben") }
     @objc func moveLinesDown(_ sender: Any?) { perform({ TextEditing.moveLines(up: false, in: $0, selection: $1) }, actionName: "Zeilen verschieben") }
     @objc func duplicateLines(_ sender: Any?) { perform(TextEditing.duplicateLines, actionName: "Zeilen verdoppeln") }

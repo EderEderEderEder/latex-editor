@@ -62,6 +62,7 @@ Wichtig: **nicht** `swift test` direkt aufrufen. Ohne die Flags aus dem Skript w
 | `StabilizationTests` (teils App-Ebene unter `AppModelSuite`) | Text ohne Text-View ersetzen mit Undo/Redo; Verweise anpassen in geänderter offener Datei ist eigener Rückgängig-Schritt, früheres Tippen bleibt rückgängig machbar; Git erholt sich nach kaputtem `HEAD`; Quelle anlegen mit `.bib` vorne (Zitieren blockiert); aufgeklappte Ordner überstehen Tabwechsel, Projektwechsel setzt zurück; Build-Dauer mit Komma; Einfügen-Blocker |
 | `BibTokenizerTests`, `BibSessionTests` | BibTeX-Farben: Typ, Schlüssel, Feldnamen, Klammern, `"`, `#`, `@string`-Makros, `\TeX` in Werten, Text außerhalb und `@comment` als Kommentar, runde Eintragsklammern, mehrzeilige Werte (Zustand), kaputter Eintrag erholt sich, Zufallsabgleich inkrementell gegen komplett; Sprache nach Endung, Sitzung färbt `.bib`, Umbenennen in `.tex` färbt neu (ohne „geändert“) |
 | `CapitalizationTests`, `WritingHintsTests`, `AutoCapitalizationTypingTests` | Satzanfang (nach `.!?`, Zeilenende, Absatz, Klammer/`\enquote` davor) und „ZWei“ Großbuchstaben; keine Korrektur nach Abkürzungen, Zahlen, „…“, Komma, am Textanfang, bei „IDs“/„API“/„LaTeX“/„iOS“, nach Befehlen, in Code-Umgebungen. Schreibhinweise je Regel samt Ausnahmen, nur Fließtext (Präambel, Mathe, Schlüssel, Optionen, Kommentare, Code, `\verb` frei). Im echten Editor: Korrektur beim Weitertippen und mit Enter, ⌘Z nimmt nur die Korrektur zurück und lässt den Cursor stehen, Wiederholen; Befehle/Mathe/Kommentar/Code/Abkürzung bleiben; abschaltbar |
+| `EditorSettingsValueTests`, `EditorThemeTests`, `EditorSettingsEditorTests`, `IndentationTypingTests`, `SettingsWindowTests` | Einstellungen: Standardwerte und ungültige Werte (eigene UserDefaults-Suite, nie die echten), Kontrast aller Farbschemata hell/dunkel (≥ 4,5:1, Hoher Kontrast ≥ 7:1), Standard = bisherige Farben; Absatzstil (Zeilenabstand, Tabbreite), Übernehmen ohne Bearbeitungsschritt, Zeilenumbruch aus/an, Zeilennummern und aktuelle Zeile abschaltbar, Rechtschreibung aus/Sprache; Einrückung mit Leerzeichen bei Tab-Taste, Enter, ⌘]/⌘[; Fenster baut sich auf |
 | `PerformanceTests` | 10.000-Zeilen-Dokument mit festen Budgets (siehe unten) |
 
 Testdaten entstehen in temporären Ordnern (`TemporaryProject`) oder als Kopie des Demo-Projekts `Testdaten/HgbDemo` (`DemoProject.copy(to:)`). `../Thesis` (die echte Abschlussarbeit) wird nie verwendet, auch nicht lesend.
@@ -82,6 +83,7 @@ Budgets gelten für den Debug-Build und haben etwa 3-fachen Puffer zum Messwert 
 | BibTeX komplett färben, 2.000 Einträge (Hintergrund) | 47 ms | – | 150 ms |
 | Schreibhinweise komplett (Hintergrund, 0,6 s nach der Eingabe; fast nur ICU-Regex, Release kaum schneller) | 334 ms | – | 1.000 ms |
 | Datei öffnen inkl. Einfärben | 64 ms | 26 ms | 200 ms |
+| Einstellung geändert: Schrift und Absatzstil übernehmen | 9,6 ms | – | 30 ms |
 | **Tastendruck** (Index + Highlighting + Attribute) | 0,125 ms | 0,06 ms | 0,5 ms |
 | `$` tippen und löschen (je ein Absatz neu) | 0,9 ms | 0,7 ms | 3 ms |
 | Rechtschreib-Tokens für einen Absatz | 0,11 ms | 0,02 ms | 0,5 ms |
@@ -425,3 +427,16 @@ Vorher einmal kompilieren (⌘B), damit `main.synctex.gz` existiert.
 | 197 | Rechtsklick auf `@book{schluessel,` in der .bib bzw. auf `\cite{schluessel}`, „Quelle … umbenennen …“ | Dialog nennt Stellen und Dateien; danach .bib und alle .tex mit Zitaten als ungespeicherte Tabs, ⌘Z pro Datei; vorhandener Schlüssel wird abgelehnt |
 | 198 | Rechtsklick auf `\begin{itemize}` | „Umgebung „itemize“ umbenennen (dieses Paar) …“, „enumerate“ eingeben: nur dieses `\begin` und das passende `\end` ändern sich (auch bei verschachtelten Listen) |
 | 199 | Eigener Befehl (`\newcommand{\tool}`), eigene Umgebung (`\newenvironment`) und `\ac{…}` umbenennen | Definition und alle Verwendungen im Projekt; bei der eigenen Umgebung zwei Einträge (Paar / überall); auf `\section` oder Befehlen der Vorlage gibt es keinen Eintrag |
+
+### Sitzung 15: Einstellungen
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 200 | ⌘, (bzw. LatexEditor → Einstellungen …) | Fenster mit vier Reitern; oben in „Darstellung“ eine Vorschau mit Zeilennummern |
+| 201 | Farbschema durchschalten, Erscheinungsbild Hell/Dunkel/System | Vorschau und Editor wechseln sofort die Farben (auch Hintergrund und Zeilennummern-Leiste), Datei bleibt „unverändert“, ⌘Z hat nichts Neues |
+| 202 | Schriftart (z. B. Menlo), Größe 16 pt, Zeilenabstand Weit | Editor, alle offenen Tabs und die Zeilennummern passen sich sofort an; ⌘+/⌘− zoomt weiter darüber hinaus |
+| 203 | Zeilen umbrechen aus | Lange Zeilen laufen weiter, waagerechter Scroller erscheint; wieder an: umbricht am Fensterrand |
+| 204 | Einrückung „2 Leerzeichen“, dann Tab-Taste, Enter nach `\begin{itemize}`, ⌘], Einfügen → Tabelle | Überall zwei Leerzeichen statt Tabulator; Tabbreite 8 verbreitert vorhandene Tabulatoren |
+| 205 | Rechtschreibung: Sprache Englisch, dann aus | Deutsche Wörter werden rot unterstrichen (Englisch), danach gar keine Unterstreichung mehr |
+| 206 | Zeilennummern bzw. aktuelle Zeile aus | Leiste bzw. dezenter Streifen verschwinden sofort |
+| 207 | „Standard wiederherstellen“ in jedem Reiter; Menü Bearbeiten ansehen | Werte springen auf Standard zurück; im Menü Bearbeiten stehen die vier Schreib-Schalter nicht mehr |

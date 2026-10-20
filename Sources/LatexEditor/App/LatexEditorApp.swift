@@ -11,6 +11,10 @@ struct LatexEditorApp: App {
         }
         .defaultSize(width: 1400, height: 860)
         .commands { AppCommands(model: AppModel.shared) }
+
+        Settings {
+            SettingsView(model: AppModel.shared)
+        }
     }
 }
 
@@ -18,6 +22,7 @@ struct LatexEditorApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        EditorSettings.applyAppearance()
         NSApp.activate()
     }
 
@@ -33,11 +38,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct AppCommands: Commands {
     let model: AppModel
 
-    @AppStorage(CompletionSettings.automaticKey) private var automaticCompletion = true
-    @AppStorage(LatexTextView.autoPairKey) private var autoPairBrackets = true
-    @AppStorage(Capitalization.automaticKey) private var autoCapitalize = true
-    @AppStorage(WritingHints.enabledKey) private var showsWritingHints = true
-    @AppStorage(AppModel.saveOnDeactivateKey) private var saveOnDeactivate = false
     @AppStorage(InterfaceZoom.key) private var zoom = InterfaceZoom.standard
 
     var body: some Commands {
@@ -46,10 +46,6 @@ struct AppCommands: Commands {
             Button("Vervollständigen") { model.editor.requestCompletion() }
                 .keyboardShortcut(" ", modifiers: .control)
                 .disabled(!model.editor.canInsert)
-            Toggle("Automatisch vervollständigen", isOn: $automaticCompletion)
-            Toggle("Klammern automatisch schließen", isOn: $autoPairBrackets)
-            Toggle("Groß-/Kleinschreibung automatisch korrigieren", isOn: $autoCapitalize)
-            Toggle("Schreibhinweise anzeigen", isOn: $showsWritingHints)
             Divider()
             Button("Umbenennen …") { model.beginRename() }
                 .keyboardShortcut("r", modifiers: [.command, .option])
@@ -160,7 +156,6 @@ struct AppCommands: Commands {
                 get: { model.build.compileOnSave },
                 set: { model.build.compileOnSave = $0 }
             ))
-            Toggle("Beim Verlassen der App speichern", isOn: $saveOnDeactivate)
             Button("Build-Log anzeigen") { model.build.isLogVisible = true }
             Button("Hilfsdateien löschen …") { Task { await model.cleanBuildFiles() } }
                 .disabled(model.project.mainFileURL == nil || model.build.status == .running)

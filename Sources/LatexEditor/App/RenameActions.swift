@@ -95,7 +95,7 @@ extension AppModel {
                 switch source {
                 case let .text(sourceURL, sourceText): (url, text) = (sourceURL, sourceText)
                 case let .file(sourceURL):
-                    guard let data = try? Data(contentsOf: sourceURL), let sourceText = String(data: data, encoding: .utf8) else { continue }
+                    guard let sourceText = ProjectText.string(sourceURL) else { continue }
                     (url, text) = (sourceURL, sourceText)
                 }
                 let count = Renamer.occurrences(of: subject, in: text, isBibliography: FileKind(url: url) == .bib).count

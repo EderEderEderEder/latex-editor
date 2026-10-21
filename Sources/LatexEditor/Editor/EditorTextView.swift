@@ -111,9 +111,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         let textView = LatexTextView(frame: .zero, textContainer: container)
         configure(textView)
         completion = CompletionController(textView: textView) { [weak self] in self?.session }
-        NotificationCenter.default.addObserver(forName: EditorAppearance.fontDidChange, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.applyEditorSettings() }
-        }
+        observeSettings()
         textView.onCompletionRequested = { [weak self] in self?.completion.trigger() }
         textView.onJumpToTarget = { [weak self] target in self?.jumpHandler?(target) }
         textView.renameScopes = { [weak self] location in
@@ -137,7 +135,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         scrollView.documentView = textView
         self.scrollView = scrollView
         attachLineNumbers(to: scrollView, textView: textView)
-        applyEditorSettings()
+        applyEditorSettings(affectsText: true)
         return scrollView
     }
 
@@ -177,18 +175,38 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
 
     // MARK: Einstellungen
 
-    /// Übernimmt die Einstellungen (Schrift, Abstand, Tabbreite, Farbschema, Zeilennummern, Umbruch, Rechtschreibung)
-    /// in die Ansicht. Den Text aller offenen Dateien passt `AppModel` an (`EditorStore.applyEditorFont`).
-    private func applyEditorSettings() {
-        textView.font = EditorAppearance.font
-        textView.typingAttributes = EditorAppearance.textAttributes
-        textView.defaultParagraphStyle = EditorAppearance.paragraphStyle
+    /// Abgemeldet in `deinit` (Beobachter mit Block bleiben sonst für immer registriert)
+    nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
+
+    deinit {
+        observers.forEach(NotificationCenter.default.removeObserver)
+    }
+
+    private func observeSettings() {
+        let center = NotificationCenter.default
+        observers.append(center.addObserver(forName: EditorAppearance.fontDidChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyEditorSettings(affectsText: true) }
+        })
+        observers.append(center.addObserver(forName: EditorSettings.viewDidChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyEditorSettings(affectsText: false) }
+        })
+    }
+
+    /// Übernimmt die Einstellungen in die Ansicht. Schrift und Absatzstil nur, wenn sie sich geändert haben
+    /// (`textView.font` setzt die Schrift des ganzen Texts und löst ein Neu-Layout aus). Den Text aller offenen
+    /// Dateien passt `AppModel` an (`EditorStore.applyEditorFont`).
+    private func applyEditorSettings(affectsText: Bool) {
+        if affectsText {
+            textView.font = EditorAppearance.font
+            textView.typingAttributes = EditorAppearance.textAttributes
+            textView.defaultParagraphStyle = EditorAppearance.paragraphStyle
+            lineNumberRuler.updateFont()
+        }
         textView.indentUnit = EditorSettings.indentation.unit
         textView.highlightsCurrentLine = EditorSettings.highlightsCurrentLine
         showLineNumbers(EditorSettings.showsLineNumbers)
         applyLineWrapping(EditorSettings.wrapsLines)
         applySpelling(checks: EditorSettings.checksSpelling, language: EditorSettings.spellingLanguage)
-        lineNumberRuler.updateFont()
         // Farbschema: Die Farben sind dynamisch, ein Neuzeichnen genügt
         textView.needsDisplay = true
         lineNumberRuler.needsDisplay = true

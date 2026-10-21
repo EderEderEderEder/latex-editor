@@ -43,6 +43,13 @@ struct FileNode: Identifiable, Hashable, Sendable {
     var isDirectory: Bool { children != nil }
     var kind: FileKind { FileKind(url: url) }
 
+    /// Alle Einträge (Dateien und Ordner, mit der Wurzel), für den Abgleich mit Dateisystem-Ereignissen
+    func allURLs() -> Set<URL> {
+        var result: Set<URL> = [url]
+        for child in children ?? [] { result.formUnion(child.allURLs()) }
+        return result
+    }
+
     /// Alle Dateien (ohne Ordner) mit ihrer Tiefe, Wurzel = 0.
     func collectFiles(depth: Int = 0) -> [(url: URL, depth: Int)] {
         guard let children else { return [(url, depth)] }

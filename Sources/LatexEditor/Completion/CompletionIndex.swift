@@ -86,24 +86,13 @@ struct CompletionIndex: Equatable, Sendable {
     }
 
     private static func matches(of expression: NSRegularExpression, in text: String) -> Set<String> {
-        let code = withoutComments(text) as NSString
+        let code = LatexComments.masking(text) as NSString
         var names: Set<String> = []
         expression.enumerateMatches(in: code as String, range: NSRange(location: 0, length: code.length)) { match, _, _ in
             guard let match, match.numberOfRanges > 1 else { return }
             names.insert(code.substring(with: match.range(at: 1)))
         }
         return names
-    }
-
-    private static func withoutComments(_ text: String) -> String {
-        text.split(separator: "\n", omittingEmptySubsequences: false).map { line in
-            var escaped = false
-            for index in line.indices {
-                if line[index] == "%", !escaped { return String(line[..<index]) }
-                escaped = line[index] == "\\" && !escaped
-            }
-            return String(line)
-        }.joined(separator: "\n")
     }
 
     /// `.cls`/`.sty` im Projekt (Vorlagen wie die HgbThesis), ohne versteckte Ordner.
@@ -115,7 +104,6 @@ struct CompletionIndex: Equatable, Sendable {
     }
 
     private static func readText(_ url: URL) -> String? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1)
+        ProjectText.string(url)
     }
 }

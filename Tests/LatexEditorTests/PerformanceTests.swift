@@ -2,7 +2,8 @@ import AppKit
 import Testing
 @testable import LatexEditor
 
-/// Zeitbudgets für den Debug-Build (`scripts/test.sh`), Median mehrerer Durchläufe auf einem Intel-Mac.
+/// Zeitbudgets für den Debug-Build (`scripts/test.sh`), schnellster von mehreren Durchläufen (`fastestDuration`; die Messwerte
+/// in den Kommentaren stammen teils noch aus Medianen und sind damit eher zu hoch) auf einem Intel-Mac.
 /// Kalibriert mit etwa 3-fachem Puffer zum Messwert vom 14.10.2026 (Kommentar: Debug / Release).
 /// Release ist deutlich schneller; hält Debug das Budget, hält Release es sicher.
 private enum Budget {
@@ -12,9 +13,12 @@ private enum Budget {
     static let lineIndexEdit = Duration.microseconds(250)
     /// gemessen 40 ms / 6,7 ms, läuft beim Öffnen im Hintergrund
     static let tokenizeFullDocument = Duration.milliseconds(120)
-    /// gemessen 334 ms (Debug ≈ Release: Maskieren 70, Tokens 64, die neun Regex-Durchläufe von ICU zusammen ca. 200),
-    /// läuft 0,6 s nach der letzten Eingabe im Hintergrund. Ein Kapitel mit 500 Zeilen braucht ca. 17 ms.
+    /// gemessen 300 ms ohne Sitzung (Maskieren 27, ganzer Text eingefärbt 62, die neun Regex-Durchläufe von ICU ca. 200);
+    /// eine offene Datei nutzt die Zeilenzustände der Sitzung (`checkOpenDocument`). Ein Kapitel mit 500 Zeilen: ca. 15 ms.
     static let writingHintsFullDocument = Duration.milliseconds(1_000)
+    /// gemessen 282 ms: was 0,6 s nach der Eingabe im Hintergrund läuft (einmal maskieren 27, Verweise 44, Hinweise ohne
+    /// Neu-Einfärben 210 – fast nur ICU-Regex). Vorher rund 450 ms (doppelt maskiert, ganzer Text neu eingefärbt).
+    static let checkOpenDocument = Duration.milliseconds(850)
     /// gemessen 47 ms: eine .bib mit 2.000 Einträgen (12.000 Zeilen) komplett färben, beim Öffnen im Hintergrund
     static let tokenizeBibliography = Duration.milliseconds(150)
     /// gemessen 64 ms / 26 ms (Vorbereitung im Hintergrund + Attribute im Main-Thread)
@@ -74,7 +78,7 @@ struct PerformanceTests {
     @Test("Zeilenindex aufbauen")
     func lineIndexBuild() {
         let text = document as NSString
-        let duration = medianDuration(iterations: Iterations.medium) { _ = LineIndex(text: text) }
+        let duration = fastestDuration(iterations: Iterations.medium) { _ = LineIndex(text: text) }
         check("LineIndex aufbauen", duration, within: Budget.lineIndexBuild)
     }
 
@@ -83,7 +87,7 @@ struct PerformanceTests {
         let text = NSMutableString(string: document)
         var index = LineIndex(text: text)
         let middle = text.length / 2
-        let duration = medianDuration(iterations: Iterations.fast) {
+        let duration = fastestDuration(iterations: Iterations.fast) {
             let edit = replace(text, range: NSRange(location: middle, length: 0), with: "\n")
             index.applyEdit(in: text, editedRange: edit.editedRange, changeInLength: edit.delta)
         }
@@ -94,7 +98,7 @@ struct PerformanceTests {
     func tokenizeFullDocument() {
         let text = document as NSString
         let lines = LineIndex(text: text)
-        let duration = medianDuration(iterations: Iterations.slow) {
+        let duration = fastestDuration(iterations: Iterations.slow) {
             var highlighter = SyntaxHighlighter()
             _ = highlighter.highlightAll(text, lines: lines)
         }
@@ -103,8 +107,20 @@ struct PerformanceTests {
 
     @Test("Schreibhinweise für die ganze Datei")
     func writingHintsFullDocument() {
-        let duration = medianDuration(iterations: Iterations.slow) { _ = WritingHints.hints(in: document) }
+        let duration = fastestDuration(iterations: Iterations.slow) { _ = WritingHints.hints(in: document) }
         check("Schreibhinweise komplett", duration, within: Budget.writingHintsFullDocument)
+    }
+
+    @Test("Prüfung einer offenen Datei: Verweise und Schreibhinweise mit den Zeilenzuständen der Sitzung")
+    func checkOpenDocument() {
+        let session = DocumentSession(url: URL(fileURLWithPath: "/tmp/perf-check.tex"), text: document)
+        let syntax = session.syntaxSnapshot()
+        let duration = fastestDuration(iterations: Iterations.slow) {
+            let masked = LatexMasking.scannable(document)
+            _ = ReferenceChecker.problems(masked: masked as NSString, labels: [], citations: nil)
+            _ = WritingHints.hints(in: document, masked: masked, syntax: syntax)
+        }
+        check("Prüfung offene Datei", duration, within: Budget.checkOpenDocument)
     }
 
     @Test("BibTeX: große Literaturdatei komplett färben")
@@ -113,7 +129,7 @@ struct PerformanceTests {
             + "\tpublisher = {Verlag},\n\tyear = {%d},\n}\n"
         let text = (0..<2_000).map { String(format: entry, $0, $0, 1900 + $0 % 120) }.joined() as NSString
         let lines = LineIndex(text: text)
-        let duration = medianDuration(iterations: Iterations.slow) {
+        let duration = fastestDuration(iterations: Iterations.slow) {
             var highlighter = SyntaxHighlighter(language: .bibtex)
             _ = highlighter.highlightAll(text, lines: lines)
         }
@@ -123,13 +139,13 @@ struct PerformanceTests {
     @Test("Einstellung geändert: Schrift und Absatzstil einer großen Datei übernehmen")
     func applyEditorFont() {
         let session = DocumentSession(url: URL(fileURLWithPath: "/tmp/perf-font.tex"), text: document)
-        let duration = medianDuration(iterations: Iterations.medium) { session.applyEditorFont() }
+        let duration = fastestDuration(iterations: Iterations.medium) { session.applyEditorFont() }
         check("Schrift übernehmen", duration, within: Budget.applyEditorFont)
     }
 
     @Test("Datei öffnen: Index, Tokens und Farben im NSTextStorage")
     func openDocument() {
-        let duration = medianDuration(iterations: Iterations.slow) {
+        let duration = fastestDuration(iterations: Iterations.slow) {
             _ = DocumentSession(url: URL(fileURLWithPath: "/tmp/perf.tex"), text: document)
         }
         check("Öffnen inkl. Einfärben", duration, within: Budget.openDocument)
@@ -140,7 +156,7 @@ struct PerformanceTests {
         let fixture = EditorFixture(text: document)
         let location = fixture.session.lineIndex.start(ofLine: 5_003) + 10
         var offset = 0
-        let duration = medianDuration(iterations: Iterations.fast) {
+        let duration = fastestDuration(iterations: Iterations.fast) {
             fixture.replace(NSRange(location: location + offset, length: 0), with: "x")
             offset += 1
         }
@@ -151,7 +167,7 @@ struct PerformanceTests {
     func keystrokeOpeningMath() {
         let fixture = EditorFixture(text: document)
         let location = fixture.session.lineIndex.start(ofLine: 5_006)
-        let duration = medianDuration(iterations: Iterations.medium) {
+        let duration = fastestDuration(iterations: Iterations.medium) {
             fixture.replace(NSRange(location: location, length: 0), with: "$")
             fixture.replace(NSRange(location: location, length: 1), with: "")
         }
@@ -163,7 +179,7 @@ struct PerformanceTests {
         let fixture = EditorFixture(text: document)
         let lines = fixture.session.lineIndex
         let paragraph = NSRange(location: lines.start(ofLine: 5_000), length: lines.start(ofLine: 5_026) - lines.start(ofLine: 5_000))
-        let duration = medianDuration(iterations: Iterations.fast) {
+        let duration = fastestDuration(iterations: Iterations.fast) {
             _ = fixture.session.syntaxTokens(in: paragraph)
         }
         check("Spelling-Tokens Absatz", duration, within: Budget.spellingTokensForParagraph)
@@ -174,7 +190,7 @@ struct PerformanceTests {
         let fixture = EditorFixture(text: document)
         let visible = NSRect(x: 0, y: 2_000, width: 600, height: 800)
         _ = fixture.labels(in: visible)
-        let duration = medianDuration(iterations: Iterations.fast) { _ = fixture.labels(in: visible) }
+        let duration = fastestDuration(iterations: Iterations.fast) { _ = fixture.labels(in: visible) }
         check("Ruler sichtbarer Bereich", duration, within: Budget.rulerVisibleLabels)
     }
 
@@ -205,7 +221,7 @@ struct PerformanceTests {
             _ = await parser.outline(mainFile: main)
             durations.append(clock.now - start)
         }
-        check("Gliederung parsen", durations.sorted()[durations.count / 2], within: Budget.outlineParseLargeFile)
+        check("Gliederung parsen", durations.min() ?? .zero, within: Budget.outlineParseLargeFile)
     }
 
     @Test("Log-Parser mit 5-MB-Log")
@@ -216,7 +232,7 @@ struct PerformanceTests {
         while log.utf8.count < targetBytes { log += fixtures.joined(separator: "\n") }
         let base = URL(fileURLWithPath: "/p", isDirectory: true)
         var issueCount = 0
-        let duration = medianDuration(iterations: Iterations.slow) {
+        let duration = fastestDuration(iterations: Iterations.slow) {
             issueCount = LatexLogParser.parse(log, baseDirectory: base).count
         }
         #expect(issueCount > 1_000)
@@ -230,7 +246,7 @@ struct PerformanceTests {
         let url = project.url("main.synctex.gz")
         try SyntheticSyncTeX.gzipped(SyntheticSyncTeX.text()).write(to: url)
         var recordCount = 0
-        let duration = try medianDuration(iterations: Iterations.slow) {
+        let duration = try fastestDuration(iterations: Iterations.slow) {
             recordCount = try SyncTeXIndex.load(contentsOf: url).records.count
         }
         #expect(recordCount > 100_000)
@@ -243,7 +259,7 @@ struct PerformanceTests {
         let chapter = URL(fileURLWithPath: SyntheticSyncTeX.chapterPath(7))
         var box: SyncTeXBox?
         var location: SyncTeXSourceLocation?
-        let duration = medianDuration(iterations: Iterations.medium) {
+        let duration = fastestDuration(iterations: Iterations.medium) {
             box = index.forward(file: chapter, line: 1_234)
             location = index.backward(page: box?.page ?? 1, point: CGPoint(x: 200, y: 400))
         }
@@ -308,14 +324,14 @@ struct DiffPerformanceTests {
         var lines = LineDiff.splitLines(document)
         for index in stride(from: 50, to: lines.count, by: 100) { lines[index] += " geändert" }
         let changed = lines.joined(separator: "\n")
-        let duration = medianDuration(iterations: Iterations.slow) { _ = LineDiff.compute(old: document, new: changed) }
+        let duration = fastestDuration(iterations: Iterations.slow) { _ = LineDiff.compute(old: document, new: changed) }
         check("Diff typisch", duration, within: Budget.diffTypical)
     }
 
     @Test("Diff, wenn jede Zeile geändert ist")
     func rewriteDiff() {
         let changed = LineDiff.splitLines(document).map { $0 + "!" }.joined(separator: "\n")
-        let duration = medianDuration(iterations: Iterations.slow) { _ = LineDiff.compute(old: document, new: changed) }
+        let duration = fastestDuration(iterations: Iterations.slow) { _ = LineDiff.compute(old: document, new: changed) }
         check("Diff alles neu", duration, within: Budget.diffRewrite)
     }
 
@@ -325,7 +341,7 @@ struct DiffPerformanceTests {
         let pieces = ["", "\\item a", "\\item b", "\\hline", "Text."]
         let old = (0..<10_000).map { _ in pieces.randomElement(using: &generator)! }
         let new = old.shuffled(using: &generator)
-        let duration = medianDuration(iterations: 1) {
+        let duration = fastestDuration(iterations: 1) {
             _ = LineDiff.compute(old: old.joined(separator: "\n"), new: new.joined(separator: "\n"))
         }
         check("Diff ungünstigster Fall", duration, within: Budget.diffWorstCase)
@@ -338,7 +354,7 @@ struct CompletionPerformanceTests {
     func contextDetection() {
         let line = String(repeating: "Ein langer Absatz mit Text und 50\\% Inhalt. ", count: 45) + "\\cite[S.~3]{knuth,lam"
         let text = line as NSString
-        let duration = medianDuration(iterations: Iterations.fast) {
+        let duration = fastestDuration(iterations: Iterations.fast) {
             _ = CompletionContextDetector.detect(in: text, cursor: text.length, lineStart: 0)
         }
         check("Vervollständigung Kontext", duration, within: Budget.completionContext)
@@ -347,7 +363,7 @@ struct CompletionPerformanceTests {
     @Test("Filtern und Sortieren vieler Vorschläge")
     func ranking() {
         let items = (0..<5_000).map { CompletionItem(kind: .label, text: "fig:abbildung-\($0)-teil") }
-        let duration = medianDuration(iterations: Iterations.medium) {
+        let duration = fastestDuration(iterations: Iterations.medium) {
             _ = CompletionMatcher.rank(items, prefix: "teil")
         }
         check("Vervollständigung Sortieren", duration, within: Budget.completionRanking)

@@ -69,7 +69,7 @@ final class InsertStore {
         catalogTask?.cancel()
         catalogTask = Task {
             let (scanned, bibliography) = await Task.detached(priority: .userInitiated) {
-                let mainText = mainFile.flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+                let mainText = mainFile.flatMap(ProjectText.string)
                 return (ProjectCatalog.scan(files: files, mainFile: mainFile),
                         BibliographyFile.target(mainFile: mainFile, mainText: mainText, projectFiles: files))
             }.value

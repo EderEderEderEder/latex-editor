@@ -107,6 +107,6 @@ struct ReferenceUpdaterTests {
     @Test("Maskierung behält die Länge, auch mit Emoji")
     func maskingKeepsLength() {
         let text = "😀 x % Kommentar 😀\n\\input{a}"
-        #expect(ReferenceUpdater.maskingComments(in: text).utf16.count == text.utf16.count)
+        #expect(LatexComments.masking(text).utf16.count == text.utf16.count)
     }
 }

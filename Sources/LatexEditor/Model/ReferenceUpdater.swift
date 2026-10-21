@@ -58,7 +58,7 @@ enum ReferenceUpdater {
         in text: String, file: URL, base: URL, from: URL, to: URL, graphicsDirectories: [String]
     ) -> [ReferenceEdit] {
         guard let expression else { return [] }
-        let masked = maskingComments(in: text) as NSString
+        let masked = LatexComments.masking(text) as NSString
         let original = text as NSString
         var result: [ReferenceEdit] = []
         for match in expression.matches(in: masked as String, range: NSRange(location: 0, length: masked.length)) {
@@ -155,25 +155,5 @@ enum ReferenceUpdater {
             result.replaceCharacters(in: edit.range, with: edit.newText)
         }
         return result as String
-    }
-
-    /// Ersetzt unescapte Kommentare durch Leerzeichen (gleiche Länge, damit Bereiche stimmen).
-    static func maskingComments(in text: String) -> String {
-        var result = ""
-        result.reserveCapacity(text.utf16.count)
-        var inComment = false
-        var previousWasBackslash = false
-        for character in text {
-            if character == "\n" {
-                inComment = false
-                previousWasBackslash = false
-                result.append(character)
-                continue
-            }
-            if !inComment, character == "%", !previousWasBackslash { inComment = true }
-            previousWasBackslash = character == "\\" && !previousWasBackslash
-            result.append(inComment ? String(repeating: " ", count: String(character).utf16.count) : String(character))
-        }
-        return result
     }
 }

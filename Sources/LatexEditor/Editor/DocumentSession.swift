@@ -180,7 +180,7 @@ final class DocumentSession {
             if !hasExternalChange { hasExternalChange = true }
             return .conflict
         }
-        guard let decoded = Self.decode(data) else { return .unchanged }
+        guard let decoded = ProjectText.decode(data) else { return .unchanged }
         isReloading = true
         replaceChangedRange(with: decoded.text)
         isReloading = false
@@ -242,6 +242,11 @@ final class DocumentSession {
         textStorage.endEditing()
     }
 
+    /// Zeilenzustände für Prüfungen im Hintergrund (passend zum aktuellen Text)
+    func syntaxSnapshot() -> SyntaxSnapshot {
+        SyntaxSnapshot(highlighter: highlighter, lines: lineIndex)
+    }
+
     /// Syntax-Tokens der Zeilen, die `range` berühren (z. B. für die Rechtschreibprüfung).
     func syntaxTokens(in range: NSRange) -> [SyntaxToken] {
         highlighter.tokens(in: range, of: textStorage.mutableString, lines: lineIndex)
@@ -277,14 +282,8 @@ final class DocumentSession {
 
     private nonisolated static func readText(from url: URL) throws -> (text: String, encoding: String.Encoding, data: Data) {
         let data = try Data(contentsOf: url)
-        guard let decoded = decode(data) else { throw CocoaError(.fileReadInapplicableStringEncoding) }
+        guard let decoded = ProjectText.decode(data) else { throw CocoaError(.fileReadInapplicableStringEncoding) }
         return (decoded.text, decoded.encoding, data)
-    }
-
-    private nonisolated static func decode(_ data: Data) -> (text: String, encoding: String.Encoding)? {
-        if let text = String(data: data, encoding: .utf8) { return (text, .utf8) }
-        if let text = String(data: data, encoding: .isoLatin1) { return (text, .isoLatin1) }
-        return nil
     }
 }
 

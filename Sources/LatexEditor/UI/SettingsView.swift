@@ -83,13 +83,13 @@ private struct AppearanceSettings: View {
         }
         .formStyle(.grouped)
         .task { families = EditorSettings.monospacedFamilies() }
-        .onChange(of: appearance) { EditorSettings.didChange() }
-        .onChange(of: colorScheme) { EditorSettings.didChange() }
-        .onChange(of: fontFamily) { EditorSettings.didChange() }
-        .onChange(of: fontSize) { EditorSettings.didChange() }
-        .onChange(of: lineSpacing) { EditorSettings.didChange() }
-        .onChange(of: showsLineNumbers) { EditorSettings.didChange() }
-        .onChange(of: highlightsCurrentLine) { EditorSettings.didChange() }
+        .onChange(of: appearance) { EditorSettings.didChange(affectsText: false) }
+        .onChange(of: colorScheme) { EditorSettings.didChange(affectsText: false) }
+        .onChange(of: fontFamily) { EditorSettings.didChange(affectsText: true) }
+        .onChange(of: fontSize) { EditorSettings.didChange(affectsText: true) }
+        .onChange(of: lineSpacing) { EditorSettings.didChange(affectsText: true) }
+        .onChange(of: showsLineNumbers) { EditorSettings.didChange(affectsText: false) }
+        .onChange(of: highlightsCurrentLine) { EditorSettings.didChange(affectsText: false) }
     }
 }
 
@@ -153,11 +153,11 @@ private struct EditorBehaviorSettings: View {
             ResetButton(keys: EditorSettings.Key.editorTab)
         }
         .formStyle(.grouped)
-        .onChange(of: wrapsLines) { EditorSettings.didChange() }
-        .onChange(of: indentation) { EditorSettings.didChange() }
-        .onChange(of: tabWidth) { EditorSettings.didChange() }
-        .onChange(of: checksSpelling) { EditorSettings.didChange() }
-        .onChange(of: spellingLanguage) { EditorSettings.didChange() }
+        .onChange(of: wrapsLines) { EditorSettings.didChange(affectsText: false) }
+        .onChange(of: indentation) { EditorSettings.didChange(affectsText: false) }
+        .onChange(of: tabWidth) { EditorSettings.didChange(affectsText: true) }
+        .onChange(of: checksSpelling) { EditorSettings.didChange(affectsText: false) }
+        .onChange(of: spellingLanguage) { EditorSettings.didChange(affectsText: false) }
     }
 }
 
@@ -264,7 +264,12 @@ private struct SettingsPreview: NSViewRepresentable {
     final class PreviewCoordinator {
         private let editor = EditorCoordinator()
         private let session = DocumentSession(url: URL(fileURLWithPath: "/Vorschau.tex"), text: SettingsPreview.sample)
-        private var observer: NSObjectProtocol?
+        /// Beim Schließen des Fensters abmelden, sonst sammelt sich pro Öffnen ein Beobachter an
+        nonisolated(unsafe) private var observer: NSObjectProtocol?
+
+        deinit {
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+        }
 
         func makeView() -> NSScrollView {
             let scrollView = editor.makeScrollView()

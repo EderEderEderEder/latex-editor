@@ -196,9 +196,16 @@ final class CompletionController {
 
     // MARK: Schließen bei Fokus- oder Fensterwechsel
 
+    /// Abgemeldet in `deinit` (Beobachter mit Block bleiben sonst für immer registriert)
+    nonisolated(unsafe) private var resignObserver: NSObjectProtocol?
+
+    deinit {
+        if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
+    }
+
     private func observe(_ textView: NSTextView) {
         let center = NotificationCenter.default
-        center.addObserver(forName: NSWindow.didResignKeyNotification, object: nil, queue: .main) { [weak self] notification in
+        resignObserver = center.addObserver(forName: NSWindow.didResignKeyNotification, object: nil, queue: .main) { [weak self] notification in
             let resigned = (notification.object as AnyObject?).map(ObjectIdentifier.init)
             MainActor.assumeIsolated {
                 guard let self, let window = self.textView?.window, resigned == ObjectIdentifier(window) else { return }

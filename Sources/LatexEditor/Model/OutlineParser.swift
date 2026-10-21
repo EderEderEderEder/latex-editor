@@ -191,18 +191,6 @@ private extension OutlineParser {
         return cursor
     }
 
-    static func commentStart(in bytes: [UInt8]) -> Int? {
-        var index = 0
-        while index < bytes.count {
-            switch bytes[index] {
-            case backslash: index += 2
-            case percent: return index
-            default: index += 1
-            }
-        }
-        return nil
-    }
-
     static func isLetter(_ byte: UInt8) -> Bool {
         (byte >= UInt8(ascii: "a") && byte <= UInt8(ascii: "z"))
             || (byte >= UInt8(ascii: "A") && byte <= UInt8(ascii: "Z"))
@@ -223,5 +211,21 @@ private extension OutlineParser {
             result.append(character)
         }
         return result.trimmingCharacters(in: .whitespaces)
+    }
+}
+
+extension OutlineParser {
+    /// Kommentarbeginn auf Bytes (schnell, für große Dateien) nach derselben Regel wie `LatexComments`
+    /// (`LatexSourceTests` prüft, dass beide übereinstimmen)
+    static func commentStart(in bytes: [UInt8]) -> Int? {
+        var index = 0
+        while index < bytes.count {
+            switch bytes[index] {
+            case backslash: index += 2
+            case percent: return index
+            default: index += 1
+            }
+        }
+        return nil
     }
 }

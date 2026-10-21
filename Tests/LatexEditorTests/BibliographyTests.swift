@@ -210,6 +210,42 @@ struct SourceInsertTests {
         #expect(!model.insertion.isPresented)
     }
 
+    @Test("Geschlossene Latin-1-.bib bleibt erhalten; unlesbare .bib wird nie überschrieben")
+    func appendKeepsBibliography() async throws {
+        let project = try await makeProject()
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: project.url("literatur.bib").path)
+            project.remove()
+            model.build.compileOnSave = true
+        }
+        let original = "@book{alt, author={Müller, A}, title={Größe}, date={2000}}\n"
+        try #require(original.data(using: .isoLatin1)).write(to: project.url("literatur.bib"))
+        model.presentInsert(.source)
+        await model.insertion.waitForCatalog()
+        model.insertion.source.mode = .bibtex
+        model.insertion.source.bibtex = "@misc{neu, title={Neu}}"
+        model.insertion.source.citeAfterInsert = false
+        await model.performInsert()
+
+        let data = try Data(contentsOf: project.url("literatur.bib"))
+        let text = try #require(String(data: data, encoding: .isoLatin1))
+        #expect(text.hasPrefix(original) && text.contains("@misc{neu,"), "Alter Inhalt bleibt, neuer kommt dazu")
+        #expect(String(data: data, encoding: .utf8) == nil, "Kodierung bleibt Latin-1")
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: project.url("literatur.bib").path)
+        model.presentInsert(.source)
+        await model.insertion.waitForCatalog()
+        model.insertion.source.mode = .bibtex
+        model.insertion.source.bibtex = "@misc{zwei, title={Zwei}}"
+        model.insertion.source.citeAfterInsert = false
+        await model.performInsert()
+        #expect(model.insertion.errorMessage?.contains("literatur.bib") == true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: project.url("literatur.bib").path)
+        #expect(try Data(contentsOf: project.url("literatur.bib")) == data, "Unverändert, nicht durch den neuen Eintrag ersetzt")
+        model.insertion.errorMessage = nil
+        model.insertion.isPresented = false
+    }
+
     @Test("Offene, geänderte .bib: Eintrag landet im Editor und lässt sich rückgängig machen")
     func insertIntoOpenBibliography() async throws {
         let project = try await makeProject()

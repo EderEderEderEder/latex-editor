@@ -115,3 +115,27 @@ struct SyntaxHighlighter: Sendable {
         return LatexTokenizer.tokenize(content, lineOffset: lineOffset, from: state, into: &tokens)
     }
 }
+
+/// Highlighter-Zustand zu einem Text: genug, um die Tokens einzelner Zeilen zu berechnen, ohne den ganzen Text neu
+/// einzufärben. Werttypen, also im Hintergrund nutzbar (z. B. für die Schreibhinweise einer offenen Datei).
+struct SyntaxSnapshot: Sendable {
+    let highlighter: SyntaxHighlighter
+    let lines: LineIndex
+
+    init(highlighter: SyntaxHighlighter, lines: LineIndex) {
+        self.highlighter = highlighter
+        self.lines = lines
+    }
+
+    /// Ohne Sitzung (Datei von der Platte, Tests): einmal komplett einfärben
+    init(text: NSString) {
+        let lines = LineIndex(text: text)
+        var highlighter = SyntaxHighlighter()
+        _ = highlighter.highlightAll(text, lines: lines)
+        self.init(highlighter: highlighter, lines: lines)
+    }
+
+    func tokens(in range: NSRange, of text: NSString) -> [SyntaxToken] {
+        highlighter.tokens(in: range, of: text, lines: lines)
+    }
+}

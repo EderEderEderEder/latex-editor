@@ -96,14 +96,16 @@ enum LargeDocument {
 }
 
 /// Median-Laufzeit über mehrere Durchläufe (robuster gegen Ausreißer als ein Einzelwert).
-func medianDuration(iterations: Int, _ body: () throws -> Void) rethrows -> Duration {
+/// Schnellster von `iterations` Läufen. Nicht der mittlere: Im Gesamtlauf teilen sich über 100 Testgruppen die
+/// Maschine, einzelne Läufe werden dann zufällig langsam (Gliederung 54 ms allein, bis 130 ms unter Last). Ein echter
+/// Rückschritt macht jeden Lauf langsam und fällt auch beim schnellsten auf.
+func fastestDuration(iterations: Int, _ body: () throws -> Void) rethrows -> Duration {
     let clock = ContinuousClock()
-    var samples: [Duration] = []
-    samples.reserveCapacity(iterations)
+    var fastest = Duration.seconds(Int64.max)
     for _ in 0..<iterations {
-        samples.append(try clock.measure(body))
+        fastest = min(fastest, try clock.measure(body))
     }
-    return samples.sorted()[samples.count / 2]
+    return fastest
 }
 
 extension Duration {

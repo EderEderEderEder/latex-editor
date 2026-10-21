@@ -23,8 +23,8 @@ enum ViewMode: String, CaseIterable {
 }
 
 struct RootView: View {
-    private static let editorMinWidth: CGFloat = 320
-    private static let pdfMinWidth: CGFloat = 280
+    private static let editorMinWidth: CGFloat = 180
+    private static let pdfMinWidth: CGFloat = 150
     private static let sidebarWidths = (min: CGFloat(200), ideal: CGFloat(270), max: CGFloat(450))
 
     let model: AppModel
@@ -93,19 +93,21 @@ struct RootView: View {
         }
     }
 
+    @ViewBuilder
     private var workspace: some View {
-        HSplitView {
-            if viewMode != .pdfOnly {
-                EditorPane(model: model)
-                    .frame(minWidth: Self.editorMinWidth, maxWidth: .infinity, maxHeight: .infinity)
+        switch viewMode {
+        case .editorOnly:
+            EditorPane(model: model).frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .pdfOnly:
+            PDFPane(store: model.pdf, synctex: model.synctex).frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .split:
+            WorkspaceSplit(leadingMinWidth: Self.editorMinWidth, trailingMinWidth: Self.pdfMinWidth) {
+                EditorPane(model: model).frame(maxHeight: .infinity)
+            } trailing: {
+                PDFPane(store: model.pdf, synctex: model.synctex).frame(maxHeight: .infinity)
             }
-            if viewMode != .editorOnly {
-                PDFPane(store: model.pdf, synctex: model.synctex)
-                    .frame(minWidth: Self.pdfMinWidth, maxWidth: .infinity, maxHeight: .infinity)
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        // HSplitView übernimmt sonst nur die ideale Höhe seiner Inhalte und wird vertikal zentriert.
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ToolbarContentBuilder

@@ -101,6 +101,34 @@ struct FileActionsTests {
         #expect(try sandbox.text("chapters/einleitung.tex").contains("\\input{chapters/ausblick}"))
     }
 
+    @Test("Verweise in geschlossenen Latin-1-Dateien werden angepasst und bleiben Latin-1; Schreibfehler werden gemeldet")
+    func referenceEditsEncodingAndFailures() async throws {
+        let sandbox = try Sandbox()
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: sandbox.project.url("fest").path)
+            sandbox.cleanUp()
+        }
+        try makeThesis(sandbox)
+        let latin1 = try #require("\\chapter{Größe}\nSiehe \\input{chapters/schluss}\n".data(using: .isoLatin1))
+        try FileManager.default.createDirectory(at: sandbox.project.url("anhang"), withIntermediateDirectories: true)
+        try latin1.write(to: sandbox.project.url("anhang/alt.tex"))
+        try sandbox.project.write("fest/gesperrt.tex", "\\input{chapters/schluss}\n")
+        sandbox.install()
+        let model = sandbox.model
+        await model.openProject(sandbox.project.root)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: sandbox.project.url("fest").path)
+
+        try await model.rename(sandbox.project.url("chapters/schluss.tex"), to: "ausblick")
+
+        let data = try Data(contentsOf: sandbox.project.url("anhang/alt.tex"))
+        #expect(String(data: data, encoding: .isoLatin1) == "\\chapter{Größe}\nSiehe \\input{chapters/ausblick}\n")
+        #expect(String(data: data, encoding: .utf8) == nil, "Kodierung bleibt Latin-1")
+        let message = try #require(model.fileActions.errorMessage)
+        #expect(message.contains("gesperrt.tex") && message.contains("von Hand"))
+        #expect(!message.contains("alt.tex"))
+        model.fileActions.errorMessage = nil
+    }
+
     @Test("Umbenennen ohne Verweise anzupassen („Nur umbenennen“) und Abbrechen")
     func skipAndCancel() async throws {
         let sandbox = try Sandbox()

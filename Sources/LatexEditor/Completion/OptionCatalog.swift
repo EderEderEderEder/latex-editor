@@ -147,7 +147,7 @@ enum OptionScanner {
         var keys: [String] = []
         var deprecated: Set<String> = []
         var current: String?
-        for line in withoutComments(text).split(separator: "\n", omittingEmptySubsequences: false) {
+        for line in LatexComments.masking(text).split(separator: "\n", omittingEmptySubsequences: false) {
             if let key = captures(of: keyCode, in: String(line)).first?.first {
                 current = key
                 if !keys.contains(key) { keys.append(key) }
@@ -179,7 +179,7 @@ enum OptionScanner {
 
     /// Alle Gruppen jedes Treffers; Kommentarzeilen (außer bei Wertlisten in Kommentaren) zählen nicht.
     private static func captures(of expression: NSRegularExpression, in text: String) -> [[String]] {
-        let source = expression === commentValues ? text : withoutComments(text)
+        let source = expression === commentValues ? text : LatexComments.masking(text)
         let string = source as NSString
         var result: [[String]] = []
         expression.enumerateMatches(in: source, range: NSRange(location: 0, length: string.length)) { match, _, _ in
@@ -189,19 +189,7 @@ enum OptionScanner {
         return result
     }
 
-    private static func withoutComments(_ text: String) -> String {
-        text.split(separator: "\n", omittingEmptySubsequences: false).map { line in
-            var escaped = false
-            for index in line.indices {
-                if line[index] == "%", !escaped { return String(line[..<index]) }
-                escaped = line[index] == "\\" && !escaped
-            }
-            return String(line)
-        }.joined(separator: "\n")
-    }
-
     private static func readText(_ url: URL) -> String? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1)
+        ProjectText.string(url)
     }
 }

@@ -18,6 +18,8 @@ enum ReferenceUpdateChoice {
 /// damit Änderungen nur die betroffenen Views neu zeichnen.
 @MainActor
 final class AppModel {
+    /// Die App nutzt genau diese Instanz. Eine eigene (`AppModel()`) baut sich vollständig auf und in `deinit` wieder ab
+    /// (Beobachter, Dateiüberwachung) – so können künftige Tests ohne das gemeinsame Modell und ohne `AppModelSuite` laufen.
     static let shared = AppModel()
 
     let project = ProjectStore()
@@ -45,9 +47,11 @@ final class AppModel {
     /// Längere Auswahl wird nicht als Suchbegriff übernommen
     static let maximumPrefilledQueryLength = 200
 
-    private var watcher: FSEventsWatcher?
+    /// `nonisolated(unsafe)`: nur auf dem Main-Thread gesetzt, in `deinit` gestoppt (gibt den Watcher frei)
+    nonisolated(unsafe) private var watcher: FSEventsWatcher?
     /// Überwacht `.git`, wenn es außerhalb des Projektordners liegt (Projekt ist Unterordner eines Repositorys)
-    private var gitWatcher: FSEventsWatcher?
+    nonisolated(unsafe) private var gitWatcher: FSEventsWatcher?
+    nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
     /// Verhindert, dass das Speichern vor einem Build über „Beim Speichern kompilieren“ einen zweiten Build anstößt.
     private var isSavingForBuild = false
     /// Während eines Projektwechsels sollen die Tabs des alten Projekts nicht überschrieben werden.
@@ -73,7 +77,7 @@ final class AppModel {
     /// Zuletzt gemeldete Cursorposition (für ⌘J „Im PDF zeigen“)
     private var lastCursor: (file: URL, line: Int)?
 
-    private init() {
+    init() {
         editor.onDidSave = { [weak self] in self?.didSave() }
         editor.onCursorMoved = { [weak self] file, line in self?.cursorMoved(file: file, line: line) }
         editor.onTabsChanged = { [weak self] tabs in self?.tabsChanged(tabs) }
@@ -103,6 +107,7 @@ final class AppModel {
             self?.editor.dirtySessions.map { (url: $0.url, text: $0.textStorage.string) } ?? []
         }
         changeMarks.loadBase = { [weak self] url in await self?.git.headContents(of: url) }
+        recovery.onWriteFailure = { [weak self] message in self?.fileActions.errorMessage = message }
         observeAppAndFont()
         git.onStatusApplied = { [weak self] in
             guard let self else { return }
@@ -117,95 +122,21 @@ final class AppModel {
     private func observeAppAndFont() {
         InterfaceZoom.migrateLegacySetting()
         let center = NotificationCenter.default
-        center.addObserver(forName: EditorAppearance.fontDidChange, object: nil, queue: .main) { _ in
-            MainActor.assumeIsolated { AppModel.shared.editor.applyEditorFont() }
-        }
-        center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
+        observers.append(center.addObserver(forName: EditorAppearance.fontDidChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.editor.applyEditorFont() }
+        })
+        observers.append(center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard UserDefaults.standard.bool(forKey: AppModel.saveOnDeactivateKey) else { return }
-                AppModel.shared.editor.saveAll()
+                self?.editor.saveAll()
             }
-        }
+        })
     }
 
-    // MARK: Einfügen
-
-    func presentInsert(_ kind: InsertionKind? = nil) {
-        let files = project.tree?.collectFiles().map(\.url) ?? []
-        insertion.present(
-            kind: kind ?? insertion.kind,
-            selectedText: kind?.usesSelectionAsContent ?? (insertion.kind.usesSelectionAsContent) ? editor.selectedText : "",
-            root: project.rootURL,
-            files: files,
-            mainFile: project.mainFileURL
-        )
-    }
-
-    /// Mit offenem Projekt geht das Fenster immer auf. Ohne .tex-Datei vorne lässt sich nur eine Quelle anlegen
-    /// (sie kommt in die .bib); die übrigen Bausteine brauchen die Cursorposition.
-    func canPresentInsert(_ kind: InsertionKind) -> Bool {
-        project.rootURL != nil && (kind == .source || editor.canInsert)
-    }
-
-    /// Kopiert ggf. das Bild nach `images/`, setzt den Code an die Cursorposition und schließt das Fenster.
-    func performInsert() async {
-        // Erst den Katalog abwarten: Labels müssen eindeutig sein, der Bildpfad hängt von \graphicspath ab.
-        await insertion.waitForCatalog()
-        let kind = insertion.kind
-        if kind == .source {
-            await performSourceInsert()
-            return
-        }
-        do {
-            let reference = kind == .image ? try insertion.prepareImageReference() : ""
-            let text = insertion.generate(imageReference: reference)
-            guard editor.insert(text, isBlock: kind.isBlock, replacesSelection: kind.usesSelectionAsContent) else {
-                insertion.errorMessage = InsertStore.needsTeXMessage
-                return
-            }
-            insertion.isPresented = false
-            if kind == .image { project.reloadTree() }
-        } catch {
-            insertion.errorMessage = error.localizedDescription
-        }
-    }
-
-    /// Neue Quelle: Eintrag ans Ende der Literaturdatei, danach auf Wunsch `\cite` an der Cursorposition.
-    private func performSourceInsert() async {
-        guard case let .success(draft) = insertion.sourceDraft, let file = insertion.bibliographyFile else {
-            insertion.errorMessage = insertion.validationMessage
-            return
-        }
-        guard !insertion.source.citeAfterInsert || editor.canInsert else {
-            insertion.errorMessage = InsertStore.citeNeedsTeXMessage
-            return
-        }
-        do {
-            try await appendToBibliography(draft.entry, file: file)
-        } catch {
-            insertion.errorMessage = "\(file.lastPathComponent) konnte nicht geschrieben werden: \(error.localizedDescription)"
-            return
-        }
-        if insertion.source.citeAfterInsert {
-            editor.insert(insertion.generate(imageReference: ""), isBlock: false, replacesSelection: false)
-        }
-        insertion.source = SourceSettings(mode: insertion.source.mode, type: insertion.source.type, language: insertion.source.language,
-                                          citeAfterInsert: insertion.source.citeAfterInsert)
-        insertion.isPresented = false
-        await reloadCompletionIndex(immediately: true)
-    }
-
-    /// Offen und geändert: in den Editor (rückgängig mit ⌘Z, der Nutzer speichert). Sonst auf die Platte;
-    /// eine offene, unveränderte Datei übernimmt den neuen Stand.
-    private func appendToBibliography(_ entry: String, file: URL) async throws {
-        if let session = editor.session(for: file), session.isDirty {
-            let text = session.textStorage.string
-            session.replaceText(with: text + BibliographyFile.appendix(for: entry, after: text), actionName: "Quelle anlegen")
-            return
-        }
-        let existing = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
-        try (existing + BibliographyFile.appendix(for: entry, after: existing)).write(to: file, atomically: true, encoding: .utf8)
-        if let session = editor.session(for: file) { await session.syncWithDisk() }
+    deinit {
+        observers.forEach(NotificationCenter.default.removeObserver)
+        watcher?.stop()
+        gitWatcher?.stop()
     }
 
     // MARK: SyncTeX
@@ -250,7 +181,7 @@ final class AppModel {
             .first { FileKind(url: $0).isEditable && SyncTeXIndex.normalizedPath($0) == key }
     }
 
-    private func reloadBuildOutputs() {
+    func reloadBuildOutputs() {
         pdf.refresh()
         synctex.reload(mainFile: project.mainFileURL)
     }
@@ -380,85 +311,12 @@ final class AppModel {
         TabMemory.save(tabs, for: root)
     }
 
-    // MARK: Tabs schließen
-
-    func closeTab(_ tab: EditorTab) {
-        guard confirmClosing([tab]) else { return }
-        editor.closeTab(tab)
-    }
-
-    func closeTab(_ url: URL) {
-        closeTab(.file(url.standardizedFileURL))
-    }
-
-    func closeActiveTab() {
-        guard let tab = editor.tabs.active else { return }
-        closeTab(tab)
-    }
-
-    func closeOtherTabs(keeping tab: EditorTab) {
-        let others = editor.tabs.items.filter { $0 != tab }
-        guard confirmClosing(others) else { return }
-        editor.closeOtherTabs(keeping: tab)
-    }
-
-    func closeAllTabs() {
-        guard confirmClosing(editor.tabs.items) else { return }
-        editor.closeAllTabs()
-    }
-
-    /// Fragt nach, wenn einer der Tabs ungespeicherte Änderungen hat. `false` bedeutet: nicht schließen.
-    private func confirmClosing(_ tabs: [EditorTab]) -> Bool {
-        let dirty = editor.dirtySessions(closing: tabs)
-        guard !dirty.isEmpty else { return true }
-        let title = dirty.count == 1
-            ? "„\(dirty[0].url.lastPathComponent)“ hat ungespeicherte Änderungen"
-            : "\(dirty.count) Dateien haben ungespeicherte Änderungen"
-        switch promptForUnsavedChanges(title, dirty.map(\.url.lastPathComponent)) {
-        case .save: return editor.save(tabs: tabs)
-        case .discard:
-            // Bewusst verworfen: keine Wiederherstellung anbieten
-            for session in dirty { recovery.remove(for: session.url) }
-            return true
-        case .cancel: return false
-        }
-    }
-
-    // MARK: Ungespeicherte Änderungen
-
-    /// Fragt bei ungespeicherten Änderungen nach. `false` bedeutet: Vorgang abbrechen.
-    func confirmUnsavedChanges() -> Bool {
-        let dirty = editor.dirtySessions
-        guard !dirty.isEmpty else { return true }
-        switch promptForUnsavedChanges("Ungespeicherte Änderungen", dirty.map(\.url.lastPathComponent)) {
-        case .save: return editor.saveAll()
-        case .discard:
-            for session in dirty { recovery.remove(for: session.url) }
-            return true
-        case .cancel: return false
-        }
-    }
-
-    private static func showUnsavedChangesAlert(title: String, names: [String]) -> UnsavedChoice {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = "Geändert: " + names.joined(separator: ", ")
-        alert.addButton(withTitle: "Speichern")
-        alert.addButton(withTitle: "Nicht speichern")
-        alert.addButton(withTitle: "Abbrechen")
-        switch alert.runModal() {
-        case .alertFirstButtonReturn: return .save
-        case .alertSecondButtonReturn: return .discard
-        default: return .cancel
-        }
-    }
-
     // MARK: Wiederherstellung nach Absturz
 
     /// Gibt es gesicherte, ungespeicherte Texte (die App wurde nicht sauber beendet), werden sie nach
     /// Rückfrage als ungespeicherte Änderungen in ihren Tabs wiederhergestellt; sonst gelöscht.
     private func offerRecovery(in root: URL) async {
-        let backups = recovery.backups(under: root)
+        let backups = await recovery.backups(under: root)
         guard !backups.isEmpty else { return }
         guard confirmRecovery(backups) else {
             for backup in backups { recovery.remove(for: backup.url) }
@@ -494,7 +352,7 @@ final class AppModel {
 
     private func startWatching(root: URL) {
         watcher = FSEventsWatcher(path: root.path) { events in
-            Task { @MainActor in AppModel.shared.handle(events, root: root) }
+            Task { @MainActor [weak self] in self?.handle(events, root: root) }
         }
     }
 
@@ -504,72 +362,7 @@ final class AppModel {
         if git.availability == .notRepository, sidebar.tab == .changes { sidebar.tab = .files }
         guard let repository = git.repository, repository.projectPrefix != nil else { return }
         gitWatcher = FSEventsWatcher(path: repository.gitDirectory.path) { events in
-            Task { @MainActor in AppModel.shared.refreshGitIfNeeded(for: events) }
+            Task { @MainActor [weak self] in self?.refreshGitIfNeeded(for: events) }
         }
-    }
-
-    private func refreshGitIfNeeded(for events: [FileEvent]) {
-        // Nicht `contains`: jedes Ereignis zählt, weil `registerChange` sich geänderte Refs merkt.
-        let relevant = events.reduce(false) { found, event in git.registerChange(atPath: event.path) || found }
-        if relevant { git.scheduleRefresh() }
-    }
-
-    private func handle(_ events: [FileEvent], root: URL) {
-        refreshGitIfNeeded(for: events)
-        var needsTreeReload = false
-        var needsOutlineRefresh = false
-        var needsPDFRefresh = false
-        var deletedFiles: [URL] = []
-        var changedFiles: [URL] = []
-        var needsCompletionReload = false
-
-        for event in events {
-            guard !Self.isHidden(path: event.path, root: root) else { continue }
-            let url = URL(fileURLWithPath: event.path)
-            if pdf.isPDFCandidate(path: url.standardizedFileURL.path) { needsPDFRefresh = true }
-            if event.isStructuralChange { needsTreeReload = true }
-            if FileKind(url: url) == .tex { needsOutlineRefresh = true }
-            if FileKind(url: url) == .bib { needsCompletionReload = true }
-            guard FileKind(url: url).isEditable else { continue }
-            if !FileManager.default.fileExists(atPath: url.path) {
-                if event.isStructuralChange { deletedFiles.append(url) }
-            } else if editor.session(for: url) != nil {
-                changedFiles.append(url)
-            }
-        }
-        handleDeletedFiles(deletedFiles)
-        // Eigene Speichervorgänge erkennt die Sitzung am Inhalt und lädt dann nicht neu.
-        if !changedFiles.isEmpty { Task { await editor.syncWithDisk(changedFiles) } }
-        if needsTreeReload { project.reloadTree() }
-        if needsOutlineRefresh || needsTreeReload {
-            refreshOutline()
-            wordCounts.refreshProject()
-        }
-        if needsOutlineRefresh || needsCompletionReload || needsTreeReload { refreshSearchResults() }
-        if needsOutlineRefresh || needsTreeReload || needsCompletionReload { Task { await reloadCompletionIndex() } }
-        if needsPDFRefresh, !build.isRunning { reloadBuildOutputs() }
-    }
-
-    /// Gelöschte Dateien schließen ihren Tab. Bleibt kein Tab übrig, öffnet die Hauptdatei (falls vorhanden).
-    func handleDeletedFiles(_ urls: [URL]) {
-        guard !urls.isEmpty else { return }
-        for url in urls { editor.handleDeletedFile(url) }
-        guard editor.tabs.isEmpty, let main = project.mainFileURL,
-              FileManager.default.fileExists(atPath: main.path) else { return }
-        Task { await editor.open(main, asPreview: false) }
-    }
-
-    /// Die Trefferliste soll nach Speichern und Dateiänderungen nicht veraltet stehen bleiben.
-    private func refreshSearchResults() {
-        if !search.query.isEmpty { search.scheduleSearch() }
-    }
-
-    func refreshOutline() {
-        outline.refresh(mainFile: project.mainFileURL)
-    }
-
-    private static func isHidden(path: String, root: URL) -> Bool {
-        guard path.hasPrefix(root.path) else { return false }
-        return path.dropFirst(root.path.count).split(separator: "/").contains { $0.hasPrefix(".") }
     }
 }

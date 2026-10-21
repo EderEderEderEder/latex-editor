@@ -1,7 +1,7 @@
 import AppKit
 
 /// Einstellungen des Editors aus dem Fenster „Einstellungen“ (⌘,), gespeichert in UserDefaults.
-/// Nach einer Änderung `EditorSettings.didChange()`: Editor, offene Dateien und Ruler übernehmen sie sofort
+/// Nach einer Änderung `EditorSettings.didChange(affectsText:)`: Editor, offene Dateien und Ruler übernehmen sie sofort
 /// (derselbe Weg wie der Zoom). Die Schalter für Schreiben und Kompilieren liegen bei ihren Features.
 enum EditorSettings {
     enum Key {
@@ -73,23 +73,30 @@ enum EditorSettings {
 
     // MARK: Ändern
 
-    /// Editor, offene Dateien und Ruler übernehmen die Werte (wie beim Zoom); das Erscheinungsbild gilt für die App.
+    /// Nur die Ansicht ändert sich (Farbschema, Zeilennummern, Umbruch, Einrückung, Rechtschreibung): Der Text der
+    /// offenen Dateien bleibt, wie er ist (kein Neu-Layout aller Dateien).
+    static let viewDidChange = Notification.Name("EditorViewSettingsDidChange")
+
+    /// Ändert sich der Text (Schrift, Größe, Zeilenabstand, Tabbreite), übernehmen Editor, alle offenen Dateien und
+    /// Ruler die Werte (wie beim Zoom); sonst nur die Ansicht. Das Erscheinungsbild gilt für die App.
     @MainActor
-    static func didChange() {
+    static func didChange(affectsText: Bool) {
         applyAppearance()
-        NotificationCenter.default.post(name: EditorAppearance.fontDidChange, object: nil)
+        NotificationCenter.default.post(name: affectsText ? EditorAppearance.fontDidChange : viewDidChange, object: nil)
     }
 
     @MainActor
     static func reset(_ keys: [String]) {
         for key in keys { defaults.removeObject(forKey: key) }
-        didChange()
+        didChange(affectsText: true)
     }
 
     @MainActor
     static func applyAppearance() {
+        // Ohne laufende App (Testprozess) gibt es kein `NSApp`
+        guard let application = NSApp else { return }
         let wanted = appearance.nsAppearance
-        if NSApp.appearance != wanted { NSApp.appearance = wanted }
+        if application.appearance != wanted { application.appearance = wanted }
     }
 
     // MARK: Schrift

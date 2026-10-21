@@ -9,7 +9,7 @@ final class CompletionProvider {
     private(set) var index = CompletionIndex.empty
     /// Der Index wurde mindestens einmal gelesen (sonst wären alle Labels „unbekannt“)
     private(set) var hasIndex = false
-    /// Nach jedem neuen Index (Prüfung auf unbekannte Verweise, Hinweise)
+    /// Nach jedem geänderten Index (Prüfung auf unbekannte Verweise, Hinweise)
     var onIndexChanged: (() -> Void)?
     /// Offene Dateien mit ungespeicherten Änderungen (Datei, aktueller Text)
     var unsavedDocuments: () -> [(url: URL, text: String)] = { [] }
@@ -52,7 +52,10 @@ final class CompletionProvider {
         apply(.empty, isLoaded: false)
     }
 
+    /// Meldet sich nur bei echter Änderung: Nach jedem Speichern wird neu gelesen, meist mit gleichem Ergebnis,
+    /// und jede Meldung prüft alle offenen Tabs neu.
     private func apply(_ newIndex: CompletionIndex, isLoaded: Bool) {
+        guard newIndex != index || isLoaded != hasIndex else { return }
         index = newIndex
         hasIndex = isLoaded
         defer { onIndexChanged?() }
@@ -154,7 +157,9 @@ enum OpenEnvironments {
         let range = NSRange(location: start, length: cursor - start)
         var stack: [String] = []
         expression.enumerateMatches(in: text as String, range: range) { match, _, _ in
-            guard let match, !isCommented(text, at: match.range.location) else { return }
+            guard let match else { return }
+            let lineStart = text.lineRange(for: NSRange(location: match.range.location, length: 0)).location
+            guard !LatexComments.isInComment(text, lineStart: lineStart, location: match.range.location) else { return }
             let name = text.substring(with: match.range(at: 2))
             if text.substring(with: match.range(at: 1)) == "begin" {
                 stack.append(name)
@@ -163,16 +168,5 @@ enum OpenEnvironments {
             }
         }
         return stack
-    }
-
-    private static func isCommented(_ text: NSString, at location: Int) -> Bool {
-        let lineStart = text.lineRange(for: NSRange(location: location, length: 0)).location
-        var escaped = false
-        for index in lineStart..<location {
-            let character = text.character(at: index)
-            if character == UInt16(UInt8(ascii: "%")), !escaped { return true }
-            escaped = character == UInt16(UInt8(ascii: "\\")) && !escaped
-        }
-        return false
     }
 }

@@ -88,7 +88,7 @@ enum CompletionContextDetector {
         let detected = command(in: text, cursor: cursor, start: start)
             ?? argument(in: text, cursor: cursor, start: start)
             ?? option(in: text, cursor: cursor, start: start)
-        guard let detected, !isInComment(text, from: lineStart, to: cursor) else { return nil }
+        guard let detected, !LatexComments.isInComment(text, lineStart: lineStart, location: cursor) else { return nil }
         return detected
     }
 
@@ -264,30 +264,6 @@ enum CompletionContextDetector {
         var count = 0
         var position = index
         while position >= start, text.character(at: position) == backslash {
-            count += 1
-            position -= 1
-        }
-        return count % 2 == 1
-    }
-
-    /// Unmaskiertes `%` zwischen Zeilenanfang und Cursor. Springt mit der (schnellen) Suche von NSString
-    /// von `%` zu `%`, statt jedes Zeichen der Zeile anzusehen.
-    private static func isInComment(_ text: NSString, from lineStart: Int, to cursor: Int) -> Bool {
-        var searchStart = lineStart
-        while searchStart < cursor {
-            let found = text.range(of: "%", options: .literal, range: NSRange(location: searchStart, length: cursor - searchStart))
-            guard found.location != NSNotFound else { return false }
-            if !isEscaped(text, at: found.location, lineStart: lineStart) { return true }
-            searchStart = found.location + 1
-        }
-        return false
-    }
-
-    /// Ungerade Anzahl `\` direkt davor
-    private static func isEscaped(_ text: NSString, at index: Int, lineStart: Int) -> Bool {
-        var count = 0
-        var position = index - 1
-        while position >= lineStart, text.character(at: position) == backslash {
             count += 1
             position -= 1
         }

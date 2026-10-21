@@ -34,7 +34,11 @@ enum LatexReferences {
     private static let hyperrefExpression = try! NSRegularExpression(pattern: #"\\hyperref\s*\[([^\]\n]*)\]"#)
 
     static func scan(_ text: String) -> [ReferenceOccurrence] {
-        let masked = LatexMasking.scannable(text) as NSString
+        scan(masked: LatexMasking.scannable(text) as NSString)
+    }
+
+    /// Auf schon maskiertem Text (`LatexMasking.scannable`), wenn mehrere Prüfungen denselben Text brauchen
+    static func scan(masked: NSString) -> [ReferenceOccurrence] {
         var occurrences: [ReferenceOccurrence] = []
         let whole = NSRange(location: 0, length: masked.length)
         commandExpression.enumerateMatches(in: masked as String, range: whole) { match, _, _ in
@@ -88,8 +92,18 @@ enum LatexMasking {
     private static let beginExpression = try! NSRegularExpression(pattern: #"\\begin\{([A-Za-z*]+)\}"#)
     private static let verbExpression = try! NSRegularExpression(pattern: #"\\verb\*?([^A-Za-z\s*])[^\n]*?\1"#)
 
+    /// Erst `\verb` (ein `\verb|%|` ist kein Kommentar), dann Kommentare, dann Code-Umgebungen (deren `\begin`
+    /// in einem Kommentar zählt nicht).
     static func scannable(_ text: String) -> String {
-        maskingCode(in: ReferenceUpdater.maskingComments(in: text))
+        maskingCode(in: LatexComments.masking(maskingVerb(in: text)))
+    }
+
+    private static func maskingVerb(in text: String) -> String {
+        let result = NSMutableString(string: text)
+        for match in verbExpression.matches(in: text, range: NSRange(location: 0, length: result.length)) {
+            mask(match.range, in: result)
+        }
+        return result as String
     }
 
     static func maskingCode(in text: String) -> String {
@@ -109,10 +123,6 @@ enum LatexMasking {
             let bodyEnd = end.location == NSNotFound ? result.length : end.location
             mask(NSRange(location: bodyStart, length: bodyEnd - bodyStart), in: result)
             searchStart = bodyEnd
-        }
-        let whole = NSRange(location: 0, length: result.length)
-        for match in verbExpression.matches(in: result as String, range: whole) {
-            mask(match.range, in: result)
         }
         return result as String
     }
@@ -145,7 +155,11 @@ struct ReferenceProblem: Equatable, Sendable {
 enum ReferenceChecker {
     /// `citations == nil`: Zitate nicht prüfen (keine Literaturdatei mit Einträgen im Projekt, z. B. liegt sie außerhalb)
     static func problems(in text: String, labels: Set<String>, citations: Set<String>?) -> [ReferenceProblem] {
-        LatexReferences.scan(text).compactMap { occurrence -> ReferenceProblem? in
+        problems(masked: LatexMasking.scannable(text) as NSString, labels: labels, citations: citations)
+    }
+
+    static func problems(masked: NSString, labels: Set<String>, citations: Set<String>?) -> [ReferenceProblem] {
+        LatexReferences.scan(masked: masked).compactMap { occurrence -> ReferenceProblem? in
             switch occurrence.kind {
             case .labelDefinition:
                 return nil

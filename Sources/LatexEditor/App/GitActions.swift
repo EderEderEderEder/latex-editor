@@ -100,7 +100,7 @@ extension AppModel {
         let restoreURLs = plan.restorePaths.compactMap { git.url(forRepositoryPath: $0) }
         let newURLs = plan.newPaths.compactMap { git.url(forRepositoryPath: $0) }
         guard !plan.isEmpty, restoreURLs.count + newURLs.count == plan.allPaths.count, !git.isBusy else { return }
-        let snapshot = makeSnapshot(of: restoreURLs + newURLs)
+        let snapshot = await makeSnapshot(of: restoreURLs + newURLs)
         let details = await resetDetails(snapshot, newFiles: Set(newURLs))
         let names = snapshot.entries.map(\.url.lastPathComponent)
         let question = names.count == 1
@@ -158,12 +158,21 @@ extension AppModel {
         await git.refresh()
     }
 
-    /// Inhalt vor dem Zurücksetzen: ungespeicherter Editortext hat Vorrang vor der Platte.
-    private func makeSnapshot(of urls: [URL]) -> ResetSnapshot {
-        ResetSnapshot(entries: urls.map { url in
-            let session = editor.session(for: url)
-            let contents = session?.isDirty == true ? session?.currentData() : (try? Data(contentsOf: url))
-            return ResetSnapshot.Entry(url: url, contents: contents ?? session?.currentData(), wasOpen: editor.tabs.contains(url))
+    /// Inhalt vor dem Zurücksetzen: ungespeicherter Editortext hat Vorrang vor der Platte (gelesen im Hintergrund).
+    private func makeSnapshot(of urls: [URL]) async -> ResetSnapshot {
+        var unsaved: [URL: Data] = [:]
+        for url in urls {
+            if let session = editor.session(for: url), session.isDirty { unsaved[url] = session.currentData() }
+        }
+        let fromEditor = unsaved
+        let onDisk: [URL: Data] = await Task.detached(priority: .userInitiated) {
+            var result: [URL: Data] = [:]
+            for url in urls where fromEditor[url] == nil { result[url] = try? Data(contentsOf: url) }
+            return result
+        }.value
+        return ResetSnapshot(entries: urls.map { url in
+            let contents = unsaved[url] ?? onDisk[url] ?? editor.session(for: url)?.currentData()
+            return ResetSnapshot.Entry(url: url, contents: contents, wasOpen: editor.tabs.contains(url))
         })
     }
 

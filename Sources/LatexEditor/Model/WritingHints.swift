@@ -79,12 +79,13 @@ enum WritingHints {
     ]
 
     /// Alle Hinweise eines .tex-Texts, nach Position sortiert (höchstens `maximumCount`). Läuft im Hintergrund.
-    static func hints(in text: String) -> [WritingHint] {
+    /// `masked` und `syntax` reicht die Prüfung einer offenen Datei herein: Dann wird nicht noch einmal maskiert und
+    /// nicht der ganze Text eingefärbt, sondern nur die Zeilen mit einem Kandidaten (aus den Zeilenzuständen der Sitzung).
+    static func hints(in text: String, masked maskedInput: String? = nil, syntax: SyntaxSnapshot? = nil) -> [WritingHint] {
         let original = text as NSString
-        let maskedText = LatexMasking.scannable(text)
+        let maskedText = maskedInput ?? LatexMasking.scannable(text)
         let masked = maskedText as NSString
-        var highlighter = SyntaxHighlighter()
-        let tokens = highlighter.highlightAll(original, lines: LineIndex(text: original))
+        var tokens = LineTokens(syntax: syntax ?? SyntaxSnapshot(text: original), text: original)
         let begin = masked.range(of: documentBegin)
         let start = begin.location == NSNotFound ? 0 : NSMaxRange(begin)
         let body = NSRange(location: start, length: masked.length - start)
@@ -93,7 +94,7 @@ enum WritingHints {
         for rule in rules {
             for match in rule.expression.matches(in: maskedText, range: body) {
                 let range = match.range(at: rule.group)
-                guard isProse(range, original: original, masked: masked, tokens: tokens),
+                guard isProse(range, original: original, masked: masked, tokens: &tokens),
                       let message = rule.message(match, masked) else { continue }
                 hints.append(WritingHint(kind: rule.kind, range: range, message: message))
             }
@@ -103,8 +104,32 @@ enum WritingHints {
     }
 
     /// Nicht maskiert (kein Kommentar/Code) und kein Syntax-Token (Befehl, Schlüssel, Mathe …)
-    private static func isProse(_ range: NSRange, original: NSString, masked: NSString, tokens: [SyntaxToken]) -> Bool {
-        guard range.location != NSNotFound, range.length > 0 else { return false }
-        return original.substring(with: range) == masked.substring(with: range) && !tokens.containsOverlap(with: range)
+    private static func isProse(_ range: NSRange, original: NSString, masked: NSString, tokens: inout LineTokens) -> Bool {
+        guard range.location != NSNotFound, range.length > 0,
+              original.substring(with: range) == masked.substring(with: range) else { return false }
+        return !tokens.tokens(touching: range).containsOverlap(with: range)
+    }
+}
+
+/// Tokens zeilenweise bei Bedarf, mit Zwischenspeicher (mehrere Kandidaten in derselben Zeile)
+private struct LineTokens {
+    let syntax: SyntaxSnapshot
+    let text: NSString
+    private var byLine: [Int: [SyntaxToken]] = [:]
+
+    init(syntax: SyntaxSnapshot, text: NSString) {
+        self.syntax = syntax
+        self.text = text
+    }
+
+    mutating func tokens(touching range: NSRange) -> [SyntaxToken] {
+        let first = syntax.lines.clampedLine(containing: range.location)
+        let last = syntax.lines.clampedLine(containing: max(range.location, NSMaxRange(range) - 1))
+        return (first...last).flatMap { line -> [SyntaxToken] in
+            if let cached = byLine[line] { return cached }
+            let tokens = syntax.tokens(in: syntax.lines.contentRange(ofLine: line), of: text)
+            byLine[line] = tokens
+            return tokens
+        }
     }
 }

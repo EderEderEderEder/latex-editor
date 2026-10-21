@@ -82,7 +82,7 @@ final class ChangeMarkStore {
         if let cached = bases[url] { return cached }
         if filesWithoutBase.contains(url) { return nil }
         guard let data = await loadBase(url),
-              let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
+              let text = ProjectText.decode(data)?.text else {
             filesWithoutBase.insert(url)
             return nil
         }

@@ -68,7 +68,7 @@ struct ProjectCatalog: Sendable, Equatable {
     static func labels(in text: String, file: URL) -> [LabelEntry] {
         var entries: [LabelEntry] = []
         for (index, line) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
-            let code = withoutComment(line)
+            let code = line[..<(LatexComments.commentStart(in: line) ?? line.endIndex)]
             var searchStart = code.startIndex
             while let range = code.range(of: "\\label{", range: searchStart..<code.endIndex),
                   let close = code[range.upperBound...].firstIndex(of: "}") {
@@ -78,16 +78,6 @@ struct ProjectCatalog: Sendable, Equatable {
             }
         }
         return entries
-    }
-
-    private static func withoutComment(_ line: Substring) -> Substring {
-        var previousWasBackslash = false
-        for index in line.indices {
-            let character = line[index]
-            if character == "%", !previousWasBackslash { return line[..<index] }
-            previousWasBackslash = character == "\\" && !previousWasBackslash
-        }
-        return line
     }
 
     // MARK: Literatur
@@ -153,7 +143,6 @@ struct ProjectCatalog: Sendable, Equatable {
     }
 
     private static func readText(_ url: URL) -> String? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1)
+        ProjectText.string(url)
     }
 }

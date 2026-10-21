@@ -88,7 +88,6 @@ final class SearchStore {
     }
 
     private nonisolated static func read(_ url: URL) -> String? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1)
+        ProjectText.string(url)
     }
 }

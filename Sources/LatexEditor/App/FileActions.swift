@@ -145,7 +145,7 @@ extension AppModel {
         let result = try operation()
         editor.relocate(from: source, to: result)
         let mainMoved = project.relocateMainFile(from: source, to: result)
-        if shouldUpdate { applyReferenceEdits(edits, from: source, to: result) }
+        if shouldUpdate { reportReferenceFailures(await applyReferenceEdits(edits, from: source, to: result), item: result) }
         project.reloadTree()
         if mainMoved {
             pdf.setMainFile(project.mainFileURL)
@@ -204,9 +204,7 @@ extension AppModel {
         return await Task.detached(priority: .userInitiated) {
             var texts = openSnapshot
             for file in files where texts[file] == nil {
-                if let data = try? Data(contentsOf: file) {
-                    texts[file] = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
-                }
+                if let text = ProjectText.string(file) { texts[file] = text }
             }
             let graphics = texts[main.standardizedFileURL].map(ProjectCatalog.graphicsDirectories(in:)) ?? []
             return ReferenceUpdater.edits(moving: source, to: destination, mainFile: main,
@@ -214,21 +212,47 @@ extension AppModel {
         }.value
     }
 
-    /// Offene Dateien werden im Editor geändert (und gespeichert, wenn sie vorher unverändert waren),
-    /// alle anderen auf der Platte. Die Datei selbst kann dabei mitgezogen worden sein.
-    private func applyReferenceEdits(_ edits: [ReferenceEdit], from source: URL, to destination: URL) {
-        let grouped = Dictionary(grouping: edits, by: \.file)
-        for (file, fileEdits) in grouped {
+    /// Offene Dateien werden im Editor geändert (und gespeichert, wenn sie vorher unverändert waren), alle anderen
+    /// im Hintergrund auf der Platte, in ihrer Kodierung. Die Datei selbst kann dabei mitgezogen worden sein.
+    /// Gibt zurück, was nicht geklappt hat („datei.tex: Grund“), statt es still zu übergehen.
+    private func applyReferenceEdits(_ edits: [ReferenceEdit], from source: URL, to destination: URL) async -> [String] {
+        var failures: [String] = []
+        var closedFiles: [(url: URL, edits: [ReferenceEdit])] = []
+        for (file, fileEdits) in Dictionary(grouping: edits, by: \.file) {
             let current = ReferenceUpdater.mapped(file, from: source.standardizedFileURL, to: destination.standardizedFileURL) ?? file
-            if let session = editor.session(for: current) {
-                let wasDirty = session.isDirty
-                session.replaceText(with: ReferenceUpdater.apply(fileEdits, to: session.textStorage.string),
-                                    actionName: "Verweise anpassen")
-                if !wasDirty { try? session.save() }
-            } else if let text = try? String(contentsOf: current, encoding: .utf8) {
-                try? ReferenceUpdater.apply(fileEdits, to: text).write(to: current, atomically: true, encoding: .utf8)
+            guard let session = editor.session(for: current) else {
+                closedFiles.append((current, fileEdits))
+                continue
+            }
+            let wasDirty = session.isDirty
+            session.replaceText(with: ReferenceUpdater.apply(fileEdits, to: session.textStorage.string), actionName: "Verweise anpassen")
+            do {
+                if !wasDirty { try session.save() }
+            } catch {
+                failures.append("\(current.lastPathComponent): \(error.localizedDescription)")
             }
         }
+        let pending = closedFiles
+        failures += await Task.detached(priority: .userInitiated) { Self.applyOnDisk(pending) }.value
+        return failures.sorted()
+    }
+
+    private nonisolated static func applyOnDisk(_ files: [(url: URL, edits: [ReferenceEdit])]) -> [String] {
+        files.compactMap { file in
+            do {
+                let (text, encoding) = try ProjectText.readForEditing(file.url)
+                try ReferenceUpdater.apply(file.edits, to: text).write(to: file.url, atomically: true, encoding: encoding)
+                return nil
+            } catch {
+                return "\(file.url.lastPathComponent): \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func reportReferenceFailures(_ failures: [String], item: URL) {
+        guard !failures.isEmpty else { return }
+        fileActions.errorMessage = "„\(item.lastPathComponent)“ wurde umbenannt bzw. verschoben, aber diese Verweise konnten nicht "
+            + "angepasst werden und zeigen jetzt ins Leere – bitte von Hand ändern:\n\n" + failures.joined(separator: "\n")
     }
 
     // MARK: Nachfragen

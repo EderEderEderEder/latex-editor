@@ -17,12 +17,16 @@ final class ProjectStore {
     var selectedURL: URL?
 
     @ObservationIgnored private var reloadTask: Task<Void, Never>?
+    /// Alles, was der Baum zeigt, als normalisierte Pfade (für `isTreeChange`): FSEvents meldet `/private/var/…`,
+    /// der Baum kennt `/var/…`
+    @ObservationIgnored private var treePaths: Set<String> = []
 
     func open(root: URL) async {
         reloadTask?.cancel()
         let root = root.standardizedFileURL
         rootURL = root
         tree = nil
+        treePaths = []
         mainFileURL = nil
         fileCount = 0
         guard let snapshot = await Self.makeSnapshot(root: root, keepingMainFile: nil) else { return }
@@ -40,6 +44,12 @@ final class ProjectStore {
         return true
     }
 
+    /// Muss der Baum nach diesem Dateisystem-Ereignis neu geladen werden?
+    func isTreeChange(_ event: FileEvent) -> Bool {
+        event.changesTree(isInTree: { treePaths.contains(SyncTeXIndex.normalizedPath($0)) },
+                          exists: { FileManager.default.fileExists(atPath: $0.path) })
+    }
+
     /// Lädt nur den Baum neu (z. B. nach Dateisystem-Ereignissen). Spätere Aufrufe verdrängen frühere.
     func reloadTree() {
         guard let root = rootURL else { return }
@@ -55,6 +65,7 @@ final class ProjectStore {
     private func apply(_ snapshot: ProjectSnapshot) {
         if snapshot.tree != tree {
             tree = snapshot.tree
+            treePaths = Set(snapshot.tree.allURLs().map(SyncTeXIndex.normalizedPath))
             fileCount = snapshot.tree.collectFiles().count
         }
         if snapshot.mainFile != mainFileURL { mainFileURL = snapshot.mainFile }

@@ -40,7 +40,7 @@ struct RecoveryTests {
         session.textStorage.replaceCharacters(in: NSRange(location: 0, length: 0), with: "neu ")
         for _ in 0..<40 where !backupExists(for: url) { try await Task.sleep(for: .milliseconds(20)) }
         #expect(backupExists(for: url))
-        #expect(model.recovery.backups(under: project.root).map(\.text) == ["neu gespeichert\n"])
+        #expect(await model.recovery.backups(under: project.root).map(\.text) == ["neu gespeichert\n"])
 
         model.editor.saveCurrent()
         #expect(!backupExists(for: url))
@@ -85,7 +85,7 @@ struct RecoveryTests {
         #expect(!backupExists(for: url))
 
         await model.recovery.write(RecoveryBackup(path: url.path, savedAt: Date(), text: "gespeichert\n"))
-        #expect(model.recovery.backups(under: project.root).isEmpty, "Gleich wie auf der Platte: veraltet")
+        #expect(await model.recovery.backups(under: project.root).isEmpty, "Gleich wie auf der Platte: veraltet")
         #expect(!backupExists(for: url))
     }
 }

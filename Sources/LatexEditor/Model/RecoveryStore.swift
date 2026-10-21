@@ -20,7 +20,11 @@ final class RecoveryStore {
     /// Austauschbar für Tests
     var directory: URL
     var saveDelay = RecoveryStore.defaultSaveDelay
+    /// Eine Sicherung konnte nicht geschrieben werden (Meldung für den Nutzer). Einmal pro Fehlerserie,
+    /// damit beim Weitertippen nicht alle 5 s ein Hinweis erscheint.
+    var onWriteFailure: ((String) -> Void)?
     private var scheduled: [URL: Task<Void, Never>] = [:]
+    private var hasReportedFailure = false
 
     init(directory: URL = RecoveryStore.defaultDirectory()) {
         self.directory = directory
@@ -51,15 +55,29 @@ final class RecoveryStore {
         }
     }
 
-    /// Sofort sichern (Tests, vor riskanten Vorgängen)
+    /// Sofort sichern (Tests, vor riskanten Vorgängen). Ein Fehler wird gemeldet, nicht verschluckt: Sonst glaubt
+    /// der Nutzer, sein ungespeicherter Text sei gesichert.
     func write(_ backup: RecoveryBackup) async {
         let file = fileURL(for: backup.url)
         let directory = directory
-        await Task.detached(priority: .utility) {
-            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            guard let data = try? JSONEncoder().encode(backup) else { return }
-            try? data.write(to: file, options: .atomic)
+        let failure: String? = await Task.detached(priority: .utility) {
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try JSONEncoder().encode(backup).write(to: file, options: .atomic)
+                return nil
+            } catch {
+                return error.localizedDescription
+            }
         }.value
+        guard let failure else {
+            hasReportedFailure = false
+            return
+        }
+        Signposts.logger.error("Sicherung fehlgeschlagen: \(failure, privacy: .public)")
+        guard !hasReportedFailure else { return }
+        hasReportedFailure = true
+        onWriteFailure?("Die automatische Sicherung von „\(backup.url.lastPathComponent)“ ist fehlgeschlagen: \(failure)\n\n"
+            + "Ungespeicherte Änderungen sind bis zum nächsten Speichern (⌘S) nicht gesichert.")
     }
 
     func remove(for url: URL) {
@@ -70,14 +88,21 @@ final class RecoveryStore {
 
     /// Sicherungen für Dateien im Projektordner, die sich vom Stand auf der Platte unterscheiden.
     /// Veraltete (gleicher Text wie auf der Platte) werden dabei gelöscht.
-    func backups(under root: URL) -> [RecoveryBackup] {
+    func backups(under root: URL) async -> [RecoveryBackup] {
+        let directory = directory
+        return await Task.detached(priority: .userInitiated) {
+            Self.readBackups(in: directory, under: root)
+        }.value
+    }
+
+    private nonisolated static func readBackups(in directory: URL, under root: URL) -> [RecoveryBackup] {
         let prefix = root.standardizedFileURL.path + "/"
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
         var result: [RecoveryBackup] = []
         for file in files where file.pathExtension == "json" {
             guard let data = try? Data(contentsOf: file), let backup = try? JSONDecoder().decode(RecoveryBackup.self, from: data),
                   backup.path.hasPrefix(prefix) else { continue }
-            let onDisk = try? String(contentsOf: backup.url, encoding: .utf8)
+            let onDisk = ProjectText.string(backup.url)
             if onDisk == backup.text {
                 try? FileManager.default.removeItem(at: file)
             } else {

@@ -108,16 +108,6 @@ private enum Vocabulary {
         "gls", "Gls", "glspl", "Glspl", "newacronym"
     ]
 
-    static let mathEnvironments: Set<String> = [
-        "equation", "equation*", "align", "align*", "gather", "gather*",
-        "multline", "multline*", "flalign", "flalign*", "alignat", "alignat*",
-        "eqnarray", "eqnarray*", "displaymath", "math"
-    ]
-
-    static let verbatimEnvironments: Set<String> = [
-        "verbatim", "verbatim*", "Verbatim", "lstlisting", "minted", "comment"
-    ]
-
     static let commentEnvironment = "comment"
 }
 
@@ -269,10 +259,11 @@ private struct LatexLineScanner {
 
     private mutating func scanBeginArguments() {
         guard let environment = scanKeyArgument() else { return }
-        if Vocabulary.mathEnvironments.contains(environment) {
+        // Listen aus `LatexEnvironments` (gemeinsam mit Wortzähler, Verweisprüfung und Maskierung)
+        if LatexEnvironments.isMath(environment) {
             regionStart = index
             state = .mathEnvironment(environment)
-        } else if Vocabulary.verbatimEnvironments.contains(environment) {
+        } else if LatexEnvironments.isVerbatim(environment) {
             scanOptionalArguments()
             state = .verbatimEnvironment(environment)
         }

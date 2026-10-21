@@ -63,6 +63,7 @@ Wichtig: **nicht** `swift test` direkt aufrufen. Ohne die Flags aus dem Skript w
 | `BibTokenizerTests`, `BibSessionTests` | BibTeX-Farben: Typ, Schlüssel, Feldnamen, Klammern, `"`, `#`, `@string`-Makros, `\TeX` in Werten, Text außerhalb und `@comment` als Kommentar, runde Eintragsklammern, mehrzeilige Werte (Zustand), kaputter Eintrag erholt sich, Zufallsabgleich inkrementell gegen komplett; Sprache nach Endung, Sitzung färbt `.bib`, Umbenennen in `.tex` färbt neu (ohne „geändert“) |
 | `CapitalizationTests`, `WritingHintsTests`, `AutoCapitalizationTypingTests` | Satzanfang (nach `.!?`, Zeilenende, Absatz, Klammer/`\enquote` davor) und „ZWei“ Großbuchstaben; keine Korrektur nach Abkürzungen, Zahlen, „…“, Komma, am Textanfang, bei „IDs“/„API“/„LaTeX“/„iOS“, nach Befehlen, in Code-Umgebungen. Schreibhinweise je Regel samt Ausnahmen, nur Fließtext (Präambel, Mathe, Schlüssel, Optionen, Kommentare, Code, `\verb` frei). Im echten Editor: Korrektur beim Weitertippen und mit Enter, ⌘Z nimmt nur die Korrektur zurück und lässt den Cursor stehen, Wiederholen; Befehle/Mathe/Kommentar/Code/Abkürzung bleiben; abschaltbar |
 | `EditorSettingsValueTests`, `EditorThemeTests`, `EditorSettingsEditorTests`, `IndentationTypingTests`, `SettingsWindowTests` | Einstellungen: Standardwerte und ungültige Werte (eigene UserDefaults-Suite, nie die echten), Kontrast aller Farbschemata hell/dunkel (≥ 4,5:1, Hoher Kontrast ≥ 7:1), Standard = bisherige Farben; Absatzstil (Zeilenabstand, Tabbreite), Übernehmen ohne Bearbeitungsschritt, Zeilenumbruch aus/an, Zeilennummern und aktuelle Zeile abschaltbar, Rechtschreibung aus/Sprache; Einrückung mit Leerzeichen bei Tab-Taste, Enter, ⌘]/⌘[; Fenster baut sich auf |
+| `LatexSourceTests`, `FileEventTreeTests`, `IndexChangeTests`, `RecoveryFailureTests` (+ `referenceEditsEncodingAndFailures`, `appendKeepsBibliography`) | Eine Kommentar-Regel (Escapes, `\r\n`, gleiche Länge, Byte-Fassung der Gliederung stimmt überein), `\verb|%|` versteckt nichts, Latin-1 lesen; Baum nur bei echten Änderungen (nicht bei `.aux`/`.log`, nicht bei atomarem Speichern); Index meldet sich nur bei Änderung, Hinweise nur nach Textänderung; Sicherungsfehler einmal gemeldet; Verweise in Latin-1-Dateien bleiben Latin-1, Schreibfehler gemeldet; `.bib` in Latin-1 bleibt erhalten, unlesbare wird nie überschrieben |
 | `PerformanceTests` | 10.000-Zeilen-Dokument mit festen Budgets (siehe unten) |
 
 Testdaten entstehen in temporären Ordnern (`TemporaryProject`) oder als Kopie des Demo-Projekts `Testdaten/HgbDemo` (`DemoProject.copy(to:)`). `../Thesis` (die echte Abschlussarbeit) wird nie verwendet, auch nicht lesend.
@@ -73,7 +74,7 @@ Die Log-Fixtures in `Tests/LatexEditorTests/Fixtures/` sind echte Logs. Neu erze
 
 ### Performance-Budgets
 
-Budgets gelten für den Debug-Build und haben etwa 3-fachen Puffer zum Messwert (Intel-Mac, 14.10.2026). Ein Test schlägt fehl, wenn der Median das Budget überschreitet.
+Budgets gelten für den Debug-Build und haben etwa 3-fachen Puffer zum Messwert (Intel-Mac, 14.10.2026). Ein Test schlägt fehl, wenn der schnellste von mehreren Läufen das Budget überschreitet (unabhängig von Lastspitzen im Gesamtlauf).
 
 | Messung | Debug | Release | Budget |
 | --- | --- | --- | --- |
@@ -81,7 +82,8 @@ Budgets gelten für den Debug-Build und haben etwa 3-fachen Puffer zum Messwert 
 | Zeilenindex, eine Bearbeitung | 0,033 ms | 0,014 ms | 0,25 ms |
 | Komplett tokenisieren (Hintergrund) | 40 ms | 6,7 ms | 120 ms |
 | BibTeX komplett färben, 2.000 Einträge (Hintergrund) | 47 ms | – | 150 ms |
-| Schreibhinweise komplett (Hintergrund, 0,6 s nach der Eingabe; fast nur ICU-Regex, Release kaum schneller) | 334 ms | – | 1.000 ms |
+| Schreibhinweise komplett ohne Sitzung (fast nur ICU-Regex, Release kaum schneller) | 300 ms | – | 1.000 ms |
+| Prüfung einer offenen Datei: einmal maskieren, Verweise, Hinweise mit Zeilenzuständen (Hintergrund, 0,6 s nach der Eingabe) | 282 ms | – | 850 ms |
 | Datei öffnen inkl. Einfärben | 64 ms | 26 ms | 200 ms |
 | Einstellung geändert: Schrift und Absatzstil übernehmen | 9,6 ms | – | 30 ms |
 | **Tastendruck** (Index + Highlighting + Attribute) | 0,125 ms | 0,06 ms | 0,5 ms |
@@ -440,3 +442,4 @@ Vorher einmal kompilieren (⌘B), damit `main.synctex.gz` existiert.
 | 205 | Rechtschreibung: Sprache Englisch, dann aus | Deutsche Wörter werden rot unterstrichen (Englisch), danach gar keine Unterstreichung mehr |
 | 206 | Zeilennummern bzw. aktuelle Zeile aus | Leiste bzw. dezenter Streifen verschwinden sofort |
 | 207 | „Standard wiederherstellen“ in jedem Reiter; Menü Bearbeiten ansehen | Werte springen auf Standard zurück; im Menü Bearbeiten stehen die vier Schreib-Schalter nicht mehr |
+| 208 | Teiler zwischen Editor und PDF greifen (auch knapp daneben), ziehen; ganz nach links/rechts ziehen | Der Mauszeiger wird über einer etwa 14 pt breiten Spalte zum Spalten-Pfeil, Ziehen klappt überall darin; Editor mindestens 180 pt, PDF mindestens 150 pt breit; die Scrollleiste des Editors bleibt greifbar |

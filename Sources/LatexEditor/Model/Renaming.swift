@@ -371,27 +371,52 @@ enum EnvironmentNames {
     }
 
     /// Das Paar, wenn `location` in einem `\begin{…}` oder `\end{…}` liegt; verschachtelte gleichnamige Umgebungen
-    /// werden mitgezählt. `nil`, wenn das Gegenstück fehlt.
+    /// werden mitgezählt. `nil`, wenn das Gegenstück fehlt. Läuft auf dem Main-Thread (Rechtsklick, ⌥⌘R): Gesucht wird
+    /// nur vom Treffer aus in eine Richtung, Kommentare werden zeilenweise erkannt – das Dokument wird nicht maskiert.
+    /// (Ein gleichnamiges `\begin`/`\end` *innerhalb* eines Code-Blocks zählt dabei mit; das kommt praktisch nicht vor.)
     static func pair(at location: Int, in text: NSString) -> EnvironmentPair? {
-        let masked = LatexMasking.scannable(text as String) as NSString
-        let all = beginEnd.matches(in: masked as String, range: NSRange(location: 0, length: masked.length))
-        guard let index = all.firstIndex(where: { location >= $0.range.location && location <= NSMaxRange($0.range) }) else { return nil }
-        let hit = all[index]
-        let name = masked.substring(with: hit.range(at: 2))
-        let isBegin = masked.substring(with: hit.range(at: 1)) == "begin"
-        let sameName = isBegin ? Array(all[(index + 1)...]) : Array(all[..<index].reversed())
+        guard let hit = command(at: location, in: text),
+              let expression = try? NSRegularExpression(pattern: #"\\(begin|end)\s*\{"# + NSRegularExpression.escapedPattern(for: hit.name) + #"\}"#)
+        else { return nil }
+        // Bis zum Dateiende bzw. -anfang: `\begin{document}` … `\end{document}` umfasst die ganze Hauptdatei
+        let searchRange = hit.isBegin
+            ? NSRange(location: NSMaxRange(hit.range), length: text.length - NSMaxRange(hit.range))
+            : NSRange(location: 0, length: hit.range.location)
+        var candidates = expression.matches(in: text as String, range: searchRange).filter { !isCommented($0.range.location, in: text) }
+        if !hit.isBegin { candidates.reverse() }
         var depth = 0
-        for candidate in sameName where masked.substring(with: candidate.range(at: 2)) == name {
-            let candidateIsBegin = masked.substring(with: candidate.range(at: 1)) == "begin"
-            if candidateIsBegin == isBegin {
+        for candidate in candidates {
+            let candidateIsBegin = text.substring(with: candidate.range(at: 1)) == "begin"
+            if candidateIsBegin == hit.isBegin {
                 depth += 1
             } else if depth > 0 {
                 depth -= 1
             } else {
-                let (begin, end) = isBegin ? (hit, candidate) : (candidate, hit)
-                return EnvironmentPair(name: name, begin: begin.range(at: 2), end: end.range(at: 2))
+                let partner = nameRange(of: candidate, in: text)
+                return EnvironmentPair(name: hit.name, begin: hit.isBegin ? hit.nameRange : partner, end: hit.isBegin ? partner : hit.nameRange)
             }
         }
         return nil
+    }
+
+    /// `\begin{name}` bzw. `\end{name}` an `location` (in derselben Zeile), nicht in Kommentar oder Code
+    private static func command(at location: Int, in text: NSString) -> (isBegin: Bool, name: String, nameRange: NSRange, range: NSRange)? {
+        let line = text.lineRange(for: NSRange(location: min(location, text.length), length: 0))
+        let match = beginEnd.matches(in: text as String, range: line).first {
+            location >= $0.range.location && location <= NSMaxRange($0.range)
+        }
+        guard let match, !isCommented(match.range.location, in: text),
+              !LatexEnvironments.isInsideCode(at: match.range.location, in: text) else { return nil }
+        return (text.substring(with: match.range(at: 1)) == "begin", text.substring(with: match.range(at: 2)), match.range(at: 2), match.range)
+    }
+
+    private static func nameRange(of match: NSTextCheckingResult, in text: NSString) -> NSRange {
+        let open = text.range(of: "{", options: .literal, range: match.range)
+        return NSRange(location: NSMaxRange(open), length: NSMaxRange(match.range) - 1 - NSMaxRange(open))
+    }
+
+    private static func isCommented(_ location: Int, in text: NSString) -> Bool {
+        let lineStart = text.lineRange(for: NSRange(location: location, length: 0)).location
+        return LatexComments.isInComment(text, lineStart: lineStart, location: location)
     }
 }

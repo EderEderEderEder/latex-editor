@@ -119,8 +119,7 @@ private final class DiskWordCache: @unchecked Sendable {
         let cached = entries[url]
         lock.unlock()
         if let cached, cached.stamp == stamp { return cached.words }
-        guard let data = try? Data(contentsOf: url) else { return 0 }
-        let text = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
+        guard let text = ProjectText.string(url) else { return 0 }
         let words = WordCounter.count(in: text)
         lock.lock()
         entries[url] = Entry(stamp: stamp, words: words)

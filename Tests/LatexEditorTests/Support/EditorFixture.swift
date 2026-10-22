@@ -10,12 +10,14 @@ struct EditorFixture {
     let textView: LatexTextView
     let scrollView: NSScrollView
     let ruler: LineNumberRulerView
+    let foldDelegate = FoldGlyphDelegate()
 
     init(text: String, size: NSSize = defaultSize) {
         session = DocumentSession(url: URL(fileURLWithPath: "/tmp/fixture.tex"), text: text)
 
         let layoutManager = NSLayoutManager()
         layoutManager.allowsNonContiguousLayout = true
+        layoutManager.delegate = foldDelegate
         session.textStorage.addLayoutManager(layoutManager)
         let container = NSTextContainer(size: NSSize(width: size.width, height: CGFloat.greatestFiniteMagnitude))
         container.widthTracksTextView = true
@@ -31,6 +33,7 @@ struct EditorFixture {
         ruler = LineNumberRulerView(textView: textView, scrollView: scrollView)
         let session = session
         ruler.lineIndexProvider = { session.lineIndex }
+        textView.attach(folds: session.folds, glyphDelegate: foldDelegate) { [weak ruler] in ruler?.needsDisplay = true }
     }
 
     /// Simuliert eine Eingabe auf Storage-Ebene (löst den kompletten Bearbeitungspfad aus).

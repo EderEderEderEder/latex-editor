@@ -26,6 +26,12 @@ final class LineNumberRulerView: NSRulerView {
     /// Abstand zwischen Markierung und breitester Zeilennummer
     private static let markGap: CGFloat = 2
 
+    /// Spalte für die Dreiecke zum Zu- und Aufklappen, links vom Änderungsstreifen
+    private static let foldAreaWidth: CGFloat = 12
+    private static let foldTriangleSize: CGFloat = 7
+    /// Klickbar etwas über die Spalte hinaus
+    private static let foldClickSlack: CGFloat = 3
+
     /// Zeilenindex der aktuell angezeigten Datei.
     var lineIndexProvider: (() -> LineIndex?)?
 
@@ -43,6 +49,12 @@ final class LineNumberRulerView: NSRulerView {
     private var currentNumberFont = NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .semibold)
     private var digitCount = 0
     private var isRefreshScheduled = false
+
+    /// Maus über der Leiste: dann zeigen alle zuklappbaren Zeilen ihr Dreieck, sonst nur zugeklappte
+    private var isHovering = false {
+        didSet { if isHovering != oldValue { needsDisplay = true } }
+    }
+    private var hoverTrackingArea: NSTrackingArea?
 
     private var textView: LatexTextView? { clientView as? LatexTextView }
 
@@ -95,7 +107,7 @@ final class LineNumberRulerView: NSRulerView {
             digitCount = digits
             let digitWidth = ("8" as NSString).size(withAttributes: [.font: numberFont]).width
             let markArea = Self.markInset + Self.markDiameter + Self.markGap
-            ruleThickness = ceil(CGFloat(digits) * digitWidth + Self.horizontalPadding + markArea)
+            ruleThickness = ceil(CGFloat(digits) * digitWidth + Self.horizontalPadding + markArea + Self.foldAreaWidth)
         }
         needsDisplay = true
     }
@@ -118,6 +130,76 @@ final class LineNumberRulerView: NSRulerView {
             draw(label, isCurrent: label.number == currentNumber, textView: textView)
         }
         drawChangeMarks(for: labels, lines: lines, textView: textView)
+        drawFoldMarkers(for: labels, lines: lines, textView: textView)
+    }
+
+    // MARK: Zuklappen
+
+    private var foldColumnMinX: CGFloat {
+        ruleThickness - Self.horizontalPadding - Self.foldAreaWidth
+    }
+
+    private func drawFoldMarkers(for labels: [Label], lines: LineIndex, textView: LatexTextView) {
+        guard let folds = textView.foldState, !folds.regions.isEmpty else { return }
+        for label in labels {
+            guard let region = folds.region(startingAtLine: label.number - 1) else { continue }
+            let isFolded = folds.isFolded(region, lines: lines)
+            guard isFolded || isHovering else { continue }
+            let top = convert(NSPoint(x: 0, y: label.y), from: textView).y
+            let center = NSPoint(x: foldColumnMinX + Self.foldAreaWidth / 2, y: top + label.height / 2)
+            drawFoldTriangle(folded: isFolded, around: center)
+        }
+    }
+
+    private func drawFoldTriangle(folded: Bool, around center: NSPoint) {
+        let half = Self.foldTriangleSize / 2
+        let path = NSBezierPath()
+        if folded {
+            path.move(to: NSPoint(x: center.x - half + 1, y: center.y - half))
+            path.line(to: NSPoint(x: center.x + half, y: center.y))
+            path.line(to: NSPoint(x: center.x - half + 1, y: center.y + half))
+        } else {
+            path.move(to: NSPoint(x: center.x - half, y: center.y - half + 1))
+            path.line(to: NSPoint(x: center.x + half, y: center.y - half + 1))
+            path.line(to: NSPoint(x: center.x, y: center.y + half))
+        }
+        path.close()
+        (folded ? NSColor.secondaryLabelColor : NSColor.tertiaryLabelColor).setFill()
+        path.fill()
+    }
+
+    /// Zeile (0-basiert) mit einem Bereich, dessen Dreieck an diesem Punkt (Koordinaten der Leiste) liegt
+    func foldableLine(at point: NSPoint) -> Int? {
+        guard let textView, let lines = lineIndexProvider?(), let folds = textView.foldState, !folds.regions.isEmpty,
+              point.x >= foldColumnMinX - Self.foldClickSlack else { return nil }
+        let local = textView.convert(point, from: self)
+        let character = textView.characterIndexForInsertion(at: NSPoint(x: textView.textContainerOrigin.x + 1, y: local.y))
+        let line = lines.clampedLine(containing: character)
+        return folds.region(startingAtLine: line) == nil ? nil : line
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let line = foldableLine(at: convert(event.locationInWindow, from: nil)) else {
+            super.mouseDown(with: event)
+            return
+        }
+        textView?.toggleFold(atLine: line)
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTrackingArea { removeTrackingArea(hoverTrackingArea) }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        hoverTrackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        isHovering = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovering = false
     }
 
     // MARK: Git-Änderungen
@@ -195,9 +277,18 @@ final class LineNumberRulerView: NSRulerView {
             if top + fragment.height >= visibleRect.minY {
                 labels.append(Label(number: line + 1, y: top, height: fragment.height))
             }
-            line += 1
+            line = lineAfterHiddenText(startingAfter: line, lines: lines)
         }
         return labels
+    }
+
+    /// Die nächste Zeile mit Nummer: Hinter einer zugeklappten Kopfzeile fehlen die ausgeblendeten Zeilen.
+    private func lineAfterHiddenText(startingAfter line: Int, lines: LineIndex) -> Int {
+        guard let folds = textView?.foldState, folds.hasFolds else { return line + 1 }
+        let contentEnd = NSMaxRange(lines.contentRange(ofLine: line))
+        let index = folds.firstHiddenRangeIndex(endingAfter: contentEnd)
+        guard index < folds.hiddenRanges.count, folds.hiddenRanges[index].location == contentEnd else { return line + 1 }
+        return lines.line(containing: NSMaxRange(folds.hiddenRanges[index])) + 1
     }
 
     private func firstFragmentRect(atCharacter location: Int, lines: LineIndex) -> NSRect? {
@@ -219,7 +310,7 @@ final class LineNumberRulerView: NSRulerView {
         let size = text.size(withAttributes: attributes)
         let top = convert(NSPoint(x: 0, y: label.y), from: textView).y
         let point = NSPoint(
-            x: ruleThickness - Self.horizontalPadding - size.width,
+            x: ruleThickness - Self.horizontalPadding - Self.foldAreaWidth - size.width,
             y: top + (label.height - size.height) / 2
         )
         text.draw(at: point, withAttributes: attributes)

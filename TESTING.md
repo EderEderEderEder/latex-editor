@@ -443,3 +443,20 @@ Vorher einmal kompilieren (⌘B), damit `main.synctex.gz` existiert.
 | 206 | Zeilennummern bzw. aktuelle Zeile aus | Leiste bzw. dezenter Streifen verschwinden sofort |
 | 207 | „Standard wiederherstellen“ in jedem Reiter; Menü Bearbeiten ansehen | Werte springen auf Standard zurück; im Menü Bearbeiten stehen die vier Schreib-Schalter nicht mehr |
 | 208 | Teiler zwischen Editor und PDF greifen (auch knapp daneben), ziehen; ganz nach links/rechts ziehen | Der Mauszeiger wird über einer etwa 14 pt breiten Spalte zum Spalten-Pfeil, Ziehen klappt überall darin; Editor mindestens 180 pt, PDF mindestens 150 pt breit; die Scrollleiste des Editors bleibt greifbar |
+
+### Sitzung 17: Einklappen
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 209 | Mit der Maus über die Zeilennummern fahren | Bei jeder Zeile mit `\chapter`/`\section`/…, `\begin`, Kommentarblock erscheint rechts neben der Nummer ein Dreieck; ohne Maus bleiben nur zugeklappte sichtbar |
+| 210 | Dreieck bei `\section{…}` anklicken | Alle Zeilen bis zur nächsten Überschrift gleicher oder höherer Ebene verschwinden, hinter der Kopfzeile steht ein „⋯“-Feld; Leerzeilen vor der nächsten Überschrift bleiben; die Zeilennummern überspringen die Lücke |
+| 211 | Auf das „⋯“-Feld klicken; nochmal Dreieck anklicken | Bereich klappt wieder auf, alles steht wie vorher, Cursor und Scrollposition bleiben |
+| 212 | Cursor in einer Liste, ⌥⌘← mehrfach; dann ⌥⌘→ auf der Kopfzeile | Erst klappt `\begin{itemize} … \end{itemize}` zu, dann der umgebende Abschnitt (der Cursor steht an der Kopfzeile); ⌥⌘→ klappt den Bereich der Kopfzeile auf |
+| 213 | Menü Bearbeiten → Einklappen → „Alles zuklappen“ in der Hauptdatei, danach „Alles aufklappen“ | Nur noch Überschriften sichtbar (`\begin{document}` bleibt offen); aufklappen stellt alles wieder her |
+| 214 | Zugeklappte Kopfzeile: Pfeil rechts, ⌥→, Pfeil links von der Zeile dahinter, Ende-Taste | Pfeil rechts springt hinter den Bereich, links wieder an die Kopfzeile; Ende bleibt am Ende der Kopfzeile; ⇧→ markiert den ganzen Bereich in einem Schritt |
+| 215 | Zugeklappt: Suchen (⌘F) nach einem Wort im Ausgeblendeten, Sprung über Gliederung/Fehlerliste/⌘L in die Lücke | Der Bereich klappt von selbst auf, der Treffer bzw. die Zeile ist sichtbar |
+| 216 | Am Ende der zugeklappten Kopfzeile tippen; dann Rückschritt am Anfang der Zeile hinter dem Bereich | Tippen ergänzt die Kopfzeile, der Bereich bleibt zu; der Rückschritt klappt vorher auf (man sieht, was zusammenwächst) |
+| 217 | Zugeklappten Bereich mit gedrücktem ⇧ von oberhalb bis unterhalb markieren, kopieren, in neue Datei einfügen | Der ganze Text inklusive Ausgeblendetem wird kopiert; die Datei ist weiter „unverändert“ (Zuklappen ist keine Änderung), speichern schreibt den vollen Text |
+| 218 | Zuklappen, dann Tab wechseln und zurück; Datei schließen und neu öffnen | Beim Tabwechsel bleibt der Zustand; nach Schließen/Neustart sind alle Bereiche wieder offen (nur zur Laufzeit gemerkt) |
+| 219 | Eine zugeklappte Kopfzeile bearbeiten (z. B. `\section{…}` umbenennen), Zeile darüber mit Enter einfügen | Bereich bleibt zu und wandert mit; Dreiecke und Nummern stimmen nach einer Sekunde |
+| 220 | Datei mit großem Kapitel (>2.000 Zeilen) zuklappen und aufklappen, Scrollen | Kein Ruckeln, Scrollbalken passt sich an |

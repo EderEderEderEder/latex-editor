@@ -88,6 +88,8 @@ final class DocumentSession {
     @ObservationIgnored private var highlighter: SyntaxHighlighter
     @ObservationIgnored private var encoding: String.Encoding
     @ObservationIgnored private let editObserver = StorageEditObserver()
+    /// Zuklappbare Bereiche und was gerade zugeklappt ist (nur zur Laufzeit)
+    @ObservationIgnored let folds = FoldState()
     /// Zuletzt geladener, gespeicherter oder bewusst übergangener Inhalt auf der Platte. Ein Dateiereignis
     /// mit genau diesem Inhalt (z. B. das eigene Speichern) ist keine externe Änderung.
     @ObservationIgnored private var knownDiskData: Data
@@ -117,6 +119,11 @@ final class DocumentSession {
             self?.handleCharacterEdit(editedRange: range, delta: delta)
         }
         textStorage.delegate = editObserver
+        folds.lines = { [weak self] in self?.lineIndex ?? LineIndex(text: "") }
+        folds.text = { [weak self] in
+            guard let self, SyntaxLanguage(url: self.url) == .latex else { return nil }
+            return self.textStorage.string
+        }
     }
 
     static func load(url: URL) async throws -> DocumentSession {
@@ -235,6 +242,8 @@ final class DocumentSession {
         let languageChanged = language != SyntaxLanguage(url: url)
         url = newURL
         guard languageChanged else { return }
+        folds.unfoldAll()
+        folds.rescanSoon()
         highlighter = SyntaxHighlighter(language: language)
         let tokens = highlighter.highlightAll(textStorage.mutableString, lines: lineIndex)
         textStorage.beginEditing()
@@ -261,6 +270,7 @@ final class DocumentSession {
         let start = ContinuousClock.now
         let text = textStorage.mutableString
         let splice = lineIndex.applyEdit(in: text, editedRange: editedRange, changeInLength: delta)
+        folds.applyEdit(editedRange: editedRange, delta: delta, splice: splice, textLength: textStorage.length)
         let update = highlighter.update(text, lines: lineIndex, splice: splice)
         SyntaxTheme.apply(update.tokens, in: update.range, to: textStorage)
         Signposts.logEdit(duration: ContinuousClock.now - start, tokenizedLines: update.tokenizedLineCount)

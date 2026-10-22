@@ -75,6 +75,9 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
     private var textView: LatexTextView!
     private var lineNumberRuler: LineNumberRulerView!
     private let placeholderStorage = NSTextStorage()
+    private let foldGlyphDelegate = FoldGlyphDelegate()
+    /// Wo der Cursor zuvor stand (für den Schritt nach rechts über eine zugeklappte Kopfzeile)
+    private var previousCaretLocation = 0
     private var session: DocumentSession?
     private static let textMarkAttributes: [NSAttributedString.Key] = [.underlineStyle, .underlineColor, .toolTip]
     private var appliedProblems: [ReferenceProblem] = []
@@ -102,6 +105,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
     func makeScrollView() -> NSScrollView {
         let layoutManager = NSLayoutManager()
         layoutManager.allowsNonContiguousLayout = true
+        layoutManager.delegate = foldGlyphDelegate
         placeholderStorage.addLayoutManager(layoutManager)
 
         let container = NSTextContainer(size: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
@@ -281,7 +285,9 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
     private func switchSession(to newSession: DocumentSession?) {
         completion.close()
         rememberViewState()
+        session?.folds.detach()
         session = newSession
+        attachFolds(of: newSession)
         let storage = newSession?.textStorage ?? placeholderStorage
         textView.layoutManager?.replaceTextStorage(storage)
         let selection = newSession?.savedSelection ?? NSRange(location: 0, length: 0)
@@ -289,6 +295,13 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         textView.isEditable = newSession != nil
         lineNumberRuler.scheduleRefresh()
         textView.scheduleCurrentLineHighlightUpdate()
+    }
+
+    private func attachFolds(of newSession: DocumentSession?) {
+        previousCaretLocation = 0
+        textView.attach(folds: newSession?.folds, glyphDelegate: foldGlyphDelegate) { [weak self] in
+            self?.lineNumberRuler.needsDisplay = true
+        }
     }
 
     private func rememberViewState() {
@@ -415,8 +428,19 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
     // MARK: NSTextViewDelegate
 
     func textViewDidChangeSelection(_ notification: Notification) {
+        keepSelectionOutOfFolds()
         scheduleCursorReport()
         completion.selectionDidChange()
+    }
+
+    /// Der Cursor steht nie in zugeklapptem Text: ans Ende der Kopfzeile oder aufklappen (siehe `FoldState.adjustedSelection`).
+    private func keepSelectionOutOfFolds() {
+        guard let folds = session?.folds else { return }
+        let selection = textView.selectedRange()
+        defer { previousCaretLocation = textView.selectedRange().location }
+        let length = textView.textStorage?.length ?? 0
+        guard let adjusted = folds.adjustedSelection(selection, previousLocation: previousCaretLocation, textLength: length) else { return }
+        textView.setSelectedRange(adjusted)
     }
 
     func textView(_ view: NSTextView, shouldChangeTextIn range: NSRange, replacementString text: String?) -> Bool {

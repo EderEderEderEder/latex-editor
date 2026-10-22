@@ -13,6 +13,14 @@ final class LatexTextView: NSTextView {
     /// Liefert die Syntax-Tokens der Zeilen, die einen Bereich berühren.
     var syntaxTokensProvider: ((NSRange) -> [SyntaxToken])?
 
+    /// Zugeklappte Bereiche der angezeigten Datei (siehe `LatexTextView+Folding`)
+    var foldState: FoldState?
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        drawFoldPlaceholders(in: dirtyRect)
+    }
+
     /// Rechteck der aktuellen logischen Zeile (inklusive umbrochener Folgezeilen), sonst `.zero`.
     private(set) var currentLineRect = NSRect.zero
     private var isCurrentLineUpdateScheduled = false
@@ -107,6 +115,7 @@ final class LatexTextView: NSTextView {
     }
 
     override func deleteBackward(_ sender: Any?) {
+        unfoldBeforeCaretForDeletion()
         guard isAutoPairing, let storage = textStorage,
               let edit = TextEditing.deleteBackward(in: storage.mutableString, selection: selectedRange()) else {
             super.deleteBackward(sender)
@@ -224,6 +233,7 @@ final class LatexTextView: NSTextView {
     private var jumpTrackingArea: NSTrackingArea?
 
     override func mouseDown(with event: NSEvent) {
+        if unfoldPlaceholder(atWindowPoint: event.locationInWindow) { return }
         if let target = commandClickTarget(for: event) {
             onJumpToTarget?(target)
         } else if let location = commandClickLocation(for: event) {

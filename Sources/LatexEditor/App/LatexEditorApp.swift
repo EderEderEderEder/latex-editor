@@ -63,6 +63,12 @@ struct AppCommands: Commands {
             editorCommand("Zeilen nach unten", #selector(LatexTextView.moveLinesDown(_:)), key: .downArrow, modifiers: .option)
             editorCommand("Zeilen verdoppeln", #selector(LatexTextView.duplicateLines(_:)), key: .downArrow, modifiers: [.option, .shift])
             editorCommand("Zeilen löschen", #selector(LatexTextView.deleteLines(_:)), key: "k", modifiers: [.command, .shift])
+            Menu("Einklappen") {
+                editorCommand("Zuklappen", #selector(LatexTextView.foldAtCursor(_:)), key: .leftArrow, modifiers: [.command, .option])
+                editorCommand("Aufklappen", #selector(LatexTextView.unfoldAtCursor(_:)), key: .rightArrow, modifiers: [.command, .option])
+                editorCommand("Alles zuklappen", #selector(LatexTextView.foldAllRegions(_:)), key: .leftArrow, modifiers: [.command, .option, .shift])
+                editorCommand("Alles aufklappen", #selector(LatexTextView.unfoldAllRegions(_:)), key: .rightArrow, modifiers: [.command, .option, .shift])
+            }
         }
         CommandMenu("Format") {
             // ⌘B ist „Kompilieren“, deshalb Fett mit ⇧⌘B

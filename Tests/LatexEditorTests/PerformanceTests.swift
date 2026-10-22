@@ -33,6 +33,14 @@ private enum Budget {
     static let spellingTokensForParagraph = Duration.microseconds(500)
     /// gemessen 0,036 ms / 0,026 ms
     static let rulerVisibleLabels = Duration.microseconds(250)
+    /// gemessen 57 ms: zuklappbare Bereiche (1.538) in 10.000 Zeilen finden, im Hintergrund 0,25 s nach der Eingabe
+    static let foldScan = Duration.milliseconds(200)
+    /// gemessen 0,45 ms: pro Tastendruck bei „Alles zugeklappt“ (1.538 Stellen, Bearbeitung in der Mitte), Release ein Bruchteil
+    static let foldKeystroke = Duration.milliseconds(1.5)
+    /// gemessen 1,5 ms: dasselbe mit einem Zeilenumbruch (dann rücken auch die Bereiche der Zeilennummernleiste)
+    static let foldNewline = Duration.milliseconds(5)
+    /// gemessen 58 ms: alles zuklappen und die sichtbare Stelle neu layouten (einmalig pro Befehl)
+    static let foldAllLayout = Duration.milliseconds(200)
     /// gemessen 9–17 ms (fast nur TextKit-Layout der Zielstelle, daher Debug ≈ Release).
     /// Einmalig pro Gliederungsklick; ein Komplett-Layout der Datei läge deutlich über 100 ms.
     static let rulerJumpDeepIntoDocument = Duration.milliseconds(40)
@@ -192,6 +200,47 @@ struct PerformanceTests {
         _ = fixture.labels(in: visible)
         let duration = fastestDuration(iterations: Iterations.fast) { _ = fixture.labels(in: visible) }
         check("Ruler sichtbarer Bereich", duration, within: Budget.rulerVisibleLabels)
+    }
+
+    @Test("Zuklappbare Bereiche der ganzen Datei finden (im Hintergrund nach der Eingabepause)")
+    func foldScan() {
+        let duration = fastestDuration(iterations: Iterations.slow) { _ = FoldScanner.regions(in: document) }
+        check("Bereiche finden", duration, within: Budget.foldScan)
+    }
+
+    @Test("Zuklappen: Bereiche und zugeklappte Stellen pro Tastendruck und pro Zeilenumbruch nachführen")
+    func foldKeystroke() {
+        let text = NSMutableString(string: document)
+        var lines = LineIndex(text: text)
+        let folds = FoldState()
+        folds.lines = { lines }
+        folds.adopt(FoldScanner.regions(in: document), lines: lines)
+        folds.foldAll(lines: lines)
+        let middle = text.length / 2
+        func measure(_ typed: String) -> Duration {
+            fastestDuration(iterations: Iterations.fast) {
+                let edit = replace(text, range: NSRange(location: middle, length: 0), with: typed)
+                let splice = lines.applyEdit(in: text, editedRange: edit.editedRange, changeInLength: edit.delta)
+                folds.applyEdit(editedRange: edit.editedRange, delta: edit.delta, splice: splice, textLength: text.length)
+            }
+        }
+        check("Zuklappen pro Tastendruck", measure("x"), within: Budget.foldKeystroke)
+        check("Zuklappen pro Zeilenumbruch", measure("\n"), within: Budget.foldNewline)
+    }
+
+    @Test("Alles zugeklappt: Layout der sichtbaren Stelle und Zeilennummern")
+    func foldAllLayout() {
+        let fixture = EditorFixture(text: document)
+        fixture.session.folds.adopt(FoldScanner.regions(in: document), lines: fixture.session.lineIndex)
+        let visible = NSRect(x: 0, y: 0, width: 600, height: 800)
+        let duration = fastestDuration(iterations: Iterations.slow) {
+            fixture.session.folds.unfoldAll()
+            fixture.session.folds.foldAll(lines: fixture.session.lineIndex)
+            fixture.textView.layoutManager?.ensureLayout(forBoundingRect: visible, in: fixture.textView.textContainer!)
+            _ = fixture.labels(in: visible)
+        }
+        #expect(fixture.labels(in: visible).count < 60)
+        check("Alles zuklappen + Layout", duration, within: Budget.foldAllLayout)
     }
 
     @Test("Sprung zu Zeile 9.000 wie beim Gliederungsklick (erstes Layout dort + Ruler)")

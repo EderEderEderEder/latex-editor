@@ -6,6 +6,7 @@ extension AppModel {
 
     func presentInsert(_ kind: InsertionKind? = nil) {
         let files = project.tree?.collectFiles().map(\.url) ?? []
+        insertion.context = insertionContext()
         insertion.present(
             kind: kind ?? insertion.kind,
             selectedText: kind?.usesSelectionAsContent ?? (insertion.kind.usesSelectionAsContent) ? editor.selectedText : "",
@@ -13,6 +14,13 @@ extension AppModel {
             files: files,
             mainFile: project.mainFileURL
         )
+    }
+
+    /// Ein paar Zeilen um den Cursor der angezeigten .tex-Datei (die Auswahl ist auf 50.000 Zeichen begrenzt)
+    private func insertionContext() -> InsertionContext? {
+        guard editor.canInsert, let session = editor.current, let location = editor.cursorLocation() else { return nil }
+        let selection = NSRange(location: location, length: (editor.selectedText as NSString).length)
+        return InsertionContext.make(text: session.textStorage.mutableString, selection: selection, fileName: session.url.lastPathComponent)
     }
 
     /// Mit offenem Projekt geht das Fenster immer auf. Ohne .tex-Datei vorne lässt sich nur eine Quelle anlegen

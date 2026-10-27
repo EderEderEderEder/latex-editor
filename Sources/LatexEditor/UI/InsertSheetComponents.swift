@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Gestaltungsbausteine
 
-/// Gruppe zusammengehöriger Einstellungen auf einer Karte.
+/// Gruppe zusammengehöriger Einstellungen.
 struct SettingsCard<Content: View>: View {
     let title: String?
     let content: Content
@@ -12,20 +12,21 @@ struct SettingsCard<Content: View>: View {
         self.content = content()
     }
 
+    /// Wie ein gruppiertes Systemformular: Titel über dem Kasten (nicht in GROSSBUCHSTABEN), Kasten in der Farbe der
+    /// Bedienelemente auf dem Fensterhintergrund
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             if let title {
                 Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
+                    .font(.headline)
+                    .padding(.leading, 4)
             }
-            content
+            VStack(alignment: .leading, spacing: 10) { content }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.separator))
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.separator.opacity(0.6)))
     }
 }
 

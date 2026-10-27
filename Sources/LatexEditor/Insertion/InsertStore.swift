@@ -11,6 +11,8 @@ final class InsertStore {
     private static let missingLabelFallback = ["tab": "tabelle", "fig": "bild", "prog": "code", "eq": "gleichung"]
 
     var isPresented = false
+    /// Umgebung der Cursorposition beim Öffnen (für die Vorschau an Ort und Stelle); `nil` ohne .tex vorne
+    var context: InsertionContext?
     var kind: InsertionKind {
         didSet { if kind != oldValue { defaults.set(kind.rawValue, forKey: Self.lastKindKey) } }
     }
@@ -115,6 +117,14 @@ final class InsertStore {
     }
 
     /// Vorschau des Codes mit den aktuellen Einstellungen. Bei „Quelle“ der neue Eintrag der Literaturdatei.
+    /// Der Code an seiner künftigen Stelle im Dokument; ohne Umgebung (oder bei einer Quelle) nur der Code selbst
+    var previewLines: [InsertionContext.Line] {
+        guard kind != .source, let context else {
+            return preview.components(separatedBy: "\n").enumerated().map { InsertionContext.Line(number: $0.offset + 1, text: $0.element, isNew: false) }
+        }
+        return context.lines(inserting: preview, isBlock: kind.isBlock, replacesSelection: kind.usesSelectionAsContent)
+    }
+
     var preview: String {
         guard kind == .source else { return generate(imageReference: imageReference) }
         switch sourceDraft {

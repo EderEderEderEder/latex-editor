@@ -94,6 +94,8 @@ final class GitStore {
     }
 
     var isReady: Bool { availability == .ready }
+    /// Dialog „Neuer Branch“ ist offen (aus Toolbar oder Menü Git)
+    var isNamingNewBranch = false
     var hasChanges: Bool { !staged.isEmpty || !unstaged.isEmpty }
     /// Anzahl geänderter Dateien (eine Datei kann bereitgestellt und zusätzlich geändert sein)
     var changeCount: Int { Set((staged + unstaged).map(\.path)).count }

@@ -49,6 +49,17 @@ enum SidebarTab: String, CaseIterable, Hashable, Sendable {
     case search
     case issues
     case changes
+
+    /// Titel im Menü Darstellung
+    var menuTitle: String {
+        switch self {
+        case .files: "Dateien"
+        case .outline: "Gliederung"
+        case .search: "Im Projekt suchen"
+        case .issues: "Meldungen"
+        case .changes: "Änderungen"
+        }
+    }
 }
 
 /// Merkt den zuletzt gewählten Seitenleisten-Tab pro Projektpfad.

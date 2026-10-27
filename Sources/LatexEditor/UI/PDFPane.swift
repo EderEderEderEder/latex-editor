@@ -28,7 +28,6 @@ struct PDFPane: View {
 }
 
 private struct PDFStatusBar: View {
-    private static let height: CGFloat = 28
     private static let separatorHeight: CGFloat = 14
 
     let store: PDFPreviewStore
@@ -56,15 +55,11 @@ private struct PDFStatusBar: View {
             Spacer()
             Text(pageLabel)
                 .monospacedDigit()
-                .foregroundStyle(.secondary)
         }
         .labelStyle(.iconOnly)
         .buttonStyle(.borderless)
-        .scaledFont(.callout)
-        .padding(.horizontal, 10)
-        .frame(height: Self.height * scale)
+        .bottomBarStyle(scale: scale)
         .disabled(store.pdfURL == nil)
-        .background(.bar)
     }
 
     private var followCursor: Binding<Bool> {

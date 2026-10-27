@@ -1,285 +1,209 @@
 import AppKit
 import SwiftUI
 
-/// Fenster „Einstellungen“ (⌘,). Änderungen gelten sofort; jeder Reiter hat „Standard wiederherstellen“.
-/// Die Werte liegen in UserDefaults unter denselben Schlüsseln wie bei den Menüs (diese bleiben synchron).
+/// Fenster „Einstellungen“ (⌘,) im Aufbau der Systemeinstellungen: links Suche und Bereiche mit farbigen Symbolen, rechts
+/// eine Kopfkarte (Symbol, Titel, Beschreibung) und gruppierte Zeilen. Änderungen gelten sofort, jeder Bereich hat
+/// „Standard wiederherstellen“. Die Werte liegen in UserDefaults unter denselben Schlüsseln wie bei den Menüs.
 struct SettingsView: View {
-    private static let width: CGFloat = 560
+    private static let size = NSSize(width: 780, height: 600)
+    private static let sidebarWidth: CGFloat = 215
 
     let model: AppModel
 
+    /// Öffnet mit dem zuletzt gewählten Bereich (HIG `settings.md › Desktop`)
+    @AppStorage("settingsPane") private var paneID = SettingsPane.appearance.rawValue
+    @State private var query = ""
+
+    private var pane: SettingsPane { SettingsPane(rawValue: paneID) ?? .appearance }
+
     var body: some View {
-        TabView {
-            AppearanceSettings()
-                .tabItem { Label("Darstellung", systemImage: "paintbrush") }
-            EditorBehaviorSettings()
-                .tabItem { Label("Editor", systemImage: "character.cursor.ibeam") }
-            WritingSettings()
-                .tabItem { Label("Schreiben", systemImage: "pencil") }
-            BuildSettings(model: model)
-                .tabItem { Label("Kompilieren & PDF", systemImage: "hammer") }
+        NavigationSplitView {
+            sidebar
+                .navigationSplitViewColumnWidth(Self.sidebarWidth)
+                .toolbar(removing: .sidebarToggle)
+        } detail: {
+            SettingsDetail(pane: pane, model: model)
+                .navigationTitle(pane.title)
         }
-        .frame(width: Self.width)
+        .frame(width: Self.size.width, height: Self.size.height)
     }
-}
 
-// MARK: - Darstellung
-
-private struct AppearanceSettings: View {
-    private static let previewHeight: CGFloat = 170
-
-    @AppStorage(EditorSettings.Key.appearance) private var appearance = AppAppearance.system
-    @AppStorage(EditorSettings.Key.colorScheme) private var colorScheme = EditorColorScheme.standard
-    @AppStorage(EditorSettings.Key.fontFamily) private var fontFamily = EditorSettings.systemFontFamily
-    @AppStorage(EditorSettings.Key.fontSize) private var fontSize = EditorSettings.defaultFontSize
-    @AppStorage(EditorSettings.Key.lineSpacing) private var lineSpacing = LineSpacing.normal
-    @AppStorage(EditorSettings.Key.showsLineNumbers) private var showsLineNumbers = true
-    @AppStorage(EditorSettings.Key.highlightsCurrentLine) private var highlightsCurrentLine = true
-
-    @State private var families: [String] = []
-
-    var body: some View {
-        Form {
-            Section {
-                SettingsPreview()
-                    .frame(height: Self.previewHeight)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(nsColor: .separatorColor)))
-            }
-            Section {
-                Picker("Erscheinungsbild", selection: $appearance) {
-                    ForEach(AppAppearance.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                Picker("Farbschema", selection: $colorScheme) {
-                    ForEach(EditorColorScheme.allCases) { scheme in
-                        HStack { ColorSwatch(scheme: scheme); Text(scheme.title) }.tag(scheme)
+    private var sidebar: some View {
+        List(selection: selection) {
+            ForEach(SettingsPane.Group.allCases, id: \.self) { group in
+                let panes = group.panes.filter { $0.matches(query) }
+                if !panes.isEmpty {
+                    Section {
+                        ForEach(panes) { pane in
+                            Label {
+                                Text(pane.title)
+                            } icon: {
+                                SettingsIcon(pane: pane, size: SettingsIcon.sidebarSize)
+                            }
+                            .tag(pane)
+                        }
                     }
                 }
             }
-            Section {
-                Picker("Schriftart", selection: $fontFamily) {
-                    Text("SF Mono (System)").tag(EditorSettings.systemFontFamily)
-                    Divider()
-                    ForEach(families, id: \.self) { Text($0).tag($0) }
-                }
-                Picker("Schriftgröße", selection: $fontSize) {
-                    ForEach(EditorSettings.fontSizes, id: \.self) { Text("\(Int($0)) pt").tag($0) }
-                }
-                Picker("Zeilenabstand", selection: $lineSpacing) {
-                    ForEach(LineSpacing.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
-            } footer: {
-                Text("⌘+ und ⌘− vergrößern Editor und Oberfläche zusätzlich (Menü Darstellung).")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Section {
-                Toggle("Zeilennummern anzeigen", isOn: $showsLineNumbers)
-                Toggle("Aktuelle Zeile hervorheben", isOn: $highlightsCurrentLine)
-            }
-            ResetButton(keys: EditorSettings.Key.appearanceTab)
         }
-        .formStyle(.grouped)
-        .task { families = EditorSettings.monospacedFamilies() }
-        .onChange(of: appearance) { EditorSettings.didChange(affectsText: false) }
-        .onChange(of: colorScheme) { EditorSettings.didChange(affectsText: false) }
-        .onChange(of: fontFamily) { EditorSettings.didChange(affectsText: true) }
-        .onChange(of: fontSize) { EditorSettings.didChange(affectsText: true) }
-        .onChange(of: lineSpacing) { EditorSettings.didChange(affectsText: true) }
-        .onChange(of: showsLineNumbers) { EditorSettings.didChange(affectsText: false) }
-        .onChange(of: highlightsCurrentLine) { EditorSettings.didChange(affectsText: false) }
+        .listStyle(.sidebar)
+        .searchable(text: $query, placement: .sidebar, prompt: "Suchen")
+        .overlay {
+            if !SettingsPane.allCases.contains(where: { $0.matches(query) }) {
+                Text("Keine Treffer").foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var selection: Binding<SettingsPane?> {
+        Binding(get: { pane }, set: { if let pane = $0 { paneID = pane.rawValue } })
     }
 }
 
-/// Drei Farbpunkte des Schemas (Befehl, Argument, Mathe) auf seinem Hintergrund
-private struct ColorSwatch: View {
-    private static let dotSize: CGFloat = 7
+/// Die Bereiche der Einstellungen, mit Symbol, Farbe, Beschreibung und Suchbegriffen
+enum SettingsPane: String, CaseIterable, Identifiable {
+    case appearance
+    case editor
+    case spelling
+    case writing
+    case build
+    case pdf
 
-    let scheme: EditorColorScheme
-    @Environment(\.colorScheme) private var systemScheme
+    enum Group: CaseIterable {
+        case text
+        case output
+
+        var panes: [SettingsPane] {
+            switch self {
+            case .text: [.appearance, .editor, .spelling, .writing]
+            case .output: [.build, .pdf]
+            }
+        }
+    }
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .appearance: "Darstellung"
+        case .editor: "Editor"
+        case .spelling: "Rechtschreibung"
+        case .writing: "Schreibhilfen"
+        case .build: "Kompilieren"
+        case .pdf: "PDF"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .appearance: "paintbrush.fill"
+        case .editor: "character.cursor.ibeam"
+        case .spelling: "textformat.abc.dottedunderline"
+        case .writing: "wand.and.stars"
+        case .build: "hammer.fill"
+        case .pdf: "doc.richtext.fill"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .appearance: .blue
+        case .editor: .gray
+        case .spelling: .purple
+        case .writing: .orange
+        case .build: .indigo
+        case .pdf: .red
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .appearance: "Farbschema, Schrift und Zeilenabstand des Editors sowie Zeilennummern und aktuelle Zeile."
+        case .editor: "Zeilenumbruch, Einrückung und Breite von Tabulatoren."
+        case .spelling: "Rechtschreibprüfung und Sprache. Fachwörter aus Mathematik, Informatik und Physik gelten als bekannt."
+        case .writing: "Vervollständigung, Klammern, Groß- und Kleinschreibung und Hinweise zur Typografie."
+        case .build: "Wann kompiliert und gespeichert wird."
+        case .pdf: "Wie das PDF dem Text folgt."
+        }
+    }
+
+    /// Bezeichnungen der Einstellungen im Bereich: Die Suche findet auch sie, nicht nur den Titel
+    private var keywords: [String] {
+        switch self {
+        case .appearance: ["Farbschema", "Schema", "Schriftart", "Schriftgröße", "Zeilenabstand", "Zeilennummern", "Aktuelle Zeile", "Farben", "Theme"]
+        case .editor: ["Zeilen umbrechen", "Umbruch", "Einrückung", "Tabulator", "Leerzeichen", "Tabbreite"]
+        case .spelling: ["Rechtschreibung prüfen", "Sprache", "Deutsch", "Englisch", "Österreich", "Fachwörter", "Wörterbuch"]
+        case .writing: ["Vervollständigen", "Autovervollständigung", "Klammern", "Groß", "Kleinschreibung", "Autokorrektur", "Schreibhinweise", "Typografie"]
+        case .build: ["Kompilieren", "Speichern", "Beim Verlassen", "latexmk", "MacTeX"]
+        case .pdf: ["PDF folgt Cursor", "Folgen", "SyncTeX"]
+        }
+    }
+
+    func matches(_ query: String) -> Bool {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return true }
+        return ([title] + keywords).contains { $0.localizedCaseInsensitiveContains(trimmed) }
+    }
+}
+
+/// Weißes Symbol auf einem farbigen, abgerundeten Quadrat wie in den Systemeinstellungen
+struct SettingsIcon: View {
+    static let sidebarSize: CGFloat = 22
+    static let headerSize: CGFloat = 64
+    private static let cornerRatio: CGFloat = 0.225
+    private static let symbolRatio: CGFloat = 0.55
+
+    let pane: SettingsPane
+    let size: CGFloat
 
     var body: some View {
-        let palette = scheme.palette(dark: systemScheme == .dark)
-        HStack(spacing: 2) {
-            ForEach([palette.command, palette.argument, palette.math], id: \.self) { hex in
-                Circle().fill(Color(nsColor: EditorTheme.rgb(hex))).frame(width: Self.dotSize, height: Self.dotSize)
-            }
-        }
-        .padding(3)
-        .background(RoundedRectangle(cornerRadius: 3).fill(palette.background.map { Color(nsColor: EditorTheme.rgb($0)) }
-            ?? Color(nsColor: .textBackgroundColor)))
+        Image(systemName: pane.symbol)
+            .font(.system(size: size * Self.symbolRatio, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(
+                RoundedRectangle(cornerRadius: size * Self.cornerRatio, style: .continuous)
+                    .fill(pane.tint.gradient)
+            )
+            .accessibilityHidden(true)
     }
 }
 
-// MARK: - Editor
-
-private struct EditorBehaviorSettings: View {
-    @AppStorage(EditorSettings.Key.wrapsLines) private var wrapsLines = true
-    @AppStorage(EditorSettings.Key.indentation) private var indentation = Indentation.tab
-    @AppStorage(EditorSettings.Key.tabWidth) private var tabWidth = EditorSettings.defaultTabWidth
-    @AppStorage(EditorSettings.Key.checksSpelling) private var checksSpelling = true
-    @AppStorage(EditorSettings.Key.spellingLanguage) private var spellingLanguage = SpellingLanguage.austrianGerman
-
-    var body: some View {
-        Form {
-            Section {
-                Toggle("Zeilen umbrechen", isOn: $wrapsLines)
-            } footer: {
-                Text("Aus: lange Zeilen laufen weiter, der Editor scrollt waagerecht.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Section {
-                Picker("Einrückung", selection: $indentation) {
-                    ForEach(Indentation.allCases) { Text($0.title).tag($0) }
-                }
-                Picker("Tabbreite", selection: $tabWidth) {
-                    ForEach(EditorSettings.tabWidths, id: \.self) { Text("\($0) Zeichen").tag($0) }
-                }
-            } footer: {
-                Text("Einrückung gilt für Tab-Taste, ⌘], Enter und das Einfügen-Menü. Die HgbThesis nutzt Tabulatoren.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Section {
-                Toggle("Rechtschreibung prüfen", isOn: $checksSpelling)
-                Picker("Sprache", selection: $spellingLanguage) {
-                    ForEach(SpellingLanguage.allCases) { Text($0.title).tag($0) }
-                }
-                .disabled(!checksSpelling)
-            }
-            ResetButton(keys: EditorSettings.Key.editorTab)
-        }
-        .formStyle(.grouped)
-        .onChange(of: wrapsLines) { EditorSettings.didChange(affectsText: false) }
-        .onChange(of: indentation) { EditorSettings.didChange(affectsText: false) }
-        .onChange(of: tabWidth) { EditorSettings.didChange(affectsText: true) }
-        .onChange(of: checksSpelling) { EditorSettings.didChange(affectsText: false) }
-        .onChange(of: spellingLanguage) { EditorSettings.didChange(affectsText: false) }
-    }
-}
-
-// MARK: - Schreiben
-
-private struct WritingSettings: View {
-    private static let keys = [CompletionSettings.automaticKey, LatexTextView.autoPairKey, Capitalization.automaticKey, WritingHints.enabledKey]
-
-    @AppStorage(CompletionSettings.automaticKey) private var automaticCompletion = true
-    @AppStorage(LatexTextView.autoPairKey) private var autoPairBrackets = true
-    @AppStorage(Capitalization.automaticKey) private var autoCapitalize = true
-    @AppStorage(WritingHints.enabledKey) private var showsWritingHints = true
-
-    var body: some View {
-        Form {
-            Section {
-                Toggle("Automatisch vervollständigen", isOn: $automaticCompletion)
-                Toggle("Klammern automatisch schließen", isOn: $autoPairBrackets)
-                Toggle("Groß-/Kleinschreibung automatisch korrigieren", isOn: $autoCapitalize)
-                Toggle("Schreibhinweise anzeigen", isOn: $showsWritingHints)
-            } footer: {
-                Text("Vervollständigen von Hand: ⌃Leertaste. Schreibhinweise sind blau gepunktet unterstrichen.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            ResetButton(keys: Self.keys)
-        }
-        .formStyle(.grouped)
-    }
-}
-
-// MARK: - Kompilieren & PDF
-
-private struct BuildSettings: View {
+/// Rechte Seite: Kopfkarte und die Einstellungen des Bereichs als gruppiertes Formular
+struct SettingsDetail: View {
+    let pane: SettingsPane
     let model: AppModel
 
-    @AppStorage(AppModel.saveOnDeactivateKey) private var saveOnDeactivate = false
-
     var body: some View {
         Form {
             Section {
-                Toggle("Beim Speichern kompilieren", isOn: Binding(
-                    get: { model.build.compileOnSave }, set: { model.build.compileOnSave = $0 }
-                ))
-                Toggle("PDF folgt Cursor", isOn: Binding(
-                    get: { model.synctex.followCursor }, set: { model.synctex.followCursor = $0 }
-                ))
-                Toggle("Beim Verlassen der App speichern", isOn: $saveOnDeactivate)
-            } footer: {
-                Text("„PDF folgt Cursor“ gibt es auch in der PDF-Leiste („Folgen“) und im Menü Darstellung.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            HStack {
-                Spacer()
-                Button("Standard wiederherstellen") {
-                    model.build.compileOnSave = true
-                    model.synctex.followCursor = false
-                    saveOnDeactivate = false
+                VStack(spacing: 8) {
+                    SettingsIcon(pane: pane, size: SettingsIcon.headerSize)
+                    Text(pane.title).font(.title.weight(.bold))
+                    Text(pane.summary)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
             }
+            content
         }
         .formStyle(.grouped)
-    }
-}
-
-private struct ResetButton: View {
-    let keys: [String]
-
-    var body: some View {
-        HStack {
-            Spacer()
-            Button("Standard wiederherstellen") { EditorSettings.reset(keys) }
-        }
-    }
-}
-
-// MARK: - Vorschau
-
-/// Ein echter, schreibgeschützter Editor mit Beispieltext: zeigt Schema, Schrift, Abstand, Zeilennummern und
-/// aktuelle Zeile genau so, wie sie im Editor erscheinen.
-private struct SettingsPreview: NSViewRepresentable {
-    static let sample = """
-        \\section{Einleitung}
-        \\label{sec:einleitung}
-        Siehe Abbildung~\\ref{fig:ablauf} und \\cite{knuth1984}.
-        Die Formel $E = mc^2$ steht im Text. % Kommentar
-        \\begin{itemize}
-        \t\\item Erster Punkt
-        \\end{itemize}
-        """
-
-    func makeCoordinator() -> PreviewCoordinator {
-        PreviewCoordinator()
+        .id(pane)
     }
 
-    func makeNSView(context: Context) -> NSScrollView {
-        context.coordinator.makeView()
-    }
-
-    func updateNSView(_ nsView: NSScrollView, context: Context) {}
-
-    @MainActor
-    final class PreviewCoordinator {
-        private let editor = EditorCoordinator()
-        private let session = DocumentSession(url: URL(fileURLWithPath: "/Vorschau.tex"), text: SettingsPreview.sample)
-        /// Beim Schließen des Fensters abmelden, sonst sammelt sich pro Öffnen ein Beobachter an
-        nonisolated(unsafe) private var observer: NSObjectProtocol?
-
-        deinit {
-            if let observer { NotificationCenter.default.removeObserver(observer) }
-        }
-
-        func makeView() -> NSScrollView {
-            let scrollView = editor.makeScrollView()
-            editor.update(session: session, jump: nil, insert: nil)
-            (scrollView.documentView as? NSTextView)?.isEditable = false
-            // Die Vorschau gehört keinem Tab: Schrift und Abstand des Beispieltexts selbst nachziehen
-            observer = NotificationCenter.default.addObserver(forName: EditorAppearance.fontDidChange, object: nil, queue: .main) {
-                [weak self] _ in MainActor.assumeIsolated { self?.session.applyEditorFont() }
-            }
-            return scrollView
+    @ViewBuilder
+    private var content: some View {
+        switch pane {
+        case .appearance: AppearanceSettings()
+        case .editor: EditorBehaviorSettings()
+        case .spelling: SpellingSettings()
+        case .writing: WritingSettings()
+        case .build: BuildSettings(model: model)
+        case .pdf: PDFSettings(model: model)
         }
     }
 }

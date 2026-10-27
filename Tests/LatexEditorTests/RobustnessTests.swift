@@ -238,4 +238,14 @@ struct WorkspaceSplitTests {
         #expect(Split.leadingWidth(fraction: 0.8, total: 500, minimums: minimums) == 250)
         #expect(Split.grabWidth >= 12, "Deutlich breiter als der Teiler von HSplitView")
     }
+
+    @Test("Nur Editor / Nur PDF: die sichtbare Seite über die ganze Breite, die andere behält ihre Breite außerhalb")
+    func layoutPerMode() {
+        let split = Split.layout(mode: .split, total: 1_000, grab: 14, splitLeading: 400)
+        #expect(split == .init(leadingWidth: 400, trailingWidth: 586, offset: 0, showsLeading: true, showsTrailing: true))
+        let editor = Split.layout(mode: .editorOnly, total: 1_000, grab: 14, splitLeading: 400)
+        #expect(editor.leadingWidth == 1_000 && editor.trailingWidth == 586 && !editor.showsTrailing)
+        let pdf = Split.layout(mode: .pdfOnly, total: 1_000, grab: 14, splitLeading: 400)
+        #expect(pdf.trailingWidth == 1_000 && pdf.offset == -414 && pdf.leadingWidth == 400 && !pdf.showsLeading)
+    }
 }

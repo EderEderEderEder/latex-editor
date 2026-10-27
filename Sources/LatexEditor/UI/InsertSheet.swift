@@ -1,10 +1,13 @@
 import AppKit
 import SwiftUI
 
-/// Einfügen-Fenster: links die Bausteine, rechts Einstellungen in Karten, darunter die Vorschau des LaTeX-Codes.
+/// Einfügen-Fenster: links die Bausteine (Systemliste), in der Mitte die Einstellungen, rechts die Vorschau an Ort und
+/// Stelle – der erzeugte Code zwischen den echten Zeilen um den Cursor, neue Zeilen mit dem grünen Streifen der
+/// Git-Marken. Ohne .tex vorne (Quelle) zeigt die Vorschau nur den Eintrag.
 struct InsertSheet: View {
-    private static let sidebarWidth: CGFloat = 230
-    private static let previewHeight: CGFloat = 120
+    private static let size = NSSize(width: 1100, height: 700)
+    private static let sidebarWidth: CGFloat = 200
+    private static let previewWidth: CGFloat = 400
 
     @Bindable var store: InsertStore
     let canInsert: Bool
@@ -13,40 +16,33 @@ struct InsertSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                KindSidebar(store: store)
+                KindList(store: store)
                     .frame(width: Self.sidebarWidth)
                 Divider()
-                VStack(spacing: 0) {
-                    header
-                    Divider()
-                    ScrollView {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        header
                         settings
-                            .padding(20)
-                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    Divider()
-                    CodePreview(text: store.preview, language: store.kind == .source ? .bibtex : .latex)
-                        .frame(height: Self.previewHeight)
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .background(Color(nsColor: .windowBackgroundColor))
+                Divider()
+                InsertionPreview(store: store)
+                    .frame(width: Self.previewWidth)
             }
             Divider()
             footer
         }
-        .frame(width: 960, height: 740)
+        .frame(width: Self.size.width, height: Self.size.height)
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
-            KindBadge(kind: store.kind, size: 40)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(store.kind.title).font(.title2.weight(.semibold))
-                Text(store.kind.summary).font(.callout).foregroundStyle(.secondary)
-            }
-            Spacer()
+        VStack(alignment: .leading, spacing: 2) {
+            Text(store.kind.title).font(.title2.weight(.semibold))
+            Text(store.kind.summary).font(.callout).foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
     }
 
     @ViewBuilder
@@ -69,31 +65,33 @@ struct InsertSheet: View {
                 Label(message, systemImage: "xmark.octagon.fill").foregroundStyle(.red)
             } else if let message = blocker {
                 Label(message, systemImage: "info.circle").foregroundStyle(.secondary)
-            } else if store.kind == .source, let file = store.bibliographyFile {
-                Label("Neuer Eintrag in \(file.lastPathComponent)" + (store.source.citeAfterInsert ? ", Zitat an der Cursorposition" : ""),
-                      systemImage: "books.vertical")
-                    .foregroundStyle(.secondary)
             } else {
-                Label("Wird an der Cursorposition eingefügt.", systemImage: "text.cursor")
+                Label(destination, systemImage: store.kind == .source ? "books.vertical" : "text.cursor")
                     .foregroundStyle(.secondary)
             }
             Spacer()
             Button("Abbrechen") { store.isPresented = false }
                 .keyboardShortcut(.cancelAction)
-            Button(action: insert) {
-                // Eine Quelle landet in der .bib, nicht an der Cursorposition
-                Label(store.kind == .source ? "Quelle anlegen" : "Einfügen",
-                      systemImage: store.kind == .source ? "books.vertical" : "arrow.down.doc")
-                    .padding(.horizontal, 6)
-            }
-            .keyboardShortcut(.defaultAction)
-            .buttonStyle(.borderedProminent)
-            .disabled(blocker != nil)
+            // Eine Quelle landet in der .bib, nicht an der Cursorposition
+            Button(store.kind == .source ? "Quelle anlegen" : "Einfügen", action: insert)
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .disabled(blocker != nil)
         }
         .font(.callout)
         .controlSize(.large)
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    /// Wohin der Code geht, so konkret wie möglich
+    private var destination: String {
+        if store.kind == .source, let file = store.bibliographyFile {
+            return "Neuer Eintrag in \(file.lastPathComponent)" + (store.source.citeAfterInsert ? ", Zitat an der Cursorposition" : "")
+        }
+        guard let context = store.context else { return "Wird an der Cursorposition eingefügt." }
+        return "Einfügen in \(context.fileName), Zeile \(context.cursorLineNumber)"
     }
 
     private var blocker: String? {
@@ -101,122 +99,135 @@ struct InsertSheet: View {
     }
 }
 
-// MARK: - Bausteine (Seitenleiste)
+// MARK: - Bausteine
 
 private extension InsertionKind {
-    var tint: Color {
-        switch self {
-        case .table: .blue
-        case .image: .green
-        case .code: .purple
-        case .equation: .orange
-        case .list: .teal
-        case .reference: .indigo
-        case .citation: .pink
-        case .source: .brown
-        }
-    }
+    static let blocks: [InsertionKind] = [.table, .image, .code, .equation, .list]
+    static let references: [InsertionKind] = [.reference, .citation, .source]
 }
 
-private struct KindBadge: View {
-    let kind: InsertionKind
-    let size: CGFloat
-
-    var body: some View {
-        Image(systemName: kind.symbolName)
-            .font(.system(size: size * 0.46, weight: .semibold))
-            .foregroundStyle(.white)
-            .frame(width: size, height: size)
-            .background(
-                RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
-                    .fill(LinearGradient(colors: [kind.tint.opacity(0.85), kind.tint], startPoint: .top, endPoint: .bottom))
-            )
-    }
-}
-
-private struct KindSidebar: View {
+/// Systemliste in zwei Gruppen; nur die Auswahl trägt die Akzentfarbe (vorher acht verschiedene Kachelfarben ohne Bedeutung)
+private struct KindList: View {
     @Bindable var store: InsertStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Einfügen")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.top, 14)
-                .padding(.bottom, 4)
-            ForEach(InsertionKind.allCases) { kind in
-                Button { store.kind = kind } label: {
-                    HStack(spacing: 10) {
-                        KindBadge(kind: kind, size: 28)
-                        Text(kind.title).fontWeight(store.kind == kind ? .semibold : .regular)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(store.kind == kind ? Color.accentColor.opacity(0.18) : .clear)
-                    )
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 6)
-            }
-            Spacer()
+        List(selection: selection) {
+            Section("Blöcke") { rows(InsertionKind.blocks) }
+            Section("Verweise und Quellen") { rows(InsertionKind.references) }
         }
-        .frame(maxHeight: .infinity)
-        .background(.bar)
+        .listStyle(.sidebar)
+    }
+
+    private func rows(_ kinds: [InsertionKind]) -> some View {
+        ForEach(kinds) { kind in
+            Label(kind.title, systemImage: kind.symbolName).tag(kind)
+        }
+    }
+
+    private var selection: Binding<InsertionKind?> {
+        Binding(get: { store.kind }, set: { if let kind = $0 { store.kind = kind } })
     }
 }
 
-// MARK: - Vorschau
+// MARK: - Vorschau an Ort und Stelle
 
-/// Der erzeugte LaTeX-Code (bzw. BibTeX-Eintrag) mit denselben Farben wie im Editor.
-private struct CodePreview: View {
+private struct InsertionPreview: View {
     private static let fontSize: CGFloat = 12
+    private static let numberWidth: CGFloat = 34
+    private static let barWidth: CGFloat = 3
+    private static let barPadding: CGFloat = 6
+    /// Umgebende Zeilen treten zurück, damit der neue Code auffällt
+    private static let contextOpacity: CGFloat = 0.5
 
-    let text: String
-    let language: SyntaxLanguage
+    let store: InsertStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let lines = store.previewLines
+        let rows = Self.highlightedRows(lines, language: store.kind == .source ? .bibtex : .latex)
+        let hasContext = store.context != nil && store.kind != .source
+        VStack(spacing: 0) {
             HStack {
-                Label(language == .bibtex ? "BibTeX-Eintrag" : "LaTeX-Code", systemImage: "chevron.left.forwardslash.chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                Label(title, systemImage: "doc.text").font(.callout.weight(.semibold)).foregroundStyle(.secondary)
                 Spacer()
                 Button("Kopieren", systemImage: "doc.on.doc", action: copy)
                     .buttonStyle(.borderless)
-                    .controlSize(.small)
+                    .help("Nur den erzeugten Code kopieren")
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            .padding(.vertical, 8)
             Divider()
-            ScrollView(.vertical) {
-                Text(highlighted)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 1) {
+                        ForEach(Array(zip(lines.indices, rows)), id: \.0) { index, text in
+                            row(lines[index], text: text, dimmed: hasContext && !lines[index].isNew)
+                                .id(index)
+                        }
+                    }
+                    .padding(.vertical, 10)
+                }
+                .onAppear { scrollToNewCode(lines, proxy: proxy) }
+                .onChange(of: store.kind) { scrollToNewCode(store.previewLines, proxy: proxy) }
             }
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(Color(nsColor: EditorTheme.background))
     }
 
-    private var highlighted: AttributedString {
-        let font = NSFont.monospacedSystemFont(ofSize: Self.fontSize, weight: .regular)
-        let storage = NSTextStorage(string: text, attributes: [.font: font, .foregroundColor: NSColor.textColor])
+    private var title: String {
+        if store.kind == .source { return store.bibliographyFile.map { "Neuer Eintrag in \($0.lastPathComponent)" } ?? "BibTeX-Eintrag" }
+        return store.context.map { "Vorschau in \($0.fileName)" } ?? "LaTeX-Code"
+    }
+
+    private func row(_ line: InsertionContext.Line, text: AttributedString, dimmed: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            Text("\(line.number)")
+                .font(.system(size: Self.fontSize - 1).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: Self.numberWidth, alignment: .trailing)
+            Text(text)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .opacity(dimmed ? Self.contextOpacity : 1)
+                .padding(.leading, Self.barWidth + 2 * Self.barPadding)
+                // Als Hintergrund: so hoch wie die Zeile (ein eigenes Rechteck in der Zeile wuchs in der ScrollView)
+                .background(alignment: .leading) {
+                    if line.isNew {
+                        Rectangle().fill(Color(nsColor: .systemGreen)).frame(width: Self.barWidth).padding(.leading, Self.barPadding)
+                    }
+                }
+        }
+        .padding(.trailing, 12)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(line.isNew ? "Neu, Zeile \(line.number): \(line.text)" : "Zeile \(line.number): \(line.text)")
+    }
+
+    private func scrollToNewCode(_ lines: [InsertionContext.Line], proxy: ScrollViewProxy) {
+        guard let first = lines.firstIndex(where: \.isNew) else { return }
+        proxy.scrollTo(max(0, first - InsertionContext.surroundingLines), anchor: .top)
+    }
+
+    /// Zeilen mit den Farben des Editors (gewähltes Schema und Schrift), einmal für den ganzen Ausschnitt gefärbt
+    private static func highlightedRows(_ lines: [InsertionContext.Line], language: SyntaxLanguage) -> [AttributedString] {
+        let text = lines.map(\.text).joined(separator: "\n")
+        let font = EditorSettings.font(size: fontSize)
+        let storage = NSTextStorage(string: text, attributes: [.font: font, .foregroundColor: EditorTheme.text])
         let source = text as NSString
-        let lines = LineIndex(text: source)
         var highlighter = SyntaxHighlighter(language: language)
-        let tokens = highlighter.highlightAll(source, lines: lines)
+        let tokens = highlighter.highlightAll(source, lines: LineIndex(text: source))
         SyntaxTheme.apply(tokens, in: NSRange(location: 0, length: storage.length), to: storage)
-        return (try? AttributedString(storage, including: \.appKit)) ?? AttributedString(text)
+        var location = 0
+        return lines.map { line in
+            let length = (line.text as NSString).length
+            let slice = storage.attributedSubstring(from: NSRange(location: location, length: length))
+            location += length + 1
+            // Leere Zeilen behalten die Zeilenhöhe
+            guard length > 0 else { return AttributedString(" ") }
+            return (try? AttributedString(slice, including: \.appKit)) ?? AttributedString(line.text)
+        }
     }
 
     private func copy() {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        NSPasteboard.general.setString(store.preview, forType: .string)
     }
 }

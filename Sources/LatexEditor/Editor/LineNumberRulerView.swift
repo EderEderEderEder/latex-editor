@@ -2,7 +2,7 @@ import AppKit
 
 /// Zeilennummern links vom Editor. Eine Nummer nur an der ersten visuellen Zeile einer logischen Zeile;
 /// umbrochene Folgezeilen bleiben leer. Gezeichnet wird nur der sichtbare Bereich.
-final class LineNumberRulerView: NSRulerView {
+final class LineNumberRulerView: NSRulerView, NSViewToolTipOwner {
     struct Label: Equatable {
         /// 1-basiert
         let number: Int
@@ -20,6 +20,8 @@ final class LineNumberRulerView: NSRulerView {
     /// Abstand des Änderungsstreifens vom Trennstrich
     private static let changeBarInset: CGFloat = 2
     private static let deletionTriangleSize: CGFloat = 4
+    private static let dashLength: CGFloat = 3
+    private static let dashGap: CGFloat = 2
 
     private static let markDiameter: CGFloat = 6
     private static let markInset: CGFloat = 3
@@ -39,6 +41,9 @@ final class LineNumberRulerView: NSRulerView {
     var issueMarks: [Int: BuildIssue.Severity] = [:] {
         didSet { needsDisplay = true }
     }
+
+    /// Text der Meldungen pro Zeile (Tooltip über der Markierung)
+    var issueMessages: [Int: String] = [:]
 
     /// Git-Änderungen der angezeigten Datei gegenüber HEAD (schmaler Streifen am rechten Rand).
     var changeMarks = ChangeMarks() {
@@ -131,6 +136,42 @@ final class LineNumberRulerView: NSRulerView {
         }
         drawChangeMarks(for: labels, lines: lines, textView: textView)
         drawFoldMarkers(for: labels, lines: lines, textView: textView)
+        updateToolTips(for: labels, textView: textView)
+    }
+
+    // MARK: Tooltips
+
+    private var toolTipTexts: [NSView.ToolTipTag: String] = [:]
+
+    /// Über Zeilen mit Meldung oder Git-Änderung erklärt ein Tooltip, was die Markierung bedeutet.
+    private func updateToolTips(for labels: [Label], textView: NSTextView) {
+        removeAllToolTips()
+        toolTipTexts.removeAll()
+        for label in labels {
+            guard let text = toolTipText(forLine: label.number) else { continue }
+            let top = convert(NSPoint(x: 0, y: label.y), from: textView).y
+            let rect = NSRect(x: 0, y: top, width: foldColumnMinX, height: label.height)
+            toolTipTexts[addToolTip(rect, owner: self, userData: nil)] = text
+        }
+    }
+
+    func toolTipText(forLine line: Int) -> String? {
+        var parts: [String] = []
+        if let severity = issueMarks[line] {
+            let kind = switch severity {
+            case .error: "Fehler"
+            case .warning: "Warnung"
+            case .badBox: "Box (Über-/Unterfüllung)"
+            }
+            parts.append(issueMessages[line].map { "\(kind): \($0)" } ?? kind)
+        }
+        switch changeMarks.lines[line] {
+        case .added?: parts.append("Neu seit dem letzten Commit")
+        case .modified?: parts.append("Geändert seit dem letzten Commit")
+        case .deletedAbove?: parts.append("Darüber wurden Zeilen gelöscht")
+        case nil: break
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: "\n")
     }
 
     // MARK: Zuklappen
@@ -214,7 +255,7 @@ final class LineNumberRulerView: NSRulerView {
             let top = convert(NSPoint(x: 0, y: label.y), from: textView).y
             switch changeMarks.lines[label.number] {
             case .added?: drawChangeBar(.systemGreen, top: top, height: logicalLineHeight(label, lines: lines))
-            case .modified?: drawChangeBar(.systemOrange, top: top, height: logicalLineHeight(label, lines: lines))
+            case .modified?: drawChangeBar(.systemOrange, top: top, height: logicalLineHeight(label, lines: lines), dashed: true)
             case .deletedAbove?: drawDeletionTriangle(at: top)
             case nil: break
             }
@@ -236,9 +277,18 @@ final class LineNumberRulerView: NSRulerView {
         return max(label.height, layoutManager.boundingRect(forGlyphRange: glyphs, in: container).height)
     }
 
-    private func drawChangeBar(_ color: NSColor, top: CGFloat, height: CGFloat) {
+    /// Neu: durchgehender Streifen; geändert: gestrichelt (nicht nur die Farbe unterscheidet)
+    private func drawChangeBar(_ color: NSColor, top: CGFloat, height: CGFloat, dashed: Bool = false) {
         color.setFill()
-        NSRect(x: changeBarX, y: top, width: Self.changeBarWidth, height: height).fill()
+        guard dashed else {
+            NSRect(x: changeBarX, y: top, width: Self.changeBarWidth, height: height).fill()
+            return
+        }
+        var y = top
+        while y < top + height {
+            NSRect(x: changeBarX, y: y, width: Self.changeBarWidth, height: min(Self.dashLength, top + height - y)).fill()
+            y += Self.dashLength + Self.dashGap
+        }
     }
 
     /// Kleines rotes Dreieck auf der Grenze, an der Zeilen gelöscht wurden.
@@ -304,7 +354,8 @@ final class LineNumberRulerView: NSRulerView {
     private func draw(_ label: Label, isCurrent: Bool, textView: NSTextView) {
         let attributes: [NSAttributedString.Key: Any] = [
             .font: isCurrent ? currentNumberFont : numberFont,
-            .foregroundColor: isCurrent ? NSColor.labelColor : NSColor.tertiaryLabelColor
+            // Sekundär statt tertiär: tertiär erreichte nur etwa 1,9:1 (hell) bzw. 2,3:1 (dunkel)
+            .foregroundColor: isCurrent ? NSColor.labelColor : NSColor.secondaryLabelColor
         ]
         let text = String(label.number) as NSString
         let size = text.size(withAttributes: attributes)
@@ -319,15 +370,31 @@ final class LineNumberRulerView: NSRulerView {
         }
     }
 
+    /// Form und Farbe zugleich (nicht nur Farbe): Fehler Kreis, Warnung Dreieck, Box Raute
     private func drawMark(_ severity: BuildIssue.Severity, centeredAt centerY: CGFloat) {
-        let color: NSColor = switch severity {
-        case .error: .systemRed
-        case .warning: .systemOrange
-        case .badBox: .systemYellow
+        let box = NSRect(x: Self.markInset, y: centerY - Self.markDiameter / 2, width: Self.markDiameter, height: Self.markDiameter)
+        let path: NSBezierPath
+        switch severity {
+        case .error:
+            NSColor.systemRed.setFill()
+            path = NSBezierPath(ovalIn: box)
+        case .warning:
+            NSColor.systemOrange.setFill()
+            path = NSBezierPath()
+            path.move(to: NSPoint(x: box.midX, y: box.minY - 1))
+            path.line(to: NSPoint(x: box.maxX + 1, y: box.maxY))
+            path.line(to: NSPoint(x: box.minX - 1, y: box.maxY))
+            path.close()
+        case .badBox:
+            NSColor.systemYellow.setFill()
+            path = NSBezierPath()
+            path.move(to: NSPoint(x: box.midX, y: box.minY))
+            path.line(to: NSPoint(x: box.maxX, y: box.midY))
+            path.line(to: NSPoint(x: box.midX, y: box.maxY))
+            path.line(to: NSPoint(x: box.minX, y: box.midY))
+            path.close()
         }
-        color.setFill()
-        let diameter = Self.markDiameter
-        NSBezierPath(ovalIn: NSRect(x: Self.markInset, y: centerY - diameter / 2, width: diameter, height: diameter)).fill()
+        path.fill()
     }
 
     private func drawCurrentLineBand(of textView: LatexTextView) {
@@ -342,6 +409,10 @@ final class LineNumberRulerView: NSRulerView {
         NSColor.separatorColor.setFill()
         NSRect(x: bounds.maxX - Self.separatorWidth, y: bounds.minY, width: Self.separatorWidth, height: bounds.height)
             .fill(using: .sourceOver)
+    }
+
+    func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint, userData data: UnsafeMutableRawPointer?) -> String {
+        toolTipTexts[tag] ?? ""
     }
 
     // MARK: Beobachtung

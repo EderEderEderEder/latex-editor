@@ -56,6 +56,7 @@ private struct EditorContent: View {
                 insertRequest: editor.insertRequest,
                 selectionProviderOwner: editor,
                 issueMarks: editor.current.flatMap { build.marksByFile[$0.url] } ?? [:],
+                issueMessages: editor.current.flatMap { build.messagesByFile[$0.url] } ?? [:],
                 changeMarks: editor.current.map { changeMarks.marks(for: $0.url) } ?? ChangeMarks(),
                 referenceProblems: editor.current.map { referenceChecks.problems(for: $0.url) } ?? [],
                 writingHints: showsWritingHints ? editor.current.map { referenceChecks.hints(for: $0.url) } ?? [] : [],

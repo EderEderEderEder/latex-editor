@@ -5,7 +5,6 @@ import AppKit
 /// (derselbe Weg wie der Zoom). Die Schalter für Schreiben und Kompilieren liegen bei ihren Features.
 enum EditorSettings {
     enum Key {
-        static let appearance = "appearance"
         static let colorScheme = "editorColorScheme"
         static let fontFamily = "editorFontFamily"
         /// Nicht `editorFontSize`: Das war die frühere Zoom-Einstellung (`InterfaceZoom.migrateLegacySetting`)
@@ -19,9 +18,10 @@ enum EditorSettings {
         static let checksSpelling = "checksSpelling"
         static let spellingLanguage = "spellingLanguage"
 
-        /// Reiter „Darstellung“ bzw. „Editor“ (für „Standard wiederherstellen“)
-        static let appearanceTab = [appearance, colorScheme, fontFamily, fontSize, lineSpacing, showsLineNumbers, highlightsCurrentLine]
-        static let editorTab = [wrapsLines, indentation, tabWidth, checksSpelling, spellingLanguage]
+        /// Bereiche „Darstellung“, „Editor“ und „Rechtschreibung“ (für „Standard wiederherstellen“)
+        static let appearanceTab = [colorScheme, fontFamily, fontSize, lineSpacing, showsLineNumbers, highlightsCurrentLine]
+        static let editorTab = [wrapsLines, indentation, tabWidth]
+        static let spellingTab = [checksSpelling, spellingLanguage]
     }
 
     static let fontSizes: [Double] = Array(stride(from: 10.0, through: 24.0, by: 1.0))
@@ -35,7 +35,6 @@ enum EditorSettings {
 
     // MARK: Werte
 
-    static var appearance: AppAppearance { value(Key.appearance, default: .system) }
     static var colorScheme: EditorColorScheme { value(Key.colorScheme, default: .standard) }
     static var lineSpacing: LineSpacing { value(Key.lineSpacing, default: .normal) }
     static var indentation: Indentation { value(Key.indentation, default: .tab) }
@@ -78,10 +77,10 @@ enum EditorSettings {
     static let viewDidChange = Notification.Name("EditorViewSettingsDidChange")
 
     /// Ändert sich der Text (Schrift, Größe, Zeilenabstand, Tabbreite), übernehmen Editor, alle offenen Dateien und
-    /// Ruler die Werte (wie beim Zoom); sonst nur die Ansicht. Das Erscheinungsbild gilt für die App.
+    /// Ruler die Werte (wie beim Zoom); sonst nur die Ansicht. Hell/Dunkel folgt immer dem System (kein eigener Schalter,
+    /// HIG `dark-mode.md`).
     @MainActor
     static func didChange(affectsText: Bool) {
-        applyAppearance()
         NotificationCenter.default.post(name: affectsText ? EditorAppearance.fontDidChange : viewDidChange, object: nil)
     }
 
@@ -89,14 +88,6 @@ enum EditorSettings {
     static func reset(_ keys: [String]) {
         for key in keys { defaults.removeObject(forKey: key) }
         didChange(affectsText: true)
-    }
-
-    @MainActor
-    static func applyAppearance() {
-        // Ohne laufende App (Testprozess) gibt es kein `NSApp`
-        guard let application = NSApp else { return }
-        let wanted = appearance.nsAppearance
-        if application.appearance != wanted { application.appearance = wanted }
     }
 
     // MARK: Schrift
@@ -118,30 +109,6 @@ enum EditorSettings {
             return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
         }
         return font
-    }
-}
-
-enum AppAppearance: String, CaseIterable, Identifiable {
-    case system
-    case light
-    case dark
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .system: "System"
-        case .light: "Hell"
-        case .dark: "Dunkel"
-        }
-    }
-
-    var nsAppearance: NSAppearance? {
-        switch self {
-        case .system: nil
-        case .light: NSAppearance(named: .aqua)
-        case .dark: NSAppearance(named: .darkAqua)
-        }
     }
 }
 

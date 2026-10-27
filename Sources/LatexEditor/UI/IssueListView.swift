@@ -12,7 +12,7 @@ struct IssueListView: View {
                 .frame(maxHeight: .infinity)
             Divider()
             HStack {
-                Button("Log anzeigen", systemImage: "doc.text.magnifyingglass") { model.build.isLogVisible = true }
+                Button("Protokoll anzeigen", systemImage: "doc.text.magnifyingglass") { model.build.isLogVisible = true }
                     .disabled(model.build.rawLog.isEmpty)
                 Spacer()
                 if let duration = model.build.lastDuration {
@@ -49,7 +49,7 @@ struct IssueListView: View {
                                      open: model.openIssue)
                         }
                     } header: {
-                        if hasHints { Text("Build-Meldungen").scaledFont(.subheadline, weight: .semibold) }
+                        if hasHints { Text("Meldungen beim Kompilieren").scaledFont(.subheadline, weight: .semibold) }
                     }
                 }
                 if hasHints { hints }
@@ -217,14 +217,14 @@ private struct IssueRow: View {
     }
 }
 
-/// Rohes Build-Log in einer schreibgeschützten NSTextView (schnell auch bei mehreren MB).
+/// Rohes Protokoll des Kompilierens in einer schreibgeschützten NSTextView (schnell auch bei mehreren MB).
 struct BuildLogSheet: View {
     let build: BuildStore
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Build-Log").font(.headline)
+                Text("Protokoll des Kompilierens").font(.headline)
                 Spacer()
                 Button("Schließen") { build.isLogVisible = false }
                     .keyboardShortcut(.cancelAction)

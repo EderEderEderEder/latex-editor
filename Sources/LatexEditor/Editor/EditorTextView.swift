@@ -9,6 +9,8 @@ struct EditorTextView: NSViewRepresentable {
     let selectionProviderOwner: EditorStore
     /// Fehler/Warnungen des letzten Builds für die angezeigte Datei (Zeile → Schwere)
     let issueMarks: [Int: BuildIssue.Severity]
+    /// Text der Meldungen pro Zeile (Tooltip)
+    var issueMessages: [Int: String] = [:]
     /// Git-Änderungen der angezeigten Datei gegenüber HEAD
     var changeMarks = ChangeMarks()
     /// Verweise und Zitate ohne Ziel in der angezeigten Datei (rote Unterstreichung)
@@ -37,13 +39,15 @@ struct EditorTextView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
+        let isHidden = !context.environment.isWorkspacePaneShown
+        if nsView.isHidden != isHidden { nsView.isHidden = isHidden }
         context.coordinator.onCursorMoved = onCursorMoved
         context.coordinator.jumpHandler = onJumpToTarget
         context.coordinator.renameScopesHandler = renameScopes
         context.coordinator.renameHandler = onRename
         context.coordinator.showInPDFHandler = onShowInPDF
         context.coordinator.update(session: session, jump: jump, insert: insertRequest)
-        context.coordinator.updateIssueMarks(issueMarks)
+        context.coordinator.updateIssueMarks(issueMarks, messages: issueMessages)
         context.coordinator.updateChangeMarks(changeMarks)
         context.coordinator.updateTextMarks(problems: referenceProblems, hints: writingHints)
         context.coordinator.updateCompletion(provider: completionProvider, request: completionRequest)
@@ -363,7 +367,8 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         showInPDFHandler?(session.url, line)
     }
 
-    func updateIssueMarks(_ marks: [Int: BuildIssue.Severity]) {
+    func updateIssueMarks(_ marks: [Int: BuildIssue.Severity], messages: [Int: String] = [:]) {
+        lineNumberRuler.issueMessages = messages
         if lineNumberRuler.issueMarks != marks { lineNumberRuler.issueMarks = marks }
     }
 

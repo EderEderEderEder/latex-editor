@@ -17,6 +17,8 @@ struct BuildReport: Sendable {
     let issues: [BuildIssue]
     /// Pro Datei: Zeile → schwerste Meldung (für die Markierung in der Zeilennummernleiste)
     let marksByFile: [URL: [Int: BuildIssue.Severity]]
+    /// Pro Datei: Zeile → Text der schwersten Meldung (Tooltip der Markierung)
+    let messagesByFile: [URL: [Int: String]]
     let rawLog: String
     let succeeded: Bool
 
@@ -33,6 +35,7 @@ struct BuildReport: Sendable {
         return BuildReport(
             issues: issues.sorted { ($0.severity, $0.id) < ($1.severity, $1.id) },
             marksByFile: marks(for: issues),
+            messagesByFile: messages(for: issues),
             rawLog: result.output + "\n\n===== \(mainFile.deletingPathExtension().lastPathComponent).log =====\n" + (result.latexLog ?? "(kein Log)"),
             succeeded: result.succeeded && !hasErrors
         )
@@ -45,6 +48,16 @@ struct BuildReport: Sendable {
             marks[file, default: [:]][line] = min(marks[file]?[line] ?? issue.severity, issue.severity)
         }
         return marks
+    }
+
+    /// Je Zeile die Meldung der schwersten Art (bei gleicher die erste)
+    private static func messages(for issues: [BuildIssue]) -> [URL: [Int: String]] {
+        var messages: [URL: [Int: String]] = [:]
+        for issue in issues.sorted(by: { ($0.severity, $0.id) < ($1.severity, $1.id) }) {
+            guard let file = issue.fileURL, let line = issue.line, messages[file]?[line] == nil else { continue }
+            messages[file, default: [:]][line] = issue.message
+        }
+        return messages
     }
 }
 
@@ -61,6 +74,7 @@ final class BuildStore {
     private(set) var status = BuildStatus.idle
     private(set) var issues: [BuildIssue] = []
     private(set) var marksByFile: [URL: [Int: BuildIssue.Severity]] = [:]
+    private(set) var messagesByFile: [URL: [Int: String]] = [:]
     private(set) var rawLog = ""
     private(set) var lastDuration: Duration?
     /// Zuletzt angesprungene Meldung (Klick in der Liste oder „Nächste Meldung“), wird im Listenbild hervorgehoben
@@ -117,6 +131,7 @@ final class BuildStore {
         selectedIssueID = nil
         issues = []
         marksByFile = [:]
+        messagesByFile = [:]
         rawLog = ""
         lastDuration = nil
     }
@@ -159,6 +174,7 @@ final class BuildStore {
         selectedIssueID = nil
         issues = report.issues
         marksByFile = report.marksByFile
+        messagesByFile = report.messagesByFile
         rawLog = report.rawLog
         lastDuration = duration
         // Ein vorgemerkter Folge-Build hält die Anzeige auf „läuft“.

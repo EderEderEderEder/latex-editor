@@ -15,7 +15,6 @@ struct EditorSettingsValueTests {
     @Test("Standardwerte, wenn nichts gespeichert ist")
     func defaults() throws {
         try withStore { store in
-            #expect(EditorSettings.value(EditorSettings.Key.appearance, default: AppAppearance.system, in: store) == .system)
             #expect(EditorSettings.value(EditorSettings.Key.colorScheme, default: EditorColorScheme.standard, in: store) == .standard)
             #expect(EditorSettings.fontSize(in: store) == 13)
             #expect(EditorSettings.tabWidth(in: store) == 4)

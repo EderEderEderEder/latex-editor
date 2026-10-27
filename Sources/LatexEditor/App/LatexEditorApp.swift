@@ -22,7 +22,6 @@ struct LatexEditorApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
-        EditorSettings.applyAppearance()
         NSApp.activate()
     }
 
@@ -39,6 +38,7 @@ struct AppCommands: Commands {
     let model: AppModel
 
     @AppStorage(InterfaceZoom.key) private var zoom = InterfaceZoom.standard
+    @AppStorage(ViewMode.storageKey) private var viewMode = ViewMode.split
 
     var body: some Commands {
         CommandGroup(after: .textEditing) {
@@ -63,12 +63,6 @@ struct AppCommands: Commands {
             editorCommand("Zeilen nach unten", #selector(LatexTextView.moveLinesDown(_:)), key: .downArrow, modifiers: .option)
             editorCommand("Zeilen verdoppeln", #selector(LatexTextView.duplicateLines(_:)), key: .downArrow, modifiers: [.option, .shift])
             editorCommand("Zeilen löschen", #selector(LatexTextView.deleteLines(_:)), key: "k", modifiers: [.command, .shift])
-            Menu("Einklappen") {
-                editorCommand("Zuklappen", #selector(LatexTextView.foldAtCursor(_:)), key: .leftArrow, modifiers: [.command, .option])
-                editorCommand("Aufklappen", #selector(LatexTextView.unfoldAtCursor(_:)), key: .rightArrow, modifiers: [.command, .option])
-                editorCommand("Alles zuklappen", #selector(LatexTextView.foldAllRegions(_:)), key: .leftArrow, modifiers: [.command, .option, .shift])
-                editorCommand("Alles aufklappen", #selector(LatexTextView.unfoldAllRegions(_:)), key: .rightArrow, modifiers: [.command, .option, .shift])
-            }
         }
         CommandMenu("Format") {
             // ⌘B ist „Kompilieren“, deshalb Fett mit ⇧⌘B
@@ -108,6 +102,27 @@ struct AppCommands: Commands {
         CommandGroup(replacing: .printItem) {}
         CommandGroup(after: .sidebar) {
             Divider()
+            // Jeder Toolbar-Befehl auch im Menü (HIG `toolbars.md › Desktop`)
+            ForEach(Array(ViewMode.allCases.enumerated()), id: \.element) { index, mode in
+                Toggle(mode.title, isOn: Binding(get: { viewMode == mode }, set: { if $0 { viewMode = mode } }))
+                    .keyboardShortcut(KeyEquivalent(Character(String(index + 1))))
+            }
+            Divider()
+            SidebarTabCommands(model: model)
+            Divider()
+            Menu("Einklappen") {
+                editorCommand("Zuklappen", #selector(LatexTextView.foldAtCursor(_:)), key: .leftArrow, modifiers: [.command, .option])
+                editorCommand("Aufklappen", #selector(LatexTextView.unfoldAtCursor(_:)), key: .rightArrow, modifiers: [.command, .option])
+                editorCommand("Alles zuklappen", #selector(LatexTextView.foldAllRegions(_:)), key: .leftArrow, modifiers: [.command, .option, .shift])
+                editorCommand("Alles aufklappen", #selector(LatexTextView.unfoldAllRegions(_:)), key: .rightArrow, modifiers: [.command, .option, .shift])
+            }
+            Menu("PDF") {
+                Button("Vergrößern") { model.pdf.zoomIn() }
+                Button("Verkleinern") { model.pdf.zoomOut() }
+                Button("An Breite anpassen") { model.pdf.zoomToFitWidth() }
+            }
+            .disabled(model.pdf.pdfURL == nil)
+            Divider()
             Button("Im PDF zeigen") { model.showCursorInPDF() }
                 .keyboardShortcut("j")
             Toggle("PDF folgt Cursor", isOn: Binding(
@@ -144,7 +159,9 @@ struct AppCommands: Commands {
                 .disabled(model.editor.tabs.isEmpty)
             Button("Fenster schließen") { NSApp.keyWindow?.performClose(nil) }
                 .keyboardShortcut("w", modifiers: [.command, .shift])
-            Divider()
+        }
+        // Eigene Befehle in eigenen Menüs (HIG `the-menu-bar.md › App-specific menus`)
+        CommandMenu("Kompilieren") {
             Button("Kompilieren") { model.compile() }
                 .keyboardShortcut("b")
                 .disabled(model.project.mainFileURL == nil)
@@ -158,13 +175,17 @@ struct AppCommands: Commands {
             Button("Vorherige Meldung") { model.showAdjacentIssue(-1) }
                 .keyboardShortcut(.upArrow, modifiers: [.command, .option])
                 .disabled(model.build.issues.isEmpty)
+            Divider()
             Toggle("Beim Speichern kompilieren", isOn: Binding(
                 get: { model.build.compileOnSave },
                 set: { model.build.compileOnSave = $0 }
             ))
-            Button("Build-Log anzeigen") { model.build.isLogVisible = true }
+            Button("Protokoll anzeigen") { model.build.isLogVisible = true }
             Button("Hilfsdateien löschen …") { Task { await model.cleanBuildFiles() } }
                 .disabled(model.project.mainFileURL == nil || model.build.status == .running)
+        }
+        CommandMenu("Git") {
+            GitCommands(model: model)
         }
     }
 }
@@ -193,5 +214,59 @@ private struct RecentProjectsMenu: View {
             Button("Liste löschen") { recent.clear() }
         }
         .disabled(recent.paths.isEmpty)
+    }
+}
+
+/// Seitenleisten-Tabs im Menü Darstellung, mit ⌥⌘1 bis ⌥⌘5
+private struct SidebarTabCommands: View {
+    let model: AppModel
+
+    var body: some View {
+        ForEach(Array(SidebarTab.allCases.enumerated()), id: \.element) { index, tab in
+            Button(tab.menuTitle) { model.sidebar.tab = tab }
+                .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: [.command, .option])
+                .disabled(model.project.rootURL == nil || (tab == .changes && !model.git.isReady))
+        }
+    }
+}
+
+/// Menü Git: dieselben Befehle wie das Branch-Menü in der Toolbar und der Änderungen-Tab
+private struct GitCommands: View {
+    let model: AppModel
+
+    private var git: GitStore { model.git }
+
+    var body: some View {
+        Group { items }.disabled(!git.isReady)
+    }
+
+    @ViewBuilder
+    private var items: some View {
+        Button("Änderungen anzeigen") { model.sidebar.tab = .changes }
+        Button("Committen …") { commit() }
+            .disabled(git.isBusy)
+        Divider()
+        Menu("Branch wechseln") {
+            ForEach(git.branches, id: \.self) { name in
+                Toggle(name, isOn: Binding(get: { name == git.branch.head }, set: { _ in Task { await model.switchBranch(to: name) } }))
+            }
+        }
+        .disabled(git.branches.isEmpty || git.isBusy)
+        Button("Neuer Branch …") { git.isNamingNewBranch = true }
+            .disabled(git.isBusy)
+        Divider()
+        Button("Abrufen") { Task { await model.fetchFromRemote() } }
+            .disabled(!git.hasRemote || git.isBusy)
+        Button("Pull") { Task { await model.pullFromRemote() } }
+            .disabled(!git.hasRemote || git.branch.upstream == nil || git.isBusy)
+        Button("Push") { Task { await model.pushToRemote() } }
+            .disabled(!git.hasRemote || git.branch.head == nil || git.isBusy)
+    }
+
+    /// Ohne Nachricht erst zum Änderungen-Tab (dort steht das Feld), sonst wie ⌘↩ dort
+    private func commit() {
+        model.sidebar.tab = .changes
+        guard !git.trimmedCommitMessage.isEmpty else { return }
+        Task { await model.commitChanges() }
     }
 }

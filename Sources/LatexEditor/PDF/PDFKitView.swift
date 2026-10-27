@@ -16,19 +16,19 @@ struct PDFKitView: NSViewRepresentable {
         view.autoScales = true
         view.displayMode = .singlePageContinuous
         view.displaysPageBreaks = true
-        store.pdfView = view
-        context.coordinator.observe(view)
+        context.coordinator.attach(view)
         return view
     }
 
     func updateNSView(_ view: PDFView, context: Context) {
+        let isHidden = !context.environment.isWorkspacePaneShown
+        if view.isHidden != isHidden { view.isHidden = isHidden }
         context.coordinator.reloadIfNeeded(in: view, url: url, token: reloadToken)
     }
 
-    /// Beim Wechsel der Ansicht (Nur Editor / Geteilt / Nur PDF) verschwindet die View; Seite, Position und Zoom
-    /// bleiben im Store, die nächste View stellt sie wieder her.
+    /// Beim Wechsel zu „Nur Editor“ verschwindet die View ohne Nachfolger; Seite, Position und Zoom bleiben im Store.
     static func dismantleNSView(_ view: PDFView, coordinator: PDFCoordinator) {
-        coordinator.saveState(of: view)
+        coordinator.saveStateIfCurrent(view)
     }
 }
 
@@ -81,8 +81,23 @@ final class PDFCoordinator {
         store.syncStatus()
     }
 
+    /// Neue View in den Store. SwiftUI legt beim Wechsel der Ansicht (Geteilt ↔ Nur PDF) die neue View an, **bevor** es
+    /// die alte abbaut (gemessen); deshalb übernimmt sie den Stand direkt von der alten, solange es die noch gibt.
+    func attach(_ view: PDFView) {
+        if let previous = store.pdfView, previous !== view { saveState(of: previous) }
+        store.pdfView = view
+        observe(view)
+    }
+
     func saveState(of view: PDFView) {
-        store.savedViewState = captureState(of: view)
+        guard let state = captureState(of: view) else { return }
+        store.savedViewState = state
+    }
+
+    /// Nur, wenn keine neuere View übernommen hat (sonst überschriebe der alte Stand den schon übergebenen)
+    func saveStateIfCurrent(_ view: PDFView) {
+        guard store.pdfView == nil || store.pdfView === view else { return }
+        saveState(of: view)
     }
 
     private func captureState(of view: PDFView) -> PDFViewState? {

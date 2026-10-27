@@ -477,3 +477,17 @@ Vorher einmal kompilieren (⌘B), damit `main.synctex.gz` existiert.
 | 225 | Geteilt, PDF auf Seite 10 mit anderem Zoom scrollen, dann „Nur PDF“, dann zurück zu „Geteilt“ | PDF steht überall auf Seite 10 an derselben Stelle mit demselben Zoom |
 | 226 | Im Editor weit nach unten scrollen und Cursor setzen, „Nur PDF“, dann „Nur Editor“ | Cursor und Scrollposition wie zuvor |
 | 227 | Während „Nur Editor“ kompilieren, dann zu „Nur PDF“ | Neues PDF erscheint an der zuvor gemerkten Stelle (Seite bleibt, wenn sie noch existiert) |
+
+### Sitzung 19: Design-Durchsicht, Einfügen-Fenster, Einstellungen
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 228 | Menü Darstellung: ⌘1, ⌘2, ⌘3; ⌥⌘1 bis ⌥⌘5 | Nur Editor / Geteilt / Nur PDF (Haken beim aktiven); Seitenleiste wechselt Dateien, Gliederung, Suchen, Meldungen, Änderungen |
+| 229 | Menüs „Kompilieren“ und „Git“ öffnen (mit und ohne Git-Repository) | Alle Befehle aus Toolbar und Branch-Menü da; ohne Repository ist „Git“ ausgegraut; „Committen …“ ohne Nachricht springt in den Änderungen-Tab |
+| 230 | Fehler, Warnung, Box und Git-Änderungen in der Zeilenleiste; Maus darüber | Kreis/Dreieck/Raute und gestrichelter Streifen für „geändert“; Tooltip mit Meldungstext bzw. „Geändert seit dem letzten Commit“ |
+| 231 | Badge am Meldungen-Tab bei Warnungen (orange) und Fehlern (rot) | Zahl gut lesbar (schwarz auf Orange, weiß auf Rot) |
+| 232 | Eine Datei umbenennen, die es schon gibt; Git-Push ohne Netz | Dialogtitel beschreibt die Lage („… konnte nicht …“), Grund darunter – nicht nur „Datei“/„Git“ |
+| 233 | Einfügen-Fenster (⇧⌘I) mit Cursor mitten in einer .tex: Tabelle, dann Codeblock, Verweis | Rechts die echten Zeilen um den Cursor, der neue Code grün markiert an der richtigen Stelle; Beschriftung tippen ändert die Vorschau sofort; Fußzeile nennt Datei und Zeile; Einfügen ergibt genau das |
+| 234 | Einfügen-Fenster: Quelle | Vorschau zeigt nur den BibTeX-Eintrag, Fußzeile „Neuer Eintrag in ….bib“ |
+| 235 | ⌘, : Bereiche durchklicken, Suchfeld „tab“, „pdf“, „xyz“ | Systemeinstellungen-Optik (Symbol, Titel, Beschreibung); Suche zeigt passende Bereiche bzw. „Keine Treffer“; nach Schließen und Öffnen ist der letzte Bereich wieder da |
+| 236 | Darstellung: Farbschema-Karten anklicken; System auf Dunkel umschalten | Editor und Vorschau wechseln sofort; Karten zeigen die dunklen Farben; kein eigener Hell/Dunkel-Schalter mehr |

@@ -82,7 +82,7 @@ private struct SidebarTabBar: View {
         HStack(spacing: 2) {
             tabButton(.files, symbol: "folder", title: "Dateien")
             tabButton(.outline, symbol: "list.bullet.indent", title: "Gliederung")
-            tabButton(.search, symbol: "magnifyingglass", title: "Im Projekt suchen (⇧⌘F)")
+            tabButton(.search, symbol: "magnifyingglass", title: "Im Projekt suchen", shortcut: "⇧⌘F")
             tabButton(.issues, symbol: "exclamationmark.triangle", title: "Fehler und Warnungen", badge: badgeCount,
                       badgeColor: build.errorCount > 0 ? .red : .orange)
             if showsChangesTab {
@@ -107,7 +107,9 @@ private struct SidebarTabBar: View {
         }
     }
 
-    private func tabButton(_ tab: SidebarTab, symbol: String, title: String, badge: Int = 0, badgeColor: Color = .orange) -> some View {
+    private func tabButton(
+        _ tab: SidebarTab, symbol: String, title: String, shortcut: String? = nil, badge: Int = 0, badgeColor: Color = .orange
+    ) -> some View {
         let isSelected = sidebar.tab == tab
         return Button {
             sidebar.tab = tab
@@ -117,27 +119,33 @@ private struct SidebarTabBar: View {
                 .symbolVariant(isSelected ? .fill : .none)
                 .foregroundStyle(isSelected ? Color.accentColor : .secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay(alignment: .topTrailing) { TabBadge(count: badge, color: badgeColor) }
+                .overlay(alignment: .topTrailing) {
+                    TabBadge(count: badge, color: badgeColor, textColor: badgeColor == .orange ? .black : .white)
+                }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(title)
+        // Kürzel nur im Tooltip: VoiceOver läse die Zeichen einzeln vor
+        .help(shortcut.map { "\(title) (\($0))" } ?? title)
         .accessibilityLabel(title)
     }
 }
 
 private struct TabBadge: View {
-    private static let fontSize: CGFloat = 9
+    /// macOS-Minimum für Text
+    private static let fontSize: CGFloat = 10
 
     let count: Int
     let color: Color
+    /// Auf Orange erreicht Weiß nur 2,2:1, Schwarz 7,7:1
+    let textColor: Color
 
     var body: some View {
         if count > 0 {
             Text(count < 100 ? "\(count)" : "99+")
                 .scaledFont(size: Self.fontSize, weight: .bold)
                 .monospacedDigit()
-                .foregroundStyle(.white)
+                .foregroundStyle(textColor)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 1)
                 .background(Capsule().fill(color))

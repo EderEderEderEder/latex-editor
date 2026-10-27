@@ -1,6 +1,9 @@
 import SwiftUI
 
 enum ViewMode: String, CaseIterable {
+    /// UserDefaults-Schlüssel (Toolbar und Menü Darstellung teilen ihn)
+    static let storageKey = "viewMode"
+
     case editorOnly
     case split
     case pdfOnly
@@ -29,11 +32,10 @@ struct RootView: View {
 
     let model: AppModel
 
-    @AppStorage("viewMode") private var viewMode = ViewMode.split
+    @AppStorage(ViewMode.storageKey) private var viewMode = ViewMode.split
     /// Nur für die Breite der Seitenleiste; die Views lesen den Zoom aus der Umgebung
     @AppStorage(InterfaceZoom.key) private var zoom = InterfaceZoom.standard
     @State private var columnVisibility = NavigationSplitViewVisibility.all
-    @State private var isCreatingBranch = false
     @State private var newBranchName = ""
 
     var body: some View {
@@ -46,16 +48,18 @@ struct RootView: View {
             workspace
         }
         .interfaceZoomRoot()
-        .navigationTitle(model.project.rootURL?.lastPathComponent ?? "LatexEditor")
+        // Nicht der App-Name (HIG `toolbars.md › Titles`)
+        .navigationTitle(model.project.rootURL?.lastPathComponent ?? "Kein Projekt")
         .toolbar { toolbarContent }
         .task { await model.restoreLastProject() }
+        .onChange(of: model.git.isNamingNewBranch) { if model.git.isNamingNewBranch { newBranchName = "" } }
         .sheet(isPresented: logBinding) { BuildLogSheet(build: model.build) }
         .sheet(item: promptBinding) { prompt in NameSheet(model: model, prompt: prompt) }
         .sheet(item: renameBinding) { prompt in RenameSheet(model: model, prompt: prompt) }
-        .alert("Hinweis", isPresented: noticeBinding) {
+        .alert(AlertText(model.fileActions.notice).title, isPresented: noticeBinding) {
             Button("OK") { model.fileActions.notice = nil }
         } message: {
-            Text(model.fileActions.notice ?? "")
+            Text(AlertText(model.fileActions.notice).detail)
         }
         .sheet(item: paletteBinding) { palette in
             switch palette {
@@ -63,10 +67,10 @@ struct RootView: View {
             case .goToLine: GoToLineSheet(model: model)
             }
         }
-        .alert("Datei", isPresented: fileErrorBinding) {
+        .alert(AlertText(model.fileActions.errorMessage).title, isPresented: fileErrorBinding) {
             Button("OK") { model.fileActions.errorMessage = nil }
         } message: {
-            Text(model.fileActions.errorMessage ?? "")
+            Text(AlertText(model.fileActions.errorMessage).detail)
         }
         .sheet(isPresented: insertBinding) {
             InsertSheet(
@@ -74,41 +78,41 @@ struct RootView: View {
                 insert: { Task { await model.performInsert() } }
             )
         }
-        .alert("Neuer Branch", isPresented: $isCreatingBranch) {
+        .alert("Neuer Branch", isPresented: newBranchBinding) {
             TextField("Name, z. B. kapitel-3", text: $newBranchName)
             Button("Anlegen und wechseln") { Task { await model.createBranch(named: newBranchName) } }
             Button("Abbrechen", role: .cancel) {}
         } message: {
             Text("Der Branch beginnt beim aktuellen Stand; nicht committete Änderungen kommen mit.")
         }
-        .alert("Git", isPresented: gitErrorBinding) {
+        .alert(AlertText(model.git.errorMessage).title, isPresented: gitErrorBinding) {
             Button("OK") { model.git.errorMessage = nil }
         } message: {
-            Text(model.git.errorMessage ?? "")
+            Text(AlertText(model.git.errorMessage).detail)
         }
-        .alert("Fehler", isPresented: errorBinding) {
+        .alert(AlertText(model.editor.errorMessage).title, isPresented: errorBinding) {
             Button("OK") { model.editor.errorMessage = nil }
         } message: {
-            Text(model.editor.errorMessage ?? "")
+            Text(AlertText(model.editor.errorMessage).detail)
         }
     }
 
-    @ViewBuilder
     private var workspace: some View {
-        switch viewMode {
-        case .editorOnly:
-            EditorPane(model: model).frame(maxWidth: .infinity, maxHeight: .infinity)
-        case .pdfOnly:
-            PDFPane(store: model.pdf, synctex: model.synctex).frame(maxWidth: .infinity, maxHeight: .infinity)
-        case .split:
-            WorkspaceSplit(leadingMinWidth: Self.editorMinWidth, trailingMinWidth: Self.pdfMinWidth) {
-                EditorPane(model: model).frame(maxHeight: .infinity)
-            } trailing: {
-                PDFPane(store: model.pdf, synctex: model.synctex).frame(maxHeight: .infinity)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        WorkspaceSplit(mode: viewMode, leadingMinWidth: Self.editorMinWidth, trailingMinWidth: Self.pdfMinWidth) {
+            EditorPane(model: model).frame(maxHeight: .infinity)
+        } trailing: {
+            PDFPane(store: model.pdf, synctex: model.synctex).frame(maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Der ausgeblendete Editor darf keine Tastatureingaben mehr bekommen
+        .onChange(of: viewMode) { if viewMode == .pdfOnly { resignEditorFocus() } }
     }
+
+    private func resignEditorFocus() {
+        guard let window = NSApp.keyWindow, window.firstResponder is LatexTextView else { return }
+        window.makeFirstResponder(nil)
+    }
+
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
@@ -125,10 +129,7 @@ struct RootView: View {
         // macOS-26-Toolbar als leere Kapsel.
         if model.git.isReady {
             ToolbarItem(placement: .primaryAction) {
-                BranchMenu(model: model) {
-                    newBranchName = ""
-                    isCreatingBranch = true
-                }
+                BranchMenu(model: model) { model.git.isNamingNewBranch = true }
             }
         }
         if model.project.rootURL != nil {
@@ -142,6 +143,10 @@ struct RootView: View {
         ToolbarItem(placement: .primaryAction) {
             CompileButton(model: model)
         }
+    }
+
+    private var newBranchBinding: Binding<Bool> {
+        Binding(get: { model.git.isNamingNewBranch }, set: { model.git.isNamingNewBranch = $0 })
     }
 
     private var promptBinding: Binding<NamePrompt?> {

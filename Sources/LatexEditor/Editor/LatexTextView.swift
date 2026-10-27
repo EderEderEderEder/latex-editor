@@ -394,8 +394,14 @@ final class LatexTextView: NSTextView {
     // MARK: Rechtschreibung
 
     override func setSpellingState(_ value: Int, range charRange: NSRange) {
-        if value != 0, isSyntax(charRange) { return }
+        if value != 0, isSyntax(charRange) || isTechnicalTerm(charRange) { return }
         super.setSpellingState(value, range: charRange)
+    }
+
+    /// Fachwort aus dem Standardvokabular (`TechnicalVocabulary`): keine Rechtschreibmarkierung
+    func isTechnicalTerm(_ range: NSRange) -> Bool {
+        guard let storage = textStorage, NSMaxRange(range) <= storage.length else { return false }
+        return SpellingVocabulary.accepts(storage.mutableString.substring(with: range))
     }
 
     func isSyntax(_ range: NSRange) -> Bool {

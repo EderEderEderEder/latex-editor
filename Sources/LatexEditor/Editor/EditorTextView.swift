@@ -244,6 +244,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         let checker = NSSpellChecker.shared
         let language = preferred.candidates.first(where: checker.availableLanguages.contains)
         let languageChanged = language != appliedSpellingLanguage
+        if languageChanged { SpellingVocabulary.resetCache() }
         if let language, languageChanged {
             checker.automaticallyIdentifiesLanguages = false
             checker.setLanguage(language)
@@ -462,7 +463,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         session?.undoManager
     }
 
-    /// Verwirft Rechtschreibtreffer in LaTeX-Syntax. `LatexTextView.setSpellingState` greift zusätzlich,
+    /// Verwirft Rechtschreibtreffer in LaTeX-Syntax und Fachwörter des Standardvokabulars. `LatexTextView.setSpellingState` greift zusätzlich,
     /// falls macOS diesen Weg nicht nutzt.
     func textView(
         _ view: NSTextView,
@@ -475,8 +476,10 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
     ) -> [NSTextCheckingResult] {
         guard let session, results.contains(where: { $0.resultType == .spelling }) else { return results }
         let tokens = session.syntaxTokens(in: range)
+        let latexView = view as? LatexTextView
         return results.filter { result in
-            result.resultType != .spelling || !tokens.containsOverlap(with: result.range)
+            result.resultType != .spelling
+                || (!tokens.containsOverlap(with: result.range) && latexView?.isTechnicalTerm(result.range) != true)
         }
     }
 }

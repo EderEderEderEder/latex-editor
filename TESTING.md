@@ -460,3 +460,12 @@ Vorher einmal kompilieren (⌘B), damit `main.synctex.gz` existiert.
 | 218 | Zuklappen, dann Tab wechseln und zurück; Datei schließen und neu öffnen | Beim Tabwechsel bleibt der Zustand; nach Schließen/Neustart sind alle Bereiche wieder offen (nur zur Laufzeit gemerkt) |
 | 219 | Eine zugeklappte Kopfzeile bearbeiten (z. B. `\section{…}` umbenennen), Zeile darüber mit Enter einfügen | Bereich bleibt zu und wandert mit; Dreiecke und Nummern stimmen nach einer Sekunde |
 | 220 | Datei mit großem Kapitel (>2.000 Zeilen) zuklappen und aufklappen, Scrollen | Kein Ruckeln, Scrollbalken passt sich an |
+
+### Sitzung 18: Fachvokabular
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 221 | Im Fließtext tippen: „Eigenwertproblem“, „Hamiltonoperator“, „Qubits“, „Quantenfouriertransformation“, „Zufallszahlengenerator“, „Matrizen“, „Mutex“ | Keine rote Rechtschreib-Unterstreichung (**nur in der echten App prüfbar**: Ob der Filter in `didCheckTextIn` oder in `setSpellingState` greift, ist nicht automatisierbar) |
+| 222 | „Eigenwertt“, „Matrixmultiplikazion“, „Algoritmus“, „Quatsch“ | Weiterhin rot unterstrichen |
+| 223 | Einstellungen → Editor → Rechtschreibung: Sprache Englisch, dann wieder Deutsch | Beim Wechsel werden Wörter neu bewertet; keine Abstürze, Fachwörter bleiben unmarkiert |
+| 224 | Fachwort, das im Vokabular fehlt, mit Rechtsklick „Rechtschreibung lernen“ | Wirkt wie bisher (persönliches Wörterbuch von macOS) |

@@ -54,6 +54,12 @@ struct EditorTextView: NSViewRepresentable {
             coordinator?.cursorLocation ?? 0
         }
     }
+
+    /// Beim Wechsel der Ansicht (Nur PDF und zurück) verschwindet die View: Auswahl und Scrollposition in die Sitzung
+    /// schreiben, sonst gälte der Stand vom letzten Dateiwechsel.
+    static func dismantleNSView(_ nsView: NSScrollView, coordinator: EditorCoordinator) {
+        coordinator.rememberViewState()
+    }
 }
 
 @MainActor
@@ -305,7 +311,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         }
     }
 
-    private func rememberViewState() {
+    func rememberViewState() {
         guard let session else { return }
         session.savedSelection = textView.selectedRange()
         session.savedScrollOffset = textView.visibleRect.minY

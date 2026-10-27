@@ -469,3 +469,11 @@ Vorher einmal kompilieren (⌘B), damit `main.synctex.gz` existiert.
 | 222 | „Eigenwertt“, „Matrixmultiplikazion“, „Algoritmus“, „Quatsch“ | Weiterhin rot unterstrichen |
 | 223 | Einstellungen → Editor → Rechtschreibung: Sprache Englisch, dann wieder Deutsch | Beim Wechsel werden Wörter neu bewertet; keine Abstürze, Fachwörter bleiben unmarkiert |
 | 224 | Fachwort, das im Vokabular fehlt, mit Rechtsklick „Rechtschreibung lernen“ | Wirkt wie bisher (persönliches Wörterbuch von macOS) |
+
+### Sitzung 18: Position beim Wechsel der Ansicht
+
+| # | Aktion | Erwartung |
+| --- | --- | --- |
+| 225 | Geteilt, PDF auf Seite 10 mit anderem Zoom scrollen, dann „Nur PDF“, dann zurück zu „Geteilt“ | PDF steht überall auf Seite 10 an derselben Stelle mit demselben Zoom |
+| 226 | Im Editor weit nach unten scrollen und Cursor setzen, „Nur PDF“, dann „Nur Editor“ | Cursor und Scrollposition wie zuvor |
+| 227 | Während „Nur Editor“ kompilieren, dann zu „Nur PDF“ | Neues PDF erscheint an der zuvor gemerkten Stelle (Seite bleibt, wenn sie noch existiert) |

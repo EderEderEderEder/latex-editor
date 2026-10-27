@@ -24,17 +24,24 @@ struct PDFKitView: NSViewRepresentable {
     func updateNSView(_ view: PDFView, context: Context) {
         context.coordinator.reloadIfNeeded(in: view, url: url, token: reloadToken)
     }
+
+    /// Beim Wechsel der Ansicht (Nur Editor / Geteilt / Nur PDF) verschwindet die View; Seite, Position und Zoom
+    /// bleiben im Store, die nächste View stellt sie wieder her.
+    static func dismantleNSView(_ view: PDFView, coordinator: PDFCoordinator) {
+        coordinator.saveState(of: view)
+    }
+}
+
+/// Wo man im PDF war: Seite, Punkt auf der Seite, Zoom
+struct PDFViewState {
+    let pageIndex: Int
+    let point: CGPoint
+    let scale: CGFloat
+    let autoScales: Bool
 }
 
 @MainActor
 final class PDFCoordinator {
-    private struct ViewState {
-        let pageIndex: Int
-        let point: CGPoint
-        let scale: CGFloat
-        let autoScales: Bool
-    }
-
     private let store: PDFPreviewStore
     private var loadedURL: URL?
     private var loadedToken: Int?
@@ -66,17 +73,23 @@ final class PDFCoordinator {
 
         // Unvollständig geschriebene PDFs ergeben nil; dann bleibt die alte Ansicht stehen.
         guard let document = PDFDocument(url: url) else { return }
-        let previous = captureState(of: view)
+        // Eine neue View (nach einem Wechsel der Ansicht) hat noch nichts: dann gilt der gemerkte Stand
+        let previous = captureState(of: view) ?? store.savedViewState
+        store.savedViewState = nil
         view.document = document
         if let previous { restore(previous, in: view, document: document) }
         store.syncStatus()
     }
 
-    private func captureState(of view: PDFView) -> ViewState? {
+    func saveState(of view: PDFView) {
+        store.savedViewState = captureState(of: view)
+    }
+
+    private func captureState(of view: PDFView) -> PDFViewState? {
         guard let document = view.document,
               let destination = view.currentDestination,
               let page = destination.page else { return nil }
-        return ViewState(
+        return PDFViewState(
             pageIndex: document.index(for: page),
             point: destination.point,
             scale: view.scaleFactor,
@@ -84,14 +97,21 @@ final class PDFCoordinator {
         )
     }
 
-    private func restore(_ state: ViewState, in view: PDFView, document: PDFDocument) {
+    private func restore(_ state: PDFViewState, in view: PDFView, document: PDFDocument) {
         guard document.pageCount > 0 else { return }
         view.autoScales = state.autoScales
         if !state.autoScales { view.scaleFactor = state.scale }
         let index = min(state.pageIndex, document.pageCount - 1)
         guard let page = document.page(at: index) else { return }
+        let destination = PDFDestination(page: page, at: state.point)
         view.layoutDocumentView()
-        view.go(to: PDFDestination(page: page, at: state.point))
+        view.go(to: destination)
+        // Eine frisch angelegte View hat beim ersten Update noch keine Größe; nach dem Layout nochmal
+        guard view.bounds.isEmpty else { return }
+        DispatchQueue.main.async { [weak view] in
+            view?.layoutDocumentView()
+            view?.go(to: destination)
+        }
     }
 }
 

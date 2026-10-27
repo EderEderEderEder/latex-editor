@@ -15,6 +15,8 @@ final class PDFPreviewStore {
     private(set) var zoomPercent = 100
 
     @ObservationIgnored weak var pdfView: PDFView?
+    /// Stand der PDF-View, die zuletzt verschwunden ist (Wechsel der Ansicht); die nächste View übernimmt ihn
+    @ObservationIgnored var savedViewState: PDFViewState?
     /// ⌘-Klick ins PDF: Seite (1-basiert) und Punkt in SyncTeX-Koordinaten (oben links).
     @ObservationIgnored var onCommandClick: ((Int, CGPoint) -> Void)?
     @ObservationIgnored private var candidateURLs: [URL] = []

@@ -37,6 +37,19 @@ final class FileActionStore {
     var rename: RenamePrompt?
     /// Information zu einem abgeschlossenen Vorgang (z. B. „5 Stellen in 3 Dateien geändert“)
     var notice: String?
+    /// Nach Rückgängig und Wiederholen: dieser Eintrag soll im Dateibaum markiert und sichtbar sein
+    var revealURL: URL?
+    /// Namen des nächsten Rückgängig- und Wiederholen-Schritts für das Menü Ablage; `nil`: nichts zu tun
+    private(set) var undoTitle: String?
+    private(set) var redoTitle: String?
+    /// In Tests statt des Fensters (dort gibt es keines)
+    @ObservationIgnored var undoManagerOverride: UndoManager?
+    @ObservationIgnored private(set) lazy var fallbackUndoManager = UndoManager()
+
+    func setUndoTitles(undo: String?, redo: String?) {
+        if undo != undoTitle { undoTitle = undo }
+        if redo != redoTitle { redoTitle = redo }
+    }
 }
 
 // MARK: - Dateioperationen im Projekt
@@ -86,22 +99,51 @@ extension AppModel {
         let isTeX = URL(fileURLWithPath: fileName).pathExtension.lowercased() == "tex"
         let contents = chapterScaffold && isTeX ? "\\chapter{\(stem)}\n\n" : ""
         let url = try FileOperations.createFile(named: fileName, in: folder, contents: contents)
+        registerCreationUndo(of: url, name: "Neue Datei")
         project.reloadTree()
         if FileKind(url: url).isEditable { await editor.open(url, asPreview: false) }
     }
 
     func createFolder(named name: String, in folder: URL) throws {
-        try FileOperations.createFolder(named: name, in: folder)
+        let url = try FileOperations.createFolder(named: name, in: folder)
+        registerCreationUndo(of: url, name: "Neuer Ordner")
         project.reloadTree()
     }
 
     func duplicate(_ url: URL) async {
         do {
             let copy = try FileOperations.duplicate(url)
+            registerCreationUndo(of: copy, name: "Duplizieren")
             project.reloadTree()
             if FileKind(url: copy).isEditable { await editor.open(copy, asPreview: false) }
         } catch {
             fileActions.errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: Ziehen aus dem Finder
+
+    /// Auf den Baum gezogene Einträge: aus dem Projekt verschieben, von außerhalb kopieren (andere Quelle = Kopie,
+    /// HIG `drag-and-drop.md › Best practices`). Kopien lassen sich rückgängig machen (landen im Papierkorb).
+    func dropIntoProject(_ urls: [URL], folder: URL) async {
+        guard let root = project.rootURL else { return }
+        let inside = urls.filter { FileOperations.isInside($0, root: root) }
+        let outside = urls.filter { !FileOperations.isInside($0, root: root) && $0.standardizedFileURL != root.standardizedFileURL }
+        for url in inside { await move(url, into: folder) }
+        guard !outside.isEmpty else { return }
+        do {
+            let copies = try await Task.detached(priority: .userInitiated) {
+                try outside.map { try FileOperations.copyIn($0, into: folder) }
+            }.value
+            for copy in copies { registerCreationUndo(of: copy, name: "Hinzufügen") }
+            project.reloadTree()
+            fileActions.revealURL = copies.last
+            refreshOutline()
+            if copies.count == 1, let copy = copies.first, FileKind(url: copy).isEditable {
+                await editor.open(copy, asPreview: true)
+            }
+        } catch {
+            fileActions.errorMessage = "Hinzufügen nicht möglich: \(error.localizedDescription)"
         }
     }
 
@@ -115,7 +157,7 @@ extension AppModel {
         let name = try FileOperations.renamedFileName(from: rawName, original: source)
         let destination = try FileOperations.destination(for: name, in: source.deletingLastPathComponent(), replacing: source)
         guard destination != source else { return }
-        try await relocate(source, to: destination) { try FileOperations.rename(source, toFileName: name) }
+        try await relocate(source, to: destination, actionName: "Umbenennen") { try FileOperations.rename(source, toFileName: name) }
     }
 
     func move(_ url: URL, into folder: URL) async {
@@ -124,19 +166,23 @@ extension AppModel {
             let source = url.standardizedFileURL
             let destination = try FileOperations.validateMove(source, into: folder, projectRoot: root)
             guard destination != source else { return }
-            try await relocate(source, to: destination) { try FileOperations.move(source, into: folder, projectRoot: root) }
+            try await relocate(source, to: destination, actionName: "Verschieben") { try FileOperations.move(source, into: folder, projectRoot: root) }
         } catch {
             fileActions.errorMessage = error.localizedDescription
         }
     }
 
     /// Gemeinsamer Ablauf für Umbenennen und Verschieben: Verweise suchen und ggf. nachfragen, ausführen,
-    /// Tabs und Hauptdatei nachziehen, Verweise anpassen, Baum neu laden.
-    private func relocate(_ source: URL, to destination: URL, operation: () throws -> URL) async throws {
+    /// Tabs und Hauptdatei nachziehen, Verweise anpassen, Baum neu laden. `preset` ersetzt die Rückfrage (Rückgängig und
+    /// Wiederholen wiederholen die damalige Antwort); `registersUndo: false` bei Rückgängig und Wiederholen selbst.
+    private func relocate(
+        _ source: URL, to destination: URL, actionName: String, preset: ReferenceUpdateChoice? = nil, registersUndo: Bool = true,
+        operation: () throws -> URL
+    ) async throws {
         let edits = await referenceEdits(moving: source, to: destination)
         var shouldUpdate = false
         if !edits.isEmpty {
-            switch confirmReferenceUpdate(edits, source.lastPathComponent) {
+            switch preset ?? confirmReferenceUpdate(edits, source.lastPathComponent) {
             case .update: shouldUpdate = true
             case .skip: break
             case .cancel: return
@@ -152,6 +198,27 @@ extension AppModel {
             synctex.reload(mainFile: project.mainFileURL)
         }
         refreshOutline()
+        if registersUndo { registerRelocationUndo(from: source, to: result, updatedReferences: shouldUpdate, name: actionName) }
+    }
+
+    /// Umbenennen und Verschieben: zurück an den alten Ort (mit denselben Verweisanpassungen wie damals) und wieder vor
+    private func registerRelocationUndo(from source: URL, to result: URL, updatedReferences: Bool, name: String) {
+        let choice: ReferenceUpdateChoice = updatedReferences ? .update : .skip
+        func perform(_ from: URL, _ to: URL) async {
+            do {
+                try await relocate(from, to: to, actionName: name, preset: choice, registersUndo: false) {
+                    try FileOperations.relocate(from, to: to)
+                }
+                fileActions.revealURL = to
+            } catch {
+                fileActions.errorMessage = error.localizedDescription
+            }
+        }
+        registerFileUndo(FileUndoAction(
+            name: name,
+            undo: { await perform(result, source) },
+            redo: { await perform(source, result) }
+        ))
     }
 
     // MARK: Papierkorb
@@ -176,18 +243,9 @@ extension AppModel {
             detail += "\n\nUngespeicherte Änderungen gehen verloren: " + dirty.joined(separator: ", ")
         }
         guard confirmTrash("„\(item.lastPathComponent)“ in den Papierkorb legen?", detail) else { return }
-        do {
-            try moveToTrash(item)
-        } catch {
-            fileActions.errorMessage = "„\(item.lastPathComponent)“ konnte nicht in den Papierkorb gelegt werden: \(error.localizedDescription)"
-            return
-        }
-        editor.closeTabs(under: item)
-        project.reloadTree()
-        if editor.tabs.isEmpty, let main = project.mainFileURL, FileManager.default.fileExists(atPath: main.path) {
-            await editor.open(main, asPreview: false)
-        }
-        refreshOutline()
+        let ticket = TrashTicket()
+        guard await removeToTrash(item, ticket: ticket) else { return }
+        registerTrashUndo(of: item, ticket: ticket)
     }
 
     // MARK: Verweise

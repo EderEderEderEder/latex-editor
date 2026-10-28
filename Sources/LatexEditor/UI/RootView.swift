@@ -37,6 +37,7 @@ struct RootView: View {
     @AppStorage(InterfaceZoom.key) private var zoom = InterfaceZoom.standard
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var newBranchName = ""
+    @State private var sidebarPeek = SidebarPeek()
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -45,8 +46,13 @@ struct RootView: View {
                     min: Self.sidebarWidths.min * zoom, ideal: Self.sidebarWidths.ideal * zoom, max: Self.sidebarWidths.max * zoom
                 )
         } detail: {
-            workspace
+            workspace.overlay {
+                SidebarPeekPanel(model: model, peek: sidebarPeek, width: Self.sidebarWidths.ideal * zoom)
+            }
         }
+        // Eigener Button (Hover zeigt die eingeklappte Seitenleiste); ⌃⌘S im Menü bleibt beim System
+        .toolbar(removing: .sidebarToggle)
+        .onChange(of: columnVisibility) { sidebarPeek.dismiss() }
         .interfaceZoomRoot()
         // Nicht der App-Name (HIG `toolbars.md › Titles`)
         .navigationTitle(model.project.rootURL?.lastPathComponent ?? "Kein Projekt")
@@ -65,6 +71,7 @@ struct RootView: View {
             switch palette {
             case .quickOpen: QuickOpenSheet(model: model)
             case .goToLine: GoToLineSheet(model: model)
+            case .imageLibrary: ImageLibrarySheet(model: model)
             }
         }
         .alert(AlertText(model.fileActions.errorMessage).title, isPresented: fileErrorBinding) {
@@ -114,8 +121,15 @@ struct RootView: View {
     }
 
 
+    private var isSidebarCollapsed: Bool { columnVisibility == .detailOnly }
+
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            SidebarToggleButton(peek: sidebarPeek, isCollapsed: isSidebarCollapsed) {
+                columnVisibility = isSidebarCollapsed ? .all : .detailOnly
+            }
+        }
         ToolbarItem(placement: .principal) {
             Picker("Ansicht", selection: $viewMode) {
                 ForEach(ViewMode.allCases, id: \.self) { mode in

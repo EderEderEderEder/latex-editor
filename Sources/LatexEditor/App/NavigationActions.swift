@@ -13,6 +13,9 @@ extension AppModel {
                 return NSSound.beep()
             }
             Task { await editor.open(file, line: entry.line) }
+        case let .acronym(key):
+            guard let entry = completionProvider.index.acronymEntries.first(where: { $0.key == key }) else { return NSSound.beep() }
+            Task { await editor.open(entry.file, line: entry.line) }
         case let .file(path):
             let bases = [project.mainFileURL?.deletingLastPathComponent(), editor.current?.url.deletingLastPathComponent()].compactMap { $0 }
             guard let file = JumpTargetFinder.resolveFile(path, bases: bases) else { return NSSound.beep() }

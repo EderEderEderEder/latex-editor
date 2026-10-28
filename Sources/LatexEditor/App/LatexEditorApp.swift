@@ -39,6 +39,16 @@ struct AppCommands: Commands {
 
     @AppStorage(InterfaceZoom.key) private var zoom = InterfaceZoom.standard
     @AppStorage(ViewMode.storageKey) private var viewMode = ViewMode.split
+    @AppStorage(EditorSettings.Key.showsColumnGuide) private var showsColumnGuide = false
+    @AppStorage(EditorSettings.Key.showsStickyHeading) private var showsStickyHeading = true
+
+    /// Schalter der Ansicht: Wert speichern und den Editor benachrichtigen (wie im Einstellungsfenster)
+    private func viewSetting(_ binding: Binding<Bool>) -> Binding<Bool> {
+        Binding(get: { binding.wrappedValue }, set: {
+            binding.wrappedValue = $0
+            EditorSettings.didChange(affectsText: false)
+        })
+    }
 
     var body: some Commands {
         CommandGroup(after: .textEditing) {
@@ -50,6 +60,7 @@ struct AppCommands: Commands {
             Button("Umbenennen …") { model.beginRename() }
                 .keyboardShortcut("r", modifiers: [.command, .option])
                 .disabled(model.editor.current == nil)
+            editorCommand("Verwendungen anzeigen", #selector(LatexTextView.showUsages(_:)), key: "u", modifiers: [.command, .option])
             Button("Im Projekt suchen …") { model.presentProjectSearch() }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
                 .disabled(model.project.rootURL == nil)
@@ -97,6 +108,18 @@ struct AppCommands: Commands {
             Button("Schnell öffnen …") { model.presentQuickOpen() }
                 .keyboardShortcut("p")
                 .disabled(model.project.rootURL == nil)
+            Divider()
+            // ⌘Z gilt im Dateibaum ebenfalls; hier auch mit dem Fokus im Editor
+            Button(model.fileActions.undoTitle.map { "„\($0)“ rückgängig machen" } ?? "Dateioperation rückgängig machen") {
+                model.undoFileOperation()
+            }
+            .keyboardShortcut("z", modifiers: [.command, .option])
+            .disabled(model.fileActions.undoTitle == nil)
+            Button(model.fileActions.redoTitle.map { "„\($0)“ wiederholen" } ?? "Dateioperation wiederholen") {
+                model.redoFileOperation()
+            }
+            .keyboardShortcut("z", modifiers: [.command, .option, .shift])
+            .disabled(model.fileActions.redoTitle == nil)
         }
         // Die App druckt nicht: ⌘P gehört „Schnell öffnen“
         CommandGroup(replacing: .printItem) {}
@@ -110,6 +133,8 @@ struct AppCommands: Commands {
             Divider()
             SidebarTabCommands(model: model)
             Divider()
+            Toggle("Spaltenhilfslinie", isOn: viewSetting($showsColumnGuide))
+            Toggle("Aktuellen Abschnitt oben anzeigen", isOn: viewSetting($showsStickyHeading))
             Menu("Einklappen") {
                 editorCommand("Zuklappen", #selector(LatexTextView.foldAtCursor(_:)), key: .leftArrow, modifiers: [.command, .option])
                 editorCommand("Aufklappen", #selector(LatexTextView.unfoldAtCursor(_:)), key: .rightArrow, modifiers: [.command, .option])
@@ -138,6 +163,9 @@ struct AppCommands: Commands {
         CommandMenu("Einfügen") {
             Button("Einfügeoptionen …") { model.presentInsert() }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
+                .disabled(model.project.rootURL == nil)
+            Button("Bildbibliothek …") { model.presentImageLibrary() }
+                .keyboardShortcut("i", modifiers: [.command, .option])
                 .disabled(model.project.rootURL == nil)
             Divider()
             ForEach(InsertionKind.allCases) { kind in

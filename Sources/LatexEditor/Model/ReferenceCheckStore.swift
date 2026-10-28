@@ -13,8 +13,14 @@ final class ReferenceCheckStore {
     private(set) var problems: [URL: [ReferenceProblem]] = [:]
     /// Schreibhinweise pro offener Datei
     private(set) var hints: [URL: [WritingHint]] = [:]
+    /// Syntaxfehler und doppelte Labels pro offener Datei
+    private(set) var diagnostics: [URL: [TextMark]] = [:]
+    /// Alle Stellen von Labels, die mehrfach definiert sind (nach Name, Datei und Zeile sortiert)
+    private(set) var duplicateLabels: [LabelEntry] = []
     /// Labels, die nirgends verwendet werden (nach Datei und Zeile sortiert)
     private(set) var unusedLabels: [LabelEntry] = []
+    /// Abkürzungen und Glossareinträge, die nirgends verwendet werden
+    private(set) var unusedAcronyms: [AcronymEntry] = []
     /// Quellen der Literaturdatei, die nirgends zitiert werden
     private(set) var unusedSources: [BibEntry] = []
 
@@ -22,6 +28,9 @@ final class ReferenceCheckStore {
     @ObservationIgnored var knownLabels: () -> Set<String>? = { nil }
     /// `nil`: Zitate nicht prüfen
     @ObservationIgnored var knownCitations: () -> Set<String>? = { nil }
+    /// `nil`: Abkürzungen nicht prüfen
+    @ObservationIgnored var knownAcronyms: () -> Set<String>? = { nil }
+    @ObservationIgnored var duplicateLabelDefinitions: () -> [String: [LabelEntry]] = { [:] }
     @ObservationIgnored private var scheduled: [URL: Task<Void, Never>] = [:]
     /// Dateien, deren Text sich seit der letzten Prüfung geändert hat: nur für sie werden die Schreibhinweise neu
     /// berechnet (sie hängen nicht vom Index ab, ein neuer Index prüft nur die Verweise)
@@ -30,6 +39,10 @@ final class ReferenceCheckStore {
 
     func problems(for url: URL) -> [ReferenceProblem] {
         problems[url.standardizedFileURL] ?? []
+    }
+
+    func diagnostics(for url: URL) -> [TextMark] {
+        diagnostics[url.standardizedFileURL] ?? []
     }
 
     func hints(for url: URL) -> [WritingHint] {
@@ -58,19 +71,24 @@ final class ReferenceCheckStore {
         let currentGeneration = generation
         let labels = knownLabels()
         let citations = knownCitations()
+        let duplicates = duplicateLabelDefinitions()
+        let acronyms = knownAcronyms()
         let text = session.textStorage.string
         let computesHints = needsHints.contains(url)
         // Zeilenzustände passend zum Text: Die Hinweise färben nur Zeilen mit Kandidaten nach, nicht den ganzen Text
         let syntax = computesHints ? session.syntaxSnapshot() : nil
-        let (foundProblems, foundHints) = await Task.detached(priority: .utility) {
+        let (foundProblems, foundHints, foundDiagnostics) = await Task.detached(priority: .utility) {
             let masked = LatexMasking.scannable(text)
-            let problems = labels.map { ReferenceChecker.problems(masked: masked as NSString, labels: $0, citations: citations) } ?? []
-            return (problems, computesHints ? WritingHints.hints(in: text, masked: masked, syntax: syntax) : nil)
+            let problems = labels.map { ReferenceChecker.problems(masked: masked as NSString, labels: $0, citations: citations, acronyms: acronyms) } ?? []
+            let diagnostics = SyntaxChecker.marks(masked: masked as NSString)
+                + DuplicateLabelChecker.marks(masked: masked as NSString, file: url, duplicates: duplicates)
+            return (problems, computesHints ? WritingHints.hints(in: text, masked: masked, syntax: syntax) : nil, diagnostics)
         }.value
         // Abgebrochen: Eine neuere Prüfung derselben Datei läuft schon (und braucht ihren Hinweis-Auftrag noch)
         guard !Task.isCancelled, currentGeneration == generation, session.url.standardizedFileURL == url else { return }
         scheduled[url] = nil
         Self.set(foundProblems, for: url, in: &problems)
+        Self.set(foundDiagnostics, for: url, in: &diagnostics)
         if let foundHints {
             needsHints.remove(url)
             Self.set(foundHints, for: url, in: &hints)
@@ -90,6 +108,13 @@ final class ReferenceCheckStore {
     func indexChanged(_ index: CompletionIndex, isLoaded: Bool, openSessions: [DocumentSession]) {
         let labels = isLoaded ? index.catalog.labels.filter { !index.usedLabels.contains($0.label) } : []
         let sources = isLoaded && !index.citesEverything ? index.catalog.bibEntries.filter { !index.usedCitations.contains($0.key) } : []
+        let duplicates = isLoaded
+            ? DuplicateLabelChecker.duplicates(in: index.catalog.labels).values.flatMap { $0 }
+                .sorted { ($0.label, $0.file.path, $0.line) < ($1.label, $1.file.path, $1.line) }
+            : []
+        if duplicateLabels != duplicates { duplicateLabels = duplicates }
+        let acronyms = isLoaded && !index.usesAllAcronyms ? index.acronymEntries.filter { !index.usedAcronyms.contains($0.key) } : []
+        if unusedAcronyms != acronyms { unusedAcronyms = acronyms }
         if unusedLabels != labels { unusedLabels = labels }
         if unusedSources != sources { unusedSources = sources }
         for session in openSessions { schedule(session, immediately: true, includingHints: false) }
@@ -99,6 +124,7 @@ final class ReferenceCheckStore {
     func retain(_ urls: Set<URL>) {
         for url in problems.keys where !urls.contains(url) { problems[url] = nil }
         for url in hints.keys where !urls.contains(url) { hints[url] = nil }
+        for url in diagnostics.keys where !urls.contains(url) { diagnostics[url] = nil }
         needsHints.formIntersection(urls)
     }
 
@@ -109,6 +135,9 @@ final class ReferenceCheckStore {
         needsHints = []
         if !problems.isEmpty { problems = [:] }
         if !hints.isEmpty { hints = [:] }
+        if !diagnostics.isEmpty { diagnostics = [:] }
+        duplicateLabels = []
+        unusedAcronyms = []
         unusedLabels = []
         unusedSources = []
     }

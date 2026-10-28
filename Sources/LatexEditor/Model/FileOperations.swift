@@ -103,6 +103,46 @@ enum FileOperations {
         return target
     }
 
+    /// Verschiebt oder benennt an einen beliebigen Zielpfad um (Rückgängig und Wiederholen); legt fehlende Ordner an.
+    /// Reine Änderung der Groß-/Kleinschreibung läuft über einen Zwischennamen.
+    @discardableResult
+    static func relocate(_ url: URL, to destination: URL) throws -> URL {
+        let source = url.standardizedFileURL
+        let target = destination.standardizedFileURL
+        guard FileManager.default.fileExists(atPath: source.path) else { throw FileOperationError.notFound(source.lastPathComponent) }
+        guard target != source else { return source }
+        let isCaseOnly = target.path.lowercased() == source.path.lowercased()
+        if FileManager.default.fileExists(atPath: target.path), !isCaseOnly { throw FileOperationError.alreadyExists(target.lastPathComponent) }
+        try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if isCaseOnly {
+            let temporary = source.deletingLastPathComponent().appendingPathComponent(".umbenennen-\(UUID().uuidString)")
+            try FileManager.default.moveItem(at: source, to: temporary)
+            try FileManager.default.moveItem(at: temporary, to: target)
+        } else {
+            try FileManager.default.moveItem(at: source, to: target)
+        }
+        return target
+    }
+
+    /// Kopiert eine Datei oder einen Ordner von außerhalb in den Projektordner (Ziehen aus dem Finder). Ein Name, den es
+    /// dort schon gibt, bekommt eine Nummer („bild 2.png“): Nichts wird überschrieben.
+    @discardableResult
+    static func copyIn(_ source: URL, into folder: URL) throws -> URL {
+        let origin = source.standardizedFileURL
+        guard FileManager.default.fileExists(atPath: origin.path) else { throw FileOperationError.notFound(origin.lastPathComponent) }
+        let stem = origin.deletingPathExtension().lastPathComponent
+        let fileExtension = origin.pathExtension
+        var number = 1
+        var target: URL
+        repeat {
+            let suffix = number == 1 ? "" : " \(number)"
+            target = folder.appendingPathComponent(stem + suffix + (fileExtension.isEmpty ? "" : ".\(fileExtension)")).standardizedFileURL
+            number += 1
+        } while FileManager.default.fileExists(atPath: target.path)
+        try FileManager.default.copyItem(at: origin, to: target)
+        return target
+    }
+
     /// „name Kopie.tex“, bei Kollision „name Kopie 2.tex“, …
     @discardableResult
     static func duplicate(_ url: URL) throws -> URL {

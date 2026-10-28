@@ -491,3 +491,19 @@ Vorher einmal kompilieren (⌘B), damit `main.synctex.gz` existiert.
 | 234 | Einfügen-Fenster: Quelle | Vorschau zeigt nur den BibTeX-Eintrag, Fußzeile „Neuer Eintrag in ….bib“ |
 | 235 | ⌘, : Bereiche durchklicken, Suchfeld „tab“, „pdf“, „xyz“ | Systemeinstellungen-Optik (Symbol, Titel, Beschreibung); Suche zeigt passende Bereiche bzw. „Keine Treffer“; nach Schließen und Öffnen ist der letzte Bereich wieder da |
 | 236 | Darstellung: Farbschema-Karten anklicken; System auf Dunkel umschalten | Editor und Vorschau wechseln sofort; Karten zeigen die dunklen Farben; kein eigener Hell/Dunkel-Schalter mehr |
+| 237 | Seitenleiste einklappen (Button oder ⌃⌘S), Maus auf den Seitenleisten-Button, dann nach unten in die Vorschau, dann weg | Seitenleiste schwebt über dem Editor, bleibt beim Wechsel von Button zu Vorschau, verschwindet kurz nach dem Verlassen; Klick auf den Button klappt sie fest wieder aus; Dateien/Tabs in der Vorschau sind bedienbar |
+| 238 | Seitenleiste ausgeklappt: Maus auf den Button | Keine Vorschau; Tooltip „Seitenleiste ausblenden (⌃⌘S)“ |
+| 239 | Im Text `\textbf{a` tippen, dann `\begin{figure}` ohne `\end`, dann `Ein $x` und Leerzeile | Kurz nach der Tipp-Pause rot gestrichelt (`{a`, `\begin{figure}`, `$x`), Tooltip erklärt; nach der Korrektur weg |
+| 240 | Dasselbe `\label{x}` in zwei Dateien; Seitenleiste Meldungen | Orange strichpunktiert, Tooltip nennt die andere Datei und Zeile; unter „Hinweise“ „Doppelte Labels (2)“ |
+| 241 | Kompilieren mit einem Fehler und einer Warnung | Die Zeilen sind im Text unterstrichen (rot bzw. orange) zusätzlich zur Marke in der Zeilenleiste; Box-Warnungen nur in der Leiste |
+| 242 | Einstellungen › Schreibhilfen: „Fehler und Warnungen im Text markieren“ aus | Alle roten/orangen Unterstreichungen außer unbekannten Verweisen verschwinden |
+| 243 | Darstellung › Spaltenhilfslinie; Einstellungen › Editor › Spalte 100 | Feine Linie hinter dem Text bei Spalte 80 bzw. 100; aus: weg |
+| 244 | Lange Datei scrollen | Rechts in der Pfadleiste „Kapitel › Abschnitt“ der obersten sichtbaren Zeile; Klick springt zur Überschrift; die Breite des Editors ändert sich dabei nie |
+| 245 | Rechtsklick auf `\ref{…}`/`\label{…}`/`\cite{…}`/`\gls{…}` → „Verwendungen von … anzeigen …“; ⌥⌘U mit Cursor im Schlüssel | Popover am Text: Definition oben, Verwendungen nach Datei, Treffer fett; Klick springt hin und schließt |
+| 246 | Projekt mit `.csv`, `.zip`, `.py`; nach dem Kompilieren | Alle erscheinen mit passendem Symbol; `.aux`, `.log` … nicht. Filtersymbol › „Build-Dateien zeigen“ blendet sie ein (Symbol gefüllt, blau) |
+| 247 | Im Dateibaum: Datei umbenennen, dann ⌘Z (Fokus im Baum); ⇧⌘Z | Alter Name zurück samt Verweisen, Datei im Baum markiert; Wiederholen benennt wieder um. Im Editor bleibt ⌘Z beim Text |
+| 248 | Datei in den Papierkorb, dann Ablage › „In den Papierkorb legen“ rückgängig machen (⌥⌘Z) | Datei kommt aus dem Papierkorb zurück |
+| 249 | Bild aus dem Finder auf einen Ordner im Baum ziehen; ein zweites mit gleichem Namen | Ordner hebt sich beim Darüberziehen hervor; Kopie landet dort, das zweite als „name 2.png“; Original bleibt im Finder; ⌘Z entfernt die Kopie |
+| 250 | Maus auf eine Bilddatei im Baum, dann auf den Pfad in `\includegraphics{…}` | Nach kurzer Pause Popover mit Bild, Maßen und Größe; Maus weg, Klick oder Tippen schließt |
+| 251 | Einfügen › Bildbibliothek … (⌥⌘I), suchen, Doppelklick | Raster aller Projektbilder (ohne das PDF der Hauptdatei); Doppelklick öffnet das Einfügen-Fenster mit dem Bild |
+| 252 | `\newacronym{api}{API}{…}` anlegen, `\gls{a` tippen; `\gls{xyz}`; ⌘-Klick auf `api` | Vorschlag „api – API – Application …“; `xyz` rot mit Tooltip; Sprung zur Definition; ungenutzte Abkürzungen unter „Hinweise“ |

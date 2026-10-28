@@ -112,7 +112,7 @@ extension AppModel {
             try backUp(snapshot, newFiles: Set(newURLs))
             for url in newURLs where FileManager.default.fileExists(atPath: url.path) {
                 editor.closeTabs(under: url)
-                try moveToTrash(url)
+                _ = try moveToTrash(url)
             }
         } catch {
             git.errorMessage = "Zurücksetzen abgebrochen, der Papierkorb ist nicht erreichbar: \(error.localizedDescription)"
@@ -221,7 +221,7 @@ extension AppModel {
         defer { try? FileManager.default.removeItem(at: folder) }
         let copy = folder.appendingPathComponent(name)
         try contents.write(to: copy)
-        try moveToTrash(copy)
+        _ = try moveToTrash(copy)
     }
 
     static func discardedName(for url: URL, at date: Date) -> String {

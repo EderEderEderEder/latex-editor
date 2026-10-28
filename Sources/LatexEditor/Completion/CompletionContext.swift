@@ -4,6 +4,7 @@ import Foundation
 enum ArgumentKind: Equatable, Hashable, Sendable {
     case label
     case citation
+    case acronym
     case graphics
     case input
     case beginEnvironment
@@ -60,6 +61,7 @@ enum CompletionContextDetector {
                      "textcite", "Textcite", "autocite", "Autocite", "footcite", "fullcite", "nocite", "smartcite", "supercite"] {
             commands[name] = .citation
         }
+        for name in Acronyms.useCommands { commands[name] = .acronym }
         commands["includegraphics"] = .graphics
         for name in ["input", "include", "subfile", "includeonly"] { commands[name] = .input }
         commands["begin"] = .beginEnvironment

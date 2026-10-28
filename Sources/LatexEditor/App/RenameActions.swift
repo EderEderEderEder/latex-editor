@@ -105,6 +105,27 @@ extension AppModel {
         }.value
     }
 
+    // MARK: Verwendungen
+
+    /// Alle Stellen im Projekt (offene Dateien mit ihrem ungespeicherten Text), nach Datei und Zeile sortiert
+    func usages(of subject: RenameSubject) async -> [UsageEntry] {
+        let sources = searchSources()
+        return await Task.detached(priority: .userInitiated) {
+            var result: [UsageEntry] = []
+            for source in sources {
+                let (url, text): (URL, String)
+                switch source {
+                case let .text(sourceURL, sourceText): (url, text) = (sourceURL, sourceText)
+                case let .file(sourceURL):
+                    guard let sourceText = ProjectText.string(sourceURL) else { continue }
+                    (url, text) = (sourceURL, sourceText)
+                }
+                result += UsageFinder.usages(of: subject, in: text, url: url)
+            }
+            return result.sorted { ($0.file.path, $0.line, $0.index) < ($1.file.path, $1.line, $1.index) }
+        }.value
+    }
+
     // MARK: Ausführen
 
     func rename(_ scope: RenameScope, to rawName: String) async {

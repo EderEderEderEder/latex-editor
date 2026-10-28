@@ -274,8 +274,12 @@ enum Acronyms {
     }()
 
     static func scan(_ text: String) -> [Occurrence] {
-        let masked = LatexMasking.scannable(text) as NSString
-        return expression.matches(in: masked as String, range: NSRange(location: 0, length: masked.length)).map { match in
+        scan(masked: LatexMasking.scannable(text) as NSString)
+    }
+
+    /// Auf schon maskiertem Text (`LatexMasking.scannable`)
+    static func scan(masked: NSString) -> [Occurrence] {
+        expression.matches(in: masked as String, range: NSRange(location: 0, length: masked.length)).map { match in
             Occurrence(key: masked.substring(with: match.range(at: 2)), range: match.range(at: 2),
                        isDefinition: definitionCommands.contains(masked.substring(with: match.range(at: 1))))
         }
@@ -283,6 +287,107 @@ enum Acronyms {
 
     static func definedKeys(in text: String) -> Set<String> {
         Set(scan(text).filter(\.isDefinition).map(\.key))
+    }
+
+    /// Wird in `\glsaddall` jede Abkürzung gedruckt: keine gilt als ungenutzt
+    static func usesAll(_ text: String) -> Bool {
+        LatexMasking.scannable(text).contains("\\glsaddall")
+    }
+
+    // MARK: Definitionen mit Kurzform und Langform
+
+    private static let maximumValueLength = 200
+
+    /// Die Definitionen eines Textes mit dem, was man zum Wählen braucht: Kurzform und Langform. Aus
+    /// `\newacronym[…]{key}{kurz}{lang}`, `\newabbreviation{key}{kurz}{lang}`, `\DeclareAcronym{key}{short = …, long = …}` und
+    /// `\newglossaryentry{key}{name = …, description = …}`.
+    static func definitions(in text: String, file: URL) -> [AcronymEntry] {
+        let masked = LatexMasking.scannable(text) as NSString
+        let lines = LineIndex(text: masked)
+        return scan(masked: masked).filter(\.isDefinition).map { occurrence in
+            let (short, long) = details(after: occurrence.range, in: masked)
+            return AcronymEntry(key: occurrence.key, short: short, long: long, file: file,
+                                line: lines.line(containing: occurrence.range.location) + 1)
+        }
+    }
+
+    /// Die beiden Gruppen hinter dem Schlüssel (`{key}` ist schon gelesen)
+    private static func details(after keyRange: NSRange, in text: NSString) -> (short: String, long: String) {
+        var cursor = NSMaxRange(keyRange)
+        while cursor < text.length, text.character(at: cursor) != 0x7D { cursor += 1 }
+        cursor += 1
+        guard let first = group(at: &cursor, in: text) else { return ("", "") }
+        if first.contains("=") { return keyValues(first) }
+        guard let second = group(at: &cursor, in: text) else { return (clean(first), "") }
+        return (clean(first), clean(second))
+    }
+
+    /// `name = API, description = Programmierschnittstelle`; `short`/`long` bei `\DeclareAcronym`
+    private static func keyValues(_ text: String) -> (short: String, long: String) {
+        var values: [String: String] = [:]
+        var depth = 0
+        var current = ""
+        var parts: [String] = []
+        for character in text {
+            if character == "{" { depth += 1 } else if character == "}" { depth -= 1 }
+            if character == ",", depth == 0 {
+                parts.append(current)
+                current = ""
+            } else {
+                current.append(character)
+            }
+        }
+        parts.append(current)
+        for part in parts {
+            guard let equals = part.firstIndex(of: "=") else { continue }
+            values[part[..<equals].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()] =
+                clean(String(part[part.index(after: equals)...]))
+        }
+        return (values["short"] ?? values["name"] ?? "", values["long"] ?? values["description"] ?? "")
+    }
+
+    /// Inhalt der nächsten `{…}`-Gruppe (Leerraum davor ist erlaubt); `cursor` steht danach
+    private static func group(at cursor: inout Int, in text: NSString) -> String? {
+        var index = cursor
+        while index < text.length, [0x20, 0x09, 0x0A].contains(text.character(at: index)) { index += 1 }
+        guard index < text.length, text.character(at: index) == 0x7B else { return nil }
+        var depth = 0
+        var end = index
+        while end < text.length {
+            let unit = text.character(at: end)
+            if unit == 0x5C { end += 2; continue }
+            if unit == 0x7B { depth += 1 } else if unit == 0x7D {
+                depth -= 1
+                if depth == 0 { break }
+            }
+            end += 1
+        }
+        guard end < text.length else { return nil }
+        cursor = end + 1
+        let content = text.substring(with: NSRange(location: index + 1, length: min(end - index - 1, maximumValueLength)))
+        return content
+    }
+
+    /// Ohne äußere Klammern, Zeilenumbrüche und mehrfache Leerzeichen
+    private static func clean(_ value: String) -> String {
+        var result = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        while result.hasPrefix("{"), result.hasSuffix("}"), result.count >= 2 { result = String(result.dropFirst().dropLast()) }
+        return result.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+}
+
+/// Eine Abkürzung oder ein Glossareintrag des Projekts
+struct AcronymEntry: Equatable, Hashable, Sendable {
+    let key: String
+    let short: String
+    let long: String
+    let file: URL
+    /// 1-basiert
+    let line: Int
+
+    /// „API – Application Programming Interface“ für Listen
+    var summary: String {
+        [short, long].filter { !$0.isEmpty }.joined(separator: " – ")
     }
 }
 

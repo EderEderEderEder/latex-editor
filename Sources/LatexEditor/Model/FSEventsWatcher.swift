@@ -16,13 +16,13 @@ struct FileEvent: Sendable {
 
     var isDirectory: Bool { flags & FSEventStreamEventFlags(kFSEventStreamEventFlagItemIsDir) != 0 }
 
-    /// Ändert das Ereignis, was der Dateibaum zeigt? Nicht bei Build-Hilfsdateien (`.aux`, `.log` …, nie im Baum) und
+    /// Ändert das Ereignis, was der Dateibaum zeigt? Nicht bei Build-Hilfsdateien (`.aux`, `.log` …, nur im Baum, wenn sie angezeigt werden) und
     /// nicht beim atomaren Speichern einer vorhandenen Datei (Ersetzen per Umbenennen: vorher und nachher da).
     /// Sonst lösten jeder latexmk-Lauf und jedes ⌘S Baum, Gliederung, Wortzähler, Suche und Index neu aus.
-    func changesTree(isInTree: (URL) -> Bool, exists: (URL) -> Bool) -> Bool {
+    func changesTree(showsBuildFiles: Bool = false, isInTree: (URL) -> Bool, exists: (URL) -> Bool) -> Bool {
         guard isStructuralChange else { return false }
         let url = URL(fileURLWithPath: path)
-        guard isDirectory || FileKind(url: url).isShownInTree else { return false }
+        guard isDirectory || BuildArtifacts.isShownInTree(url, showsBuildFiles: showsBuildFiles) else { return false }
         return exists(url) != isInTree(url)
     }
 }

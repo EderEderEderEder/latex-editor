@@ -138,6 +138,7 @@ struct ReferenceProblem: Equatable, Sendable {
     enum Kind: Sendable {
         case unknownLabel
         case unknownCitation
+        case unknownAcronym
     }
 
     let kind: Kind
@@ -148,18 +149,24 @@ struct ReferenceProblem: Equatable, Sendable {
         switch kind {
         case .unknownLabel: "Das Label „\(key)“ ist im Projekt nicht definiert."
         case .unknownCitation: "„\(key)“ steht in keiner Literaturdatei des Projekts."
+        case .unknownAcronym: "Die Abkürzung „\(key)“ ist im Projekt nicht definiert (\\newacronym, \\newglossaryentry …)."
         }
     }
 }
 
 enum ReferenceChecker {
     /// `citations == nil`: Zitate nicht prüfen (keine Literaturdatei mit Einträgen im Projekt, z. B. liegt sie außerhalb)
-    static func problems(in text: String, labels: Set<String>, citations: Set<String>?) -> [ReferenceProblem] {
-        problems(masked: LatexMasking.scannable(text) as NSString, labels: labels, citations: citations)
+    static func problems(in text: String, labels: Set<String>, citations: Set<String>?, acronyms: Set<String>? = nil) -> [ReferenceProblem] {
+        problems(masked: LatexMasking.scannable(text) as NSString, labels: labels, citations: citations, acronyms: acronyms)
     }
 
-    static func problems(masked: NSString, labels: Set<String>, citations: Set<String>?) -> [ReferenceProblem] {
-        LatexReferences.scan(masked: masked).compactMap { occurrence -> ReferenceProblem? in
+    /// `acronyms == nil`: Abkürzungen nicht prüfen (keine Definition im Projekt)
+    static func problems(masked: NSString, labels: Set<String>, citations: Set<String>?, acronyms: Set<String>? = nil) -> [ReferenceProblem] {
+        let unknownAcronyms = acronyms.map { known in
+            Acronyms.scan(masked: masked).filter { !$0.isDefinition && !known.contains($0.key) }
+                .map { ReferenceProblem(kind: .unknownAcronym, key: $0.key, range: $0.range) }
+        } ?? []
+        return unknownAcronyms + LatexReferences.scan(masked: masked).compactMap { occurrence -> ReferenceProblem? in
             switch occurrence.kind {
             case .labelDefinition:
                 return nil
@@ -170,6 +177,33 @@ enum ReferenceChecker {
                 guard let citations, !citations.contains(occurrence.key) else { return nil }
                 return ReferenceProblem(kind: .unknownCitation, key: occurrence.key, range: occurrence.range)
             }
+        }
+    }
+}
+
+/// Labels, die im Projekt mehr als einmal definiert sind: LaTeX warnt („multiply defined“), und jeder Verweis darauf
+/// führt zu einer der beiden Stellen, je nach Reihenfolge.
+enum DuplicateLabelChecker {
+    /// Nur die mehrfach definierten, mit allen Stellen
+    static func duplicates(in labels: [LabelEntry]) -> [String: [LabelEntry]] {
+        Dictionary(grouping: labels, by: \.label).filter { $0.value.count > 1 }
+    }
+
+    /// Markiert `\label{…}` dieser Datei, deren Name auch anderswo (oder weiter oben) definiert wird.
+    static func marks(masked: NSString, file: URL, duplicates: [String: [LabelEntry]]) -> [TextMark] {
+        guard !duplicates.isEmpty else { return [] }
+        let occurrences = LatexReferences.scan(masked: masked).filter { $0.kind == .labelDefinition && duplicates[$0.key] != nil }
+        guard !occurrences.isEmpty else { return [] }
+        let lines = LineIndex(text: masked)
+        let current = file.standardizedFileURL
+        return occurrences.compactMap { occurrence in
+            let line = lines.line(containing: occurrence.range.location) + 1
+            let others = (duplicates[occurrence.key] ?? []).filter { !($0.file.standardizedFileURL == current && $0.line == line) }
+            guard let other = others.first else { return nil }
+            let place = other.file.standardizedFileURL == current ? "Zeile \(other.line)" : "\(other.file.lastPathComponent), Zeile \(other.line)"
+            let more = others.count > 1 ? " (insgesamt \(others.count + 1) Stellen)" : ""
+            return TextMark(severity: .warning, range: occurrence.range,
+                            message: "Das Label „\(occurrence.key)“ ist mehrfach definiert, auch in \(place)\(more). Verweise treffen nur eine der Stellen.")
         }
     }
 }

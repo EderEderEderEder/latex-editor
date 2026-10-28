@@ -7,6 +7,7 @@ struct CompletionItem: Equatable, Identifiable, Sendable {
         case environment
         case label
         case citation
+        case acronym
         case image
         case file
         case option

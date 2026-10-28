@@ -16,10 +16,27 @@ final class ProjectStore {
     /// Im Dateibaum markierter Eintrag (für „Neue Datei“ im Menü)
     var selectedURL: URL?
 
+    /// Hilfsdateien von LaTeX (`.aux`, `.log` …) im Dateibaum zeigen; gilt für alle Projekte
+    var showsBuildFiles: Bool {
+        didSet {
+            guard showsBuildFiles != oldValue else { return }
+            defaults.set(showsBuildFiles, forKey: Self.showsBuildFilesKey)
+            reloadTree()
+        }
+    }
+
+    static let showsBuildFilesKey = "showsBuildFiles"
+
+    @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var reloadTask: Task<Void, Never>?
     /// Alles, was der Baum zeigt, als normalisierte Pfade (für `isTreeChange`): FSEvents meldet `/private/var/…`,
     /// der Baum kennt `/var/…`
     @ObservationIgnored private var treePaths: Set<String> = []
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        showsBuildFiles = defaults.bool(forKey: Self.showsBuildFilesKey)
+    }
 
     func open(root: URL) async {
         reloadTask?.cancel()
@@ -29,7 +46,7 @@ final class ProjectStore {
         treePaths = []
         mainFileURL = nil
         fileCount = 0
-        guard let snapshot = await Self.makeSnapshot(root: root, keepingMainFile: nil) else { return }
+        guard let snapshot = await Self.makeSnapshot(root: root, keepingMainFile: nil, showsBuildFiles: showsBuildFiles) else { return }
         guard rootURL == root else { return }
         apply(snapshot)
     }
@@ -46,7 +63,7 @@ final class ProjectStore {
 
     /// Muss der Baum nach diesem Dateisystem-Ereignis neu geladen werden?
     func isTreeChange(_ event: FileEvent) -> Bool {
-        event.changesTree(isInTree: { treePaths.contains(SyncTeXIndex.normalizedPath($0)) },
+        event.changesTree(showsBuildFiles: showsBuildFiles, isInTree: { treePaths.contains(SyncTeXIndex.normalizedPath($0)) },
                           exists: { FileManager.default.fileExists(atPath: $0.path) })
     }
 
@@ -56,7 +73,7 @@ final class ProjectStore {
         reloadTask?.cancel()
         let currentMain = mainFileURL
         reloadTask = Task {
-            guard let snapshot = await Self.makeSnapshot(root: root, keepingMainFile: currentMain),
+            guard let snapshot = await Self.makeSnapshot(root: root, keepingMainFile: currentMain, showsBuildFiles: showsBuildFiles),
                   !Task.isCancelled, rootURL == root else { return }
             apply(snapshot)
         }
@@ -71,9 +88,9 @@ final class ProjectStore {
         if snapshot.mainFile != mainFileURL { mainFileURL = snapshot.mainFile }
     }
 
-    private nonisolated static func makeSnapshot(root: URL, keepingMainFile: URL?) async -> ProjectSnapshot? {
+    private nonisolated static func makeSnapshot(root: URL, keepingMainFile: URL?, showsBuildFiles: Bool) async -> ProjectSnapshot? {
         await Task.detached(priority: .utility) {
-            let tree = FileTreeLoader.load(root: root)
+            let tree = FileTreeLoader.load(root: root, showsBuildFiles: showsBuildFiles)
             let main = keepingMainFile.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
                 ?? MainFileDetector.detect(in: tree)
             return ProjectSnapshot(tree: tree, mainFile: main)

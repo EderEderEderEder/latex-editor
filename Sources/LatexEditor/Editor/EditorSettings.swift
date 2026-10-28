@@ -15,12 +15,15 @@ enum EditorSettings {
         static let wrapsLines = "wrapsLines"
         static let indentation = "indentation"
         static let tabWidth = "tabWidth"
+        static let showsColumnGuide = "showsColumnGuide"
+        static let columnGuideColumn = "columnGuideColumn"
+        static let showsStickyHeading = "showsStickyHeading"
         static let checksSpelling = "checksSpelling"
         static let spellingLanguage = "spellingLanguage"
 
         /// Bereiche „Darstellung“, „Editor“ und „Rechtschreibung“ (für „Standard wiederherstellen“)
         static let appearanceTab = [colorScheme, fontFamily, fontSize, lineSpacing, showsLineNumbers, highlightsCurrentLine]
-        static let editorTab = [wrapsLines, indentation, tabWidth]
+        static let editorTab = [wrapsLines, indentation, tabWidth, showsColumnGuide, columnGuideColumn, showsStickyHeading]
         static let spellingTab = [checksSpelling, spellingLanguage]
     }
 
@@ -28,6 +31,8 @@ enum EditorSettings {
     static let defaultFontSize = Double(EditorAppearance.defaultFontSize)
     static let tabWidths = [2, 4, 8]
     static let defaultTabWidth = 4
+    static let columnGuideRange = 40...200
+    static let defaultColumnGuideColumn = 80
     /// Leer: die Festbreitenschrift des Systems (SF Mono)
     static let systemFontFamily = ""
 
@@ -44,6 +49,16 @@ enum EditorSettings {
     static var highlightsCurrentLine: Bool { flag(Key.highlightsCurrentLine) }
     static var wrapsLines: Bool { flag(Key.wrapsLines) }
     static var checksSpelling: Bool { flag(Key.checksSpelling) }
+
+    /// Aus, solange der Nutzer sie nicht einschaltet (anders als die übrigen Schalter)
+    static var showsColumnGuide: Bool { defaults.object(forKey: Key.showsColumnGuide) as? Bool ?? false }
+    static var showsStickyHeading: Bool { flag(Key.showsStickyHeading) }
+
+    /// Spalte der Hilfslinie, auf 40–200 begrenzt
+    static var columnGuideColumn: Int {
+        let stored = defaults.object(forKey: Key.columnGuideColumn) as? Int ?? defaultColumnGuideColumn
+        return min(max(stored, columnGuideRange.lowerBound), columnGuideRange.upperBound)
+    }
 
     static var fontSize: Double { fontSize(in: defaults) }
     static var tabWidth: Int { tabWidth(in: defaults) }

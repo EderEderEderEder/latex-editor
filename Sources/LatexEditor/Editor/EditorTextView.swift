@@ -17,16 +17,27 @@ struct EditorTextView: NSViewRepresentable {
     var referenceProblems: [ReferenceProblem] = []
     /// Schreibhinweise in der angezeigten Datei (blau gepunktet)
     var writingHints: [WritingHint] = []
+    /// Syntaxfehler und doppelte Labels (rot gestrichelt bzw. orange strichpunktiert); leer, wenn abgeschaltet
+    var diagnostics: [TextMark] = []
+    /// Zeilen mit Meldungen des letzten Builds im Text unterstreichen
+    var underlinesBuildIssues = true
     /// Vorschläge für die Autovervollständigung (Projektindex)
     var completionProvider: CompletionProvider?
     /// Neue ID: Vervollständigung von Hand öffnen (Menü, ⌃Leertaste)
     var completionRequest: UUID?
     let onCursorMoved: (CursorInfo) -> Void
+    /// Oberste sichtbare Zeile (1-basiert), entprellt: Datei und Zeile
+    var onTopLineChanged: ((URL, Int) -> Void)?
     /// ⌘-Klick auf Verweis, Zitat oder Dateipfad
     var onJumpToTarget: ((JumpTarget) -> Void)?
     /// „Umbenennen …“ im Kontextmenü: Möglichkeiten an einer Zeichenposition und Ausführen
     var renameScopes: ((DocumentSession, Int) -> [RenameScope])?
     var onRename: ((RenameScope) -> Void)?
+    /// Verwendungen eines Namens suchen (alle Dateien des Projekts) und eine davon öffnen
+    var usageLoader: ((RenameSubject) async -> [UsageEntry])?
+    var onOpenUsage: ((UsageEntry) -> Void)?
+    /// Datei zu einem `\includegraphics`-Pfad der angezeigten Datei (für die Vorschau beim Daraufzeigen)
+    var imageResolver: ((String, URL) -> URL?)?
     /// ⌘-Klick auf normalen Text: diese Zeile (1-basiert) der Datei im PDF zeigen
     var onShowInPDF: ((URL, Int) -> Void)?
 
@@ -42,14 +53,21 @@ struct EditorTextView: NSViewRepresentable {
         let isHidden = !context.environment.isWorkspacePaneShown
         if nsView.isHidden != isHidden { nsView.isHidden = isHidden }
         context.coordinator.onCursorMoved = onCursorMoved
+        context.coordinator.onTopLineChanged = onTopLineChanged
         context.coordinator.jumpHandler = onJumpToTarget
         context.coordinator.renameScopesHandler = renameScopes
         context.coordinator.renameHandler = onRename
         context.coordinator.showInPDFHandler = onShowInPDF
+        context.coordinator.usageLoader = usageLoader
+        context.coordinator.openUsageHandler = onOpenUsage
+        context.coordinator.imageResolverHandler = imageResolver
         context.coordinator.update(session: session, jump: jump, insert: insertRequest)
         context.coordinator.updateIssueMarks(issueMarks, messages: issueMessages)
         context.coordinator.updateChangeMarks(changeMarks)
-        context.coordinator.updateTextMarks(problems: referenceProblems, hints: writingHints)
+        context.coordinator.updateTextMarks(
+            problems: referenceProblems, hints: writingHints, diagnostics: diagnostics,
+            buildLines: underlinesBuildIssues ? issueMarks : [:], buildMessages: issueMessages
+        )
         context.coordinator.updateCompletion(provider: completionProvider, request: completionRequest)
         selectionProviderOwner.selectionProvider = { [weak coordinator = context.coordinator] in
             coordinator?.selectedText ?? ""
@@ -72,12 +90,18 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
     private static let unwrappedWidth = CGFloat.greatestFiniteMagnitude
     private static let textInset = NSSize(width: 8, height: 8)
     private static let cursorReportDelay = Duration.milliseconds(150)
+    private static let topLineReportDelay = Duration.milliseconds(100)
 
     var onCursorMoved: ((CursorInfo) -> Void)?
+    var onTopLineChanged: ((URL, Int) -> Void)?
     var jumpHandler: ((JumpTarget) -> Void)?
     var renameScopesHandler: ((DocumentSession, Int) -> [RenameScope])?
     var renameHandler: ((RenameScope) -> Void)?
     var showInPDFHandler: ((URL, Int) -> Void)?
+    var usageLoader: ((RenameSubject) async -> [UsageEntry])?
+    var openUsageHandler: ((UsageEntry) -> Void)?
+    var imageResolverHandler: ((String, URL) -> URL?)?
+    private let usagePresenter = UsagePopoverPresenter()
 
     var cursorLocation: Int { textView?.selectedRange().location ?? 0 }
 
@@ -92,6 +116,9 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
     private static let textMarkAttributes: [NSAttributedString.Key] = [.underlineStyle, .underlineColor, .toolTip]
     private var appliedProblems: [ReferenceProblem] = []
     private var appliedHints: [WritingHint] = []
+    private var appliedDiagnostics: [TextMark] = []
+    private var appliedBuildLines: [Int: BuildIssue.Severity] = [:]
+    private var appliedBuildMessages: [Int: String] = [:]
     private weak var textMarksSession: DocumentSession?
     private var lastHandledJumpID: UUID?
     private var lastHandledInsertID: UUID?
@@ -109,6 +136,9 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         return storage.mutableString.substring(with: range)
     }
     private var cursorReportTask: Task<Void, Never>?
+    private var topLineReportTask: Task<Void, Never>?
+    private var lastScrollOrigin = NSPoint.zero
+    private var lastReportedTopLine: (url: URL, line: Int)?
 
     // MARK: Aufbau
 
@@ -133,6 +163,11 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
             return self.renameScopesHandler?(session, location) ?? []
         }
         textView.onRename = { [weak self] scope in self?.renameHandler?(scope) }
+        textView.imageResolver = { [weak self] path in
+            guard let self, let url = self.session?.url else { return nil }
+            return self.imageResolverHandler?(path, url)
+        }
+        textView.onShowUsages = { [weak self] subject, location in self?.showUsages(of: subject, at: location) }
         textView.onShowInPDF = { [weak self] location in self?.showInPDF(at: location) }
         textView.syntaxTokensProvider = { [weak self] range in
             self?.session?.syntaxTokens(in: range) ?? []
@@ -148,6 +183,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         scrollView.drawsBackground = true
         scrollView.documentView = textView
         self.scrollView = scrollView
+        observeScrolling(of: scrollView)
         attachLineNumbers(to: scrollView, textView: textView)
         applyEditorSettings(affectsText: true)
         return scrollView
@@ -218,6 +254,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         }
         textView.indentUnit = EditorSettings.indentation.unit
         textView.highlightsCurrentLine = EditorSettings.highlightsCurrentLine
+        textView.columnGuideColumn = EditorSettings.showsColumnGuide ? EditorSettings.columnGuideColumn : nil
         showLineNumbers(EditorSettings.showsLineNumbers)
         applyLineWrapping(EditorSettings.wrapsLines)
         applySpelling(checks: EditorSettings.checksSpelling, language: EditorSettings.spellingLanguage)
@@ -286,7 +323,10 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         // Layout ist erst im nächsten Runloop-Durchlauf verlässlich.
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            if didSwitch { self.restoreScrollOrigin() }
+            if didSwitch {
+                self.restoreScrollOrigin()
+                self.scheduleTopLineReport()
+            }
             if let pendingLine { self.scroll(toLine: pendingLine) }
         }
     }
@@ -372,13 +412,21 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         if lineNumberRuler.issueMarks != marks { lineNumberRuler.issueMarks = marks }
     }
 
-    /// Unterstreicht unbekannte Verweise (rot gestrichelt) und Schreibhinweise (blau gepunktet) als temporäre Attribute
-    /// des Layout-Managers (nicht im Text, nicht in `SyntaxTheme`): Sie ändern weder den Text noch den Undo-Verlauf und
-    /// verschwinden beim Dateiwechsel mit der Sitzung. Beides gemeinsam, weil es dieselben Attribute nutzt.
-    func updateTextMarks(problems: [ReferenceProblem], hints: [WritingHint]) {
-        guard problems != appliedProblems || hints != appliedHints || textMarksSession !== session else { return }
+    /// Unterstreicht Markierungen als temporäre Attribute des Layout-Managers (nicht im Text, nicht in `SyntaxTheme`):
+    /// Sie ändern weder den Text noch den Undo-Verlauf und verschwinden beim Dateiwechsel mit der Sitzung. Fehler (unbekannte
+    /// Verweise, Syntaxfehler, Build-Fehler) sind rot gestrichelt, Warnungen orange strichpunktiert, Schreibhinweise blau
+    /// gepunktet – die Schwere steht auch im Muster. Alles gemeinsam, weil es dieselben Attribute nutzt.
+    func updateTextMarks(
+        problems: [ReferenceProblem], hints: [WritingHint], diagnostics: [TextMark] = [],
+        buildLines: [Int: BuildIssue.Severity] = [:], buildMessages: [Int: String] = [:]
+    ) {
+        guard problems != appliedProblems || hints != appliedHints || diagnostics != appliedDiagnostics
+            || buildLines != appliedBuildLines || buildMessages != appliedBuildMessages || textMarksSession !== session else { return }
         appliedProblems = problems
         appliedHints = hints
+        appliedDiagnostics = diagnostics
+        appliedBuildLines = buildLines
+        appliedBuildMessages = buildMessages
         textMarksSession = session
         // Nicht synchron aus `updateNSView`: Das Layout soll nicht mitten in einem SwiftUI-Update angestoßen werden.
         DispatchQueue.main.async { [weak self] in self?.applyTextMarks() }
@@ -388,20 +436,52 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         guard let layoutManager = textView.layoutManager, let storage = textView.textStorage else { return }
         let whole = NSRange(location: 0, length: storage.length)
         for key in Self.textMarkAttributes { layoutManager.removeTemporaryAttribute(key, forCharacterRange: whole) }
-        let dotted = NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDot.rawValue
-        for hint in appliedHints where NSMaxRange(hint.range) <= storage.length {
+        // Leichtes zuerst: Bei Überschneidungen gewinnt die schwerere Markierung
+        for mark in allTextMarks().sorted(by: { $0.severity < $1.severity }) where NSMaxRange(mark.range) <= storage.length {
             layoutManager.addTemporaryAttributes(
-                [.underlineStyle: dotted, .underlineColor: NSColor.systemBlue, .toolTip: hint.message],
-                forCharacterRange: hint.range
+                [.underlineStyle: Self.underlineStyle(for: mark.severity), .underlineColor: Self.underlineColor(for: mark.severity), .toolTip: mark.message],
+                forCharacterRange: mark.range
             )
         }
-        // Verweise zuletzt: Sie sind wichtiger und gewinnen bei Überschneidungen
-        let dashed = NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDash.rawValue
-        for problem in appliedProblems where NSMaxRange(problem.range) <= storage.length {
-            layoutManager.addTemporaryAttributes(
-                [.underlineStyle: dashed, .underlineColor: NSColor.systemRed, .toolTip: problem.message],
-                forCharacterRange: problem.range
-            )
+    }
+
+    private func allTextMarks() -> [TextMark] {
+        var marks = appliedHints.map { TextMark(severity: .hint, range: $0.range, message: $0.message) }
+        marks += appliedDiagnostics
+        marks += appliedProblems.map { TextMark(severity: .error, range: $0.range, message: $0.message) }
+        marks += buildLineMarks()
+        return marks
+    }
+
+    /// Zeilen mit Fehler oder Warnung des Builds: der Text der Zeile ohne Einrückung. Boxen zeigt nur die Zeilenleiste.
+    private func buildLineMarks() -> [TextMark] {
+        guard let session, let storage = textView.textStorage else { return [] }
+        let text = storage.mutableString
+        return appliedBuildLines.compactMap { line, severity -> TextMark? in
+            guard severity != .badBox, line >= 1, line <= session.lineIndex.lineCount else { return nil }
+            var range = session.lineIndex.contentRange(ofLineNumber: line)
+            while range.length > 0, [0x20, 0x09].contains(text.character(at: range.location)) {
+                range = NSRange(location: range.location + 1, length: range.length - 1)
+            }
+            guard range.length > 0 else { return nil }
+            let message = appliedBuildMessages[line] ?? (severity == .error ? "Fehler beim Kompilieren." : "Warnung beim Kompilieren.")
+            return TextMark(severity: severity == .error ? .error : .warning, range: range, message: message)
+        }
+    }
+
+    private static func underlineStyle(for severity: TextMark.Severity) -> Int {
+        switch severity {
+        case .hint: NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDot.rawValue
+        case .warning: NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDashDot.rawValue
+        case .error: NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDash.rawValue
+        }
+    }
+
+    private static func underlineColor(for severity: TextMark.Severity) -> NSColor {
+        switch severity {
+        case .hint: .systemBlue
+        case .warning: .systemOrange
+        case .error: .systemRed
         }
     }
 
@@ -414,6 +494,56 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
         guard let request, request != lastHandledCompletionRequest else { return }
         lastHandledCompletionRequest = request
         DispatchQueue.main.async { [weak self] in self?.completion.trigger() }
+    }
+
+    // MARK: Verwendungen
+
+    private func showUsages(of subject: RenameSubject, at location: Int) {
+        guard let loader = usageLoader, let open = openUsageHandler, let textView, let layoutManager = textView.layoutManager,
+              let container = textView.textContainer, let storage = textView.textStorage, storage.length > 0 else { return }
+        let character = NSRange(location: min(location, storage.length - 1), length: 1)
+        let glyphs = layoutManager.glyphRange(forCharacterRange: character, actualCharacterRange: nil)
+        var rect = layoutManager.boundingRect(forGlyphRange: glyphs, in: container)
+        rect.origin.x += textView.textContainerOrigin.x
+        rect.origin.y += textView.textContainerOrigin.y
+        usagePresenter.present(subject: subject, from: textView, at: rect, loader: loader, open: open)
+    }
+
+    // MARK: Oberste sichtbare Zeile
+
+    private func observeScrolling(of scrollView: NSScrollView) {
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(clipViewBoundsDidChange(_:)), name: NSView.boundsDidChangeNotification, object: scrollView.contentView
+        )
+    }
+
+    /// Nur echtes Scrollen zählt: Größenänderungen (Layout, Umbruch) verschieben den Ursprung nicht. Sonst könnte jede
+    /// Meldung über ein SwiftUI-Update eine neue Größenänderung und damit die nächste Meldung auslösen.
+    @objc private func clipViewBoundsDidChange(_ notification: Notification) {
+        let origin = scrollView.contentView.bounds.origin
+        guard origin != lastScrollOrigin else { return }
+        lastScrollOrigin = origin
+        scheduleTopLineReport()
+    }
+
+    func scheduleTopLineReport() {
+        topLineReportTask?.cancel()
+        topLineReportTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.topLineReportDelay)
+            guard !Task.isCancelled else { return }
+            self?.reportTopLine()
+        }
+    }
+
+    private func reportTopLine() {
+        guard let session, let textView, textView.window != nil else { return }
+        let point = NSPoint(x: textView.textContainerOrigin.x + 1, y: textView.visibleRect.minY + 1)
+        let location = textView.characterIndexForInsertion(at: point)
+        let line = session.lineIndex.clampedLine(containing: min(location, session.textStorage.length)) + 1
+        if let last = lastReportedTopLine, last.url == session.url, last.line == line { return }
+        lastReportedTopLine = (session.url, line)
+        onTopLineChanged?(session.url, line)
     }
 
     /// Meldet die Cursorzeile erst, wenn der Cursor kurz ruht – kein SwiftUI-Update pro Tastendruck.
@@ -461,6 +591,7 @@ final class EditorCoordinator: NSObject, NSTextViewDelegate {
     }
 
     func textDidChange(_ notification: Notification) {
+        scheduleTopLineReport()
         completion.textDidChange(insertedText: pendingReplacement)
         pendingReplacement = nil
     }

@@ -24,6 +24,11 @@ struct CompletionIndex: Equatable, Sendable {
     var projectEnvironments: Set<String> = []
     /// Abkürzungen und Glossareinträge (`\newacronym`, `\DeclareAcronym`, `\newglossaryentry` …)
     var acronyms: Set<String> = []
+    /// Dieselben mit Kurzform, Langform und Fundstelle (für Vorschläge und den Sprung)
+    var acronymEntries: [AcronymEntry] = []
+    /// Abkürzungen, die irgendwo mit `\gls`, `\ac` & Co. verwendet werden; `\glsaddall` macht alle zu benutzten
+    var usedAcronyms: Set<String> = []
+    var usesAllAcronyms = false
 
     static let empty = CompletionIndex()
 
@@ -51,7 +56,11 @@ struct CompletionIndex: Equatable, Sendable {
             guard FileKind(url: file) == .tex else { continue }
             index.projectCommands.formUnion(definedCommands(in: text))
             index.projectEnvironments.formUnion(EnvironmentNames.definedNames(in: text))
-            index.acronyms.formUnion(Acronyms.definedKeys(in: text))
+            let definitions = Acronyms.definitions(in: text, file: file)
+            index.acronymEntries += definitions
+            index.acronyms.formUnion(definitions.map(\.key))
+            index.usedAcronyms.formUnion(Acronyms.scan(text).filter { !$0.isDefinition }.map(\.key))
+            if Acronyms.usesAll(text) { index.usesAllAcronyms = true }
             for occurrence in LatexReferences.scan(text) {
                 switch occurrence.kind {
                 case .labelUse: index.usedLabels.insert(occurrence.key)
@@ -61,6 +70,7 @@ struct CompletionIndex: Equatable, Sendable {
             }
             if LatexReferences.citesEverything(text) { index.citesEverything = true }
         }
+        index.acronymEntries.sort { $0.key.localizedStandardCompare($1.key) == .orderedAscending }
         index.userCommands = commands.sorted()
         index.environments = environments.sorted()
         index.packageOptions = OptionScanner.scan(styleFiles)

@@ -114,6 +114,7 @@ private struct CompletionRow: View {
         case .environment: "square.stack.3d.up"
         case .label: "tag"
         case .citation: "books.vertical"
+        case .acronym: "textformat.abc"
         case .image: "photo"
         case .file: "doc.text"
         case .option: "slider.horizontal.3"
@@ -126,6 +127,7 @@ private struct CompletionRow: View {
         case .environment: .purple
         case .label: .orange
         case .citation: .brown
+        case .acronym: .pink
         case .image: .green
         case .file: .secondary
         case .option: .teal

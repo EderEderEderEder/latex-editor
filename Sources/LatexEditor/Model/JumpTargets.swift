@@ -4,6 +4,8 @@ import Foundation
 enum JumpTarget: Equatable, Sendable {
     case label(String)
     case citation(String)
+    /// Schlüssel einer Abkürzung oder eines Glossareintrags (`\gls{api}`)
+    case acronym(String)
     /// Pfad aus `\input`, `\include` oder `\subfile`, so wie er im Text steht
     case file(String)
 }
@@ -16,7 +18,9 @@ enum JumpTargetFinder {
     /// Ziel an einer Textstelle (UTF-16-Index, ein Index am Rand des Schlüssels zählt noch dazu) samt Bereich des
     /// Schlüssels bzw. Pfads. `\label{…}` selbst ist kein Ziel.
     static func target(at location: Int, in text: NSString) -> (target: JumpTarget, range: NSRange)? {
-        guard let hit = occurrence(at: location, in: text), hit.kind != .labelDefinition else { return fileTarget(at: location, in: text) }
+        guard let hit = occurrence(at: location, in: text), hit.kind != .labelDefinition else {
+            return acronymTarget(at: location, in: text) ?? fileTarget(at: location, in: text)
+        }
         return (hit.kind == .labelUse ? .label(hit.key) : .citation(hit.key), hit.range)
     }
 
@@ -28,6 +32,14 @@ enum JumpTargetFinder {
         }
         return ReferenceOccurrence(kind: found.kind, key: found.key,
                                    range: NSRange(location: found.range.location + lineRange.location, length: found.range.length))
+    }
+
+    private static func acronymTarget(at location: Int, in text: NSString) -> (target: JumpTarget, range: NSRange)? {
+        guard let (line, lineRange) = lineText(at: location, in: text) else { return nil }
+        let local = location - lineRange.location
+        guard let found = Acronyms.scan(line).first(where: { !$0.isDefinition && local >= $0.range.location && local <= NSMaxRange($0.range) })
+        else { return nil }
+        return (.acronym(found.key), NSRange(location: found.range.location + lineRange.location, length: found.range.length))
     }
 
     private static func fileTarget(at location: Int, in text: NSString) -> (target: JumpTarget, range: NSRange)? {

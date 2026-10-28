@@ -142,6 +142,9 @@ struct EditorBehaviorSettings: View {
     @AppStorage(EditorSettings.Key.wrapsLines) private var wrapsLines = true
     @AppStorage(EditorSettings.Key.indentation) private var indentation = Indentation.tab
     @AppStorage(EditorSettings.Key.tabWidth) private var tabWidth = EditorSettings.defaultTabWidth
+    @AppStorage(EditorSettings.Key.showsColumnGuide) private var showsColumnGuide = false
+    @AppStorage(EditorSettings.Key.columnGuideColumn) private var columnGuideColumn = EditorSettings.defaultColumnGuideColumn
+    @AppStorage(EditorSettings.Key.showsStickyHeading) private var showsStickyHeading = true
 
     var body: some View {
         Section {
@@ -159,7 +162,19 @@ struct EditorBehaviorSettings: View {
         } footer: {
             SettingsFootnote("Einrückung gilt für Tab-Taste, ⌘], Enter und das Einfügen-Fenster. Die HgbThesis nutzt Tabulatoren.")
         }
+        Section {
+            Toggle("Hilfslinie für die Spaltenbreite", isOn: $showsColumnGuide)
+            Stepper(value: $columnGuideColumn, in: EditorSettings.columnGuideRange) {
+                LabeledContent("Spalte", value: "\(columnGuideColumn)")
+            }
+            .disabled(!showsColumnGuide)
+            Toggle("Aktuellen Abschnitt oben anzeigen", isOn: $showsStickyHeading)
+        } footer: {
+            SettingsFootnote("Die Linie steht hinter dem Text bei der gewählten Spalte (Festbreitenschrift). Der Abschnittstitel bleibt am oberen Rand, solange man im Abschnitt schreibt.")
+        }
         ResetSection(keys: EditorSettings.Key.editorTab)
+            .onChange(of: showsColumnGuide) { EditorSettings.didChange(affectsText: false) }
+            .onChange(of: columnGuideColumn) { EditorSettings.didChange(affectsText: false) }
             .onChange(of: wrapsLines) { EditorSettings.didChange(affectsText: false) }
             .onChange(of: indentation) { EditorSettings.didChange(affectsText: false) }
             .onChange(of: tabWidth) { EditorSettings.didChange(affectsText: true) }
@@ -192,12 +207,13 @@ struct SpellingSettings: View {
 // MARK: - Schreibhilfen
 
 struct WritingSettings: View {
-    private static let keys = [CompletionSettings.automaticKey, LatexTextView.autoPairKey, Capitalization.automaticKey, WritingHints.enabledKey]
+    private static let keys = [CompletionSettings.automaticKey, LatexTextView.autoPairKey, Capitalization.automaticKey, WritingHints.enabledKey, SyntaxChecker.enabledKey]
 
     @AppStorage(CompletionSettings.automaticKey) private var automaticCompletion = true
     @AppStorage(LatexTextView.autoPairKey) private var autoPairBrackets = true
     @AppStorage(Capitalization.automaticKey) private var autoCapitalize = true
     @AppStorage(WritingHints.enabledKey) private var showsWritingHints = true
+    @AppStorage(SyntaxChecker.enabledKey) private var showsErrorsInText = true
 
     var body: some View {
         Section {
@@ -211,6 +227,12 @@ struct WritingSettings: View {
             Toggle("Schreibhinweise anzeigen", isOn: $showsWritingHints)
         } footer: {
             SettingsFootnote("Schreibhinweise sind blau gepunktet unterstrichen, z. B. doppelte Wörter oder „z.B.“ ohne schmales Leerzeichen.")
+        }
+        Section {
+            Toggle("Fehler und Warnungen im Text markieren", isOn: $showsErrorsInText)
+        } footer: {
+            SettingsFootnote("Rot gestrichelt: Fehler (fehlende Klammern, \\begin ohne \\end, offene Formeln, unbekannte Verweise, Fehler vom "
+                + "Kompilieren). Orange strichpunktiert: Warnungen (doppelte Labels, Warnungen vom Kompilieren). Die Meldung steht im Tooltip.")
         }
         ResetSection(keys: Self.keys)
     }

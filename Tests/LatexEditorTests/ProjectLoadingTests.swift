@@ -4,7 +4,7 @@ import Testing
 
 @Suite("FileTreeLoader")
 struct FileTreeLoaderTests {
-    @Test("Zeigt nur .tex, .bib und Bilder, versteckte Dateien nicht")
+    @Test("Zeigt alle Dateien außer Build-Hilfsdateien und versteckten")
     func filtersFileKinds() throws {
         let project = try TemporaryProject()
         defer { project.remove() }
@@ -16,7 +16,7 @@ struct FileTreeLoaderTests {
         let tree = FileTreeLoader.load(root: project.root)
         let names = Set(tree.collectFiles().map(\.url.lastPathComponent))
 
-        #expect(names == ["main.tex", "refs.bib", "logo.png", "foto.JPG", "grafik.pdf"])
+        #expect(names == ["main.tex", "refs.bib", "logo.png", "foto.JPG", "grafik.pdf", "notizen.txt"])
     }
 
     @Test("Lässt Ordner mit nur ausgeblendeten Dateien und versteckte Ordner weg, Ordner stehen vor Dateien")

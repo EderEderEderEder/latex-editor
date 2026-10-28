@@ -5,6 +5,7 @@ import Observation
 enum Palette: String, Identifiable {
     case quickOpen
     case goToLine
+    case imageLibrary
 
     var id: String { rawValue }
 }
@@ -23,6 +24,10 @@ final class PaletteStore {
 
     func presentGoToLine() {
         active = .goToLine
+    }
+
+    func presentImageLibrary() {
+        active = .imageLibrary
     }
 }
 
@@ -54,5 +59,34 @@ extension AppModel {
     func goToLine(_ line: Int) async {
         guard let url = editor.current?.url else { return }
         await editor.open(url, line: line)
+    }
+}
+
+extension AppModel {
+    /// Alle Bilder des Projekts, die `\includegraphics` nehmen kann; ohne die PDF-Ausgabe der Hauptdatei
+    func projectImages() -> [URL] {
+        let output = pdf.pdfURL?.standardizedFileURL
+        return (project.tree?.collectFiles().map(\.url) ?? [])
+            .filter { FileKind(url: $0) == .image && ImageImport.isSupported($0) && $0.standardizedFileURL != output }
+            .sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+    }
+
+    func presentImageLibrary() {
+        guard project.rootURL != nil else { return }
+        palette.presentImageLibrary()
+    }
+
+    /// Aus der Bibliothek: Einfügen-Fenster mit diesem Bild
+    func presentInsertImage(_ url: URL) {
+        presentInsert(.image)
+        insertion.image.file = url
+    }
+}
+
+extension AppModel {
+    /// Datei zu einem `\includegraphics`-Pfad: relativ zur Hauptdatei, zum Projekt und zur Datei selbst, mit `\graphicspath`
+    func resolveGraphics(_ path: String, from file: URL) -> URL? {
+        let bases = [project.mainFileURL?.deletingLastPathComponent(), project.rootURL, file.deletingLastPathComponent()].compactMap { $0 }
+        return GraphicsResolver.resolve(path, bases: bases, graphicsDirectories: completionProvider.index.catalog.graphicsDirectories)
     }
 }

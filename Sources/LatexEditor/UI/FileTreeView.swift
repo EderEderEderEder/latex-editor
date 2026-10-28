@@ -47,6 +47,13 @@ struct FileTreeView: View {
                 project.selectedURL = url
                 openSelection(url)
             }
+            // Nach „Rückgängig“: zeigen, was sich geändert hat (HIG `undo-and-redo.md`)
+            .onChange(of: model.fileActions.revealURL, initial: true) { _, url in
+                guard let url else { return }
+                model.fileActions.revealURL = nil
+                reveal(url)
+                if selection != url { selection = url }
+            }
             .onChange(of: editor.current?.url, initial: true) { _, url in
                 if selection != url { selection = url }
                 if let url { reveal(url) }
@@ -101,7 +108,7 @@ struct FileTreeView: View {
 
     private func dropOntoRoot(_ urls: [URL]) -> Bool {
         guard let root = project.rootURL else { return false }
-        for url in urls { Task { await model.move(url, into: root) } }
+        Task { await model.dropIntoProject(urls, folder: root) }
         return !urls.isEmpty
     }
 
@@ -155,8 +162,11 @@ private struct FileNodeRow: View {
     let node: FileNode
     @Binding var expanded: Set<URL>
 
+    /// Während etwas über diesem Ordner schwebt: Zeile hervorgehoben, damit klar ist, wohin es fällt
+    @State private var isDropTarget = false
+
     private func drop(_ urls: [URL], into folder: URL) -> Bool {
-        for url in urls { Task { await model.move(url, into: folder) } }
+        Task { await model.dropIntoProject(urls, folder: folder) }
         return !urls.isEmpty
     }
 
@@ -168,8 +178,9 @@ private struct FileNodeRow: View {
                 }
             } label: {
                 FileRow(node: node, label: node.name, git: model.git)
+                    .background(isDropTarget ? Color.accentColor.opacity(0.25) : .clear, in: RoundedRectangle(cornerRadius: 5))
                     .draggable(node.url)
-                    .dropDestination(for: URL.self) { urls, _ in drop(urls, into: node.url) }
+                    .dropDestination(for: URL.self) { urls, _ in drop(urls, into: node.url) } isTargeted: { isDropTarget = $0 }
             }
             .tag(node.url)
         } else {
@@ -207,11 +218,12 @@ private struct FileRow: View {
             // `.sidebar`-Listen ignorieren die vererbte Schrift, deshalb an jeder Zeile
             .scaledFont(.body)
         } icon: {
-            Image(systemName: node.isDirectory ? "folder" : node.kind.symbolName)
+            Image(systemName: node.isDirectory ? "folder" : FileGlyph.symbol(for: node.url))
                 .scaledFont(.body)
                 .foregroundStyle(iconColor)
         }
         .help(node.isDirectory || node.kind.isEditable ? node.name : "\(node.name) – Doppelklick öffnet extern")
+        .modifier(ImageHoverPreview(url: node.url, isEnabled: node.kind == .image && !node.isDirectory))
     }
 
     /// Statusbuchstabe für geänderte Dateien, Punkt für Ordner mit Änderungen darin
@@ -238,5 +250,33 @@ private struct FileRow: View {
         case .image: return .green
         case .other: return .secondary
         }
+    }
+}
+
+/// Maus kurz auf einer Bilddatei: Popover mit dem Bild, den Maßen und der Dateigröße (verschwindet mit der Maus)
+private struct ImageHoverPreview: ViewModifier {
+    private static let delay = Duration.milliseconds(600)
+
+    let url: URL
+    let isEnabled: Bool
+    @State private var isShown = false
+    @State private var task: Task<Void, Never>?
+
+    func body(content: Content) -> some View {
+        content
+            .onHover { inside in
+                task?.cancel()
+                guard isEnabled else { return }
+                guard inside else {
+                    isShown = false
+                    return
+                }
+                task = Task {
+                    try? await Task.sleep(for: Self.delay)
+                    guard !Task.isCancelled else { return }
+                    isShown = true
+                }
+            }
+            .popover(isPresented: $isShown, arrowEdge: .trailing) { ImagePreviewView(url: url) }
     }
 }

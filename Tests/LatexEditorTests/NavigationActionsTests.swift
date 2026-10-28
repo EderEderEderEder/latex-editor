@@ -85,6 +85,8 @@ struct CommandClickTests {
         let pair = RenameScope.pair(harness.session.url, EnvironmentPair(name: "x", begin: NSRange(), end: NSRange()))
         harness.textView.renameScopes = { location in location < source.range(of: "Text").location ? [label, pair] : [] }
         harness.textView.onRename = { renamed = $0 }
+        var usages: [(RenameSubject, Int)] = []
+        harness.textView.onShowUsages = { usages.append(($0, $1)) }
 
         func rightClick(at index: Int) throws -> NSMenu? {
             let event = try #require(NSEvent.mouseEvent(
@@ -94,10 +96,19 @@ struct CommandClickTests {
             return harness.textView.menu(for: event)
         }
         let menu = try #require(try rightClick(at: source.range(of: "fig:abc").location + 2))
-        #expect(menu.items.prefix(3).map(\.title) == ["Label „fig:abc“ umbenennen …", "Umgebung „x“ umbenennen (dieses Paar) …", ""])
+        #expect(menu.items.prefix(4).map(\.title) == [
+            "Label „fig:abc“ umbenennen …", "Umgebung „x“ umbenennen (dieses Paar) …", "Verwendungen von Label „fig:abc“ anzeigen …", "",
+        ])
         let item = menu.items[0]
         _ = item.target?.perform(item.action, with: item)
         #expect(renamed == label)
+        let usageItem = menu.items[2]
+        _ = usageItem.target?.perform(usageItem.action, with: usageItem)
+        #expect(usages.map(\.0) == [RenameSubject(kind: .label, name: "fig:abc")])
+
+        harness.textView.setSelectedRange(NSRange(location: source.range(of: "fig:abc").location + 1, length: 0))
+        harness.textView.showUsages(nil)
+        #expect(usages.count == 2, "Menü Bearbeiten: der Name unter dem Cursor")
 
         let plainMenu = try rightClick(at: source.range(of: "Text").location + 1)
         #expect(plainMenu?.items.contains { $0.title.contains("umbenennen") } != true)
@@ -179,6 +190,27 @@ struct NavigationActionsTests {
         eins.undoManager.undo()
         #expect(eins.textStorage.string.contains("\\label{cha:eins}"), "⌘Z nimmt die Umbenennung zurück")
         model.fileActions.notice = nil
+    }
+
+    @Test("Verwendungen: Definition und alle Stellen der Dateien, ungespeicherter Text zählt")
+    func usages() async throws {
+        let project = try makeProject()
+        defer { project.remove() }
+        await model.openProject(project.root)
+        await model.editor.open(project.url("zwei.tex"), asPreview: false)
+        let session = try #require(model.editor.current)
+        session.replaceText(with: session.textStorage.string + "Noch \\autoref{cha:eins}\n", actionName: "Tippen")
+
+        let found = await model.usages(of: RenameSubject(kind: .label, name: "cha:eins"))
+        #expect(found.map { $0.file.lastPathComponent } == ["eins.tex", "zwei.tex", "zwei.tex", "zwei.tex"])
+        #expect(found.map(\.isDefinition) == [true, false, false, false])
+        #expect(found.last?.line == 4)
+
+        let listModel = UsageListModel(subject: RenameSubject(kind: .label, name: "cha:eins"))
+        await listModel.load { _ in found }
+        #expect(listModel.definitions.count == 1 && listModel.uses == 3)
+        #expect(listModel.usesByFile.map(\.file.lastPathComponent) == ["zwei.tex"])
+        #expect(listModel.summary == "3 Verwendungen in 2 Dateien")
     }
 
     @Test("Ungültige oder vorhandene Namen werden nicht umbenannt; Dialog öffnet sich mit dem Label unter dem Cursor")

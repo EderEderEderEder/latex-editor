@@ -27,12 +27,28 @@ final class LatexTextView: NSTextView {
 
     // MARK: Aktuelle Zeile
 
+    /// Spalte der Hilfslinie (nur bei Festbreitenschrift sinnvoll); `nil`: keine Linie
+    var columnGuideColumn: Int? {
+        didSet { if columnGuideColumn != oldValue { needsDisplay = true } }
+    }
+
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
+        drawColumnGuide(in: rect)
         let band = currentLineRect.intersection(rect)
         guard !band.isEmpty else { return }
         EditorAppearance.currentLineColor.setFill()
         band.fill(using: .sourceOver)
+    }
+
+    /// Eine feine, durchgehende Linie hinter dem Text bei Spalte N, damit man Zeilenlängen einschätzen kann
+    private func drawColumnGuide(in rect: NSRect) {
+        guard let column = columnGuideColumn, let textContainer else { return }
+        let glyphWidth = ("0" as NSString).size(withAttributes: [.font: font ?? EditorAppearance.font]).width
+        let x = (textContainerOrigin.x + textContainer.lineFragmentPadding + glyphWidth * CGFloat(column)).rounded() + 0.5
+        guard x >= rect.minX - 1, x <= rect.maxX + 1, x < bounds.width else { return }
+        NSColor.separatorColor.setFill()
+        NSRect(x: x - 0.5, y: rect.minY, width: 1, height: rect.height).fill(using: .sourceOver)
     }
 
     override func setSelectedRanges(
@@ -46,6 +62,7 @@ final class LatexTextView: NSTextView {
 
     override func didChangeText() {
         super.didChangeText()
+        closeImagePreview()
         scheduleCurrentLineHighlightUpdate()
     }
 
@@ -101,6 +118,7 @@ final class LatexTextView: NSTextView {
     private var isAutoPairing: Bool { UserDefaults.standard.object(forKey: Self.autoPairKey) as? Bool ?? true }
 
     override func insertText(_ string: Any, replacementRange: NSRange) {
+        closeImagePreview()
         // Nur echtes Tippen (kein Ersetzen per IME, kein Einfügen aus der Zwischenablage)
         let isTyping = replacementRange.location == NSNotFound && !hasMarkedText()
         let character = string as? String
@@ -230,9 +248,12 @@ final class LatexTextView: NSTextView {
     /// „Umbenennen …“ im Kontextmenü: Möglichkeiten an einer Zeichenposition und Ausführen
     var renameScopes: ((Int) -> [RenameScope])?
     var onRename: ((RenameScope) -> Void)?
+    /// „Verwendungen anzeigen“: Name und Stelle (UTF-16) im Text
+    var onShowUsages: ((RenameSubject, Int) -> Void)?
     private var jumpTrackingArea: NSTrackingArea?
 
     override func mouseDown(with event: NSEvent) {
+        closeImagePreview()
         if unfoldPlaceholder(atWindowPoint: event.locationInWindow) { return }
         if let target = commandClickTarget(for: event) {
             onJumpToTarget?(target)
@@ -269,7 +290,7 @@ final class LatexTextView: NSTextView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let jumpTrackingArea { removeTrackingArea(jumpTrackingArea) }
-        let area = NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self, userInfo: nil)
+        let area = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self, userInfo: nil)
         addTrackingArea(area)
         jumpTrackingArea = area
     }
@@ -277,6 +298,63 @@ final class LatexTextView: NSTextView {
     override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
         updateJumpCursor(flags: event.modifierFlags, windowPoint: event.locationInWindow)
+        scheduleImagePreview(atWindowPoint: event.locationInWindow)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        closeImagePreview()
+    }
+
+    // MARK: Bildvorschau über `\includegraphics{…}`
+
+    /// Datei zu einem Pfad im Text (Projekt, `\graphicspath`); gesetzt vom Editor
+    var imageResolver: ((String) -> URL?)?
+    private let imagePresenter = ImagePopoverPresenter()
+    private var imagePreviewTask: Task<Void, Never>?
+    private static let imagePreviewDelay = Duration.milliseconds(600)
+
+    /// Zeigt nach kurzer Ruhe der Maus auf dem Pfad die Vorschau; sobald die Maus den Pfad verlässt, verschwindet sie.
+    private func scheduleImagePreview(atWindowPoint point: NSPoint) {
+        imagePreviewTask?.cancel()
+        guard let hit = imagePathHit(atWindowPoint: point) else {
+            if imagePresenter.shownURL != nil { closeImagePreview() }
+            return
+        }
+        guard let url = imageResolver?(hit.path) else {
+            closeImagePreview()
+            return
+        }
+        guard imagePresenter.shownURL != url else { return }
+        imagePreviewTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.imagePreviewDelay)
+            guard !Task.isCancelled, let self, let rect = self.rect(forCharacters: hit.range) else { return }
+            self.imagePresenter.present(url, relativePath: hit.path, from: self, at: rect)
+        }
+    }
+
+    private func imagePathHit(atWindowPoint point: NSPoint) -> (path: String, range: NSRange)? {
+        guard imageResolver != nil, let storage = textStorage, storage.length > 0 else { return nil }
+        let local = convert(point, from: nil)
+        guard visibleRect.contains(local) else { return nil }
+        return GraphicsResolver.path(at: characterIndexForInsertion(at: local), in: storage.mutableString)
+    }
+
+    /// Welches Bild die Vorschau gerade zeigt (für Tests)
+    var shownImagePreviewURL: URL? { imagePresenter.shownURL }
+
+    func closeImagePreview() {
+        imagePreviewTask?.cancel()
+        imagePresenter.close()
+    }
+
+    private func rect(forCharacters range: NSRange) -> NSRect? {
+        guard let layoutManager, let textContainer else { return nil }
+        let glyphs = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+        var rect = layoutManager.boundingRect(forGlyphRange: glyphs, in: textContainer)
+        rect.origin.x += textContainerOrigin.x
+        rect.origin.y += textContainerOrigin.y
+        return rect
     }
 
     override func flagsChanged(with event: NSEvent) {
@@ -306,12 +384,46 @@ final class LatexTextView: NSTextView {
         guard !scopes.isEmpty else { return menu }
         menu.insertItem(.separator(), at: 0)
         for scope in scopes.reversed() {
+            guard case let .project(subject) = scope else { continue }
+            let item = NSMenuItem(title: "Verwendungen von \(subject.displayName) anzeigen …", action: #selector(showUsagesFromMenu(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = UsageRequest(subject: subject, location: location)
+            menu.insertItem(item, at: 0)
+        }
+        for scope in scopes.reversed() {
             let item = NSMenuItem(title: scope.menuTitle, action: #selector(renameFromMenu(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = scope
             menu.insertItem(item, at: 0)
         }
         return menu
+    }
+
+    private final class UsageRequest: NSObject {
+        let subject: RenameSubject
+        let location: Int
+
+        init(subject: RenameSubject, location: Int) {
+            self.subject = subject
+            self.location = location
+        }
+    }
+
+    @objc private func showUsagesFromMenu(_ sender: NSMenuItem) {
+        guard let request = sender.representedObject as? UsageRequest else { return }
+        onShowUsages?(request.subject, request.location)
+    }
+
+    /// Menü Bearbeiten › Verwendungen anzeigen (⌥⌘U): der Name unter dem Cursor
+    @objc func showUsages(_ sender: Any?) {
+        let location = selectedRange().location
+        for scope in renameScopes?(location) ?? [] {
+            if case let .project(subject) = scope {
+                onShowUsages?(subject, location)
+                return
+            }
+        }
+        NSSound.beep()
     }
 
     @objc private func renameFromMenu(_ sender: NSMenuItem) {

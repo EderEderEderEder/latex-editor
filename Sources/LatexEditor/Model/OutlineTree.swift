@@ -49,4 +49,20 @@ enum OutlineTree {
         }
         return hasSeenFile ? result : nil
     }
+
+    /// Die Überschriften, in denen `line` liegt, von außen nach innen (Kapitel › Abschnitt › Unterabschnitt). Steht vor
+    /// der ersten Überschrift der Datei, gelten die Überschriften der Dateien davor (Gliederung in Dokumentreihenfolge).
+    static func sectionChain(in entries: [OutlineEntry], file: URL, line: Int) -> [OutlineEntry] {
+        guard let current = currentEntry(in: entries, file: file, line: line),
+              var index = entries.firstIndex(where: { $0.id == current.id }) else { return [] }
+        var chain = [current]
+        var level = current.level
+        while index > 0, level != .chapter {
+            index -= 1
+            guard entries[index].level.rawValue < level.rawValue else { continue }
+            chain.insert(entries[index], at: 0)
+            level = entries[index].level
+        }
+        return chain
+    }
 }

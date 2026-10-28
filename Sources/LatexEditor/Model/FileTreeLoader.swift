@@ -2,13 +2,13 @@ import Foundation
 
 /// Liest den Dateibaum synchron. Muss außerhalb des Main-Threads aufgerufen werden.
 enum FileTreeLoader {
-    static func load(root: URL) -> FileNode {
+    static func load(root: URL, showsBuildFiles: Bool = false) -> FileNode {
         Signposts.interval("FileTreeLoad") {
-            scan(directory: root) ?? FileNode(url: root, children: [])
+            scan(directory: root, showsBuildFiles: showsBuildFiles) ?? FileNode(url: root, children: [])
         }
     }
 
-    private static func scan(directory: URL) -> FileNode? {
+    private static func scan(directory: URL, showsBuildFiles: Bool) -> FileNode? {
         let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey]
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: directory,
@@ -21,13 +21,13 @@ enum FileTreeLoader {
             let values = try? entry.resourceValues(forKeys: Set(keys))
             if values?.isSymbolicLink == true { continue }
             if values?.isDirectory == true {
-                guard let subtree = scan(directory: entry.standardizedFileURL) else { continue }
+                guard let subtree = scan(directory: entry.standardizedFileURL, showsBuildFiles: showsBuildFiles) else { continue }
                 // Ordner, die nur ausgeblendete Dateien enthalten (z. B. build/ mit .aux), bleiben weg;
                 // wirklich leere Ordner (neu angelegt) werden gezeigt.
                 let hasVisibleContent = !(subtree.children ?? []).isEmpty
                 guard hasVisibleContent || isTrulyEmpty(entry) else { continue }
                 children.append(subtree)
-            } else if FileKind(url: entry).isShownInTree {
+            } else if BuildArtifacts.isShownInTree(entry, showsBuildFiles: showsBuildFiles) {
                 children.append(FileNode(url: entry.standardizedFileURL, children: nil))
             }
         }

@@ -61,7 +61,12 @@ final class AppModel {
     var confirmReferenceUpdate: @MainActor (_ edits: [ReferenceEdit], _ itemName: String) -> ReferenceUpdateChoice =
         AppModel.showReferenceUpdateAlert
     var confirmTrash: @MainActor (_ title: String, _ detail: String) -> Bool = AppModel.showTrashAlert
-    var moveToTrash: @MainActor (URL) throws -> Void = { try FileManager.default.trashItem(at: $0, resultingItemURL: nil) }
+    /// Legt in den Papierkorb und liefert den Ort dort (für „Rückgängig“); `nil`, wenn er unbekannt ist
+    var moveToTrash: @MainActor (URL) throws -> URL? = { url in
+        var result: NSURL?
+        try FileManager.default.trashItem(at: url, resultingItemURL: &result)
+        return result as URL?
+    }
     /// Nachfrage bei ungespeicherten Änderungen (in Tests ersetzbar, weil `NSAlert` modal blockiert).
     var promptForUnsavedChanges: @MainActor (_ title: String, _ names: [String]) -> UnsavedChoice = AppModel.showUnsavedChangesAlert
     /// Nachfrage, ob ohne Bereitgestelltes alle Änderungen committet werden sollen (in Tests ersetzbar)
@@ -98,6 +103,8 @@ final class AppModel {
         search.sources = { [weak self] in self?.searchSources() ?? [] }
         referenceChecks.knownLabels = { [weak self] in self?.completionProvider.knownLabels() }
         referenceChecks.knownCitations = { [weak self] in self?.completionProvider.knownCitations() }
+        referenceChecks.knownAcronyms = { [weak self] in self?.completionProvider.knownAcronyms() }
+        referenceChecks.duplicateLabelDefinitions = { [weak self] in self?.completionProvider.duplicateLabels() ?? [:] }
         completionProvider.onIndexChanged = { [weak self] in
             guard let self else { return }
             referenceChecks.indexChanged(completionProvider.index, isLoaded: completionProvider.hasIndex,

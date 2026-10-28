@@ -162,6 +162,62 @@ struct ReferenceUnderlineTests {
         #expect(!underline(at: word.location, in: harness))
     }
 
+    @Test("Fehler rot gestrichelt, Warnungen orange strichpunktiert; die schwerere Markierung gewinnt")
+    func diagnosticsStyles() async throws {
+        let text = "\\textbf{a und \\label{x} \\label{x}"
+        let harness = CompletionHarness(text: text)
+        try await harness.start()
+        let source = text as NSString
+        let brace = source.range(of: "{")
+        let label = source.range(of: "x")
+        let marks = [
+            TextMark(severity: .error, range: brace, message: "Klammer"),
+            TextMark(severity: .warning, range: label, message: "doppelt"),
+            TextMark(severity: .error, range: label, message: "schwerer"),
+        ]
+        harness.coordinator.updateTextMarks(problems: [], hints: [], diagnostics: marks)
+        try await Task.sleep(for: .milliseconds(60))
+        let layoutManager = try #require(harness.textView.layoutManager)
+        func attribute(_ key: NSAttributedString.Key, at index: Int) -> Any? {
+            layoutManager.temporaryAttribute(key, atCharacterIndex: index, effectiveRange: nil)
+        }
+        #expect(attribute(.underlineColor, at: brace.location) as? NSColor == .systemRed)
+        #expect(attribute(.underlineColor, at: label.location) as? NSColor == .systemRed)
+        #expect(attribute(.toolTip, at: label.location) as? String == "schwerer")
+        let dashed = NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDash.rawValue
+        #expect(attribute(.underlineStyle, at: brace.location) as? Int == dashed)
+
+        let warning = [TextMark(severity: .warning, range: label, message: "doppelt")]
+        harness.coordinator.updateTextMarks(problems: [], hints: [], diagnostics: warning)
+        try await Task.sleep(for: .milliseconds(60))
+        #expect(attribute(.underlineColor, at: label.location) as? NSColor == .systemOrange)
+        let dashDot = NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDashDot.rawValue
+        #expect(attribute(.underlineStyle, at: label.location) as? Int == dashDot)
+        #expect(attribute(.underlineStyle, at: brace.location) == nil)
+    }
+
+    @Test("Meldungen des Builds unterstreichen die Zeile ohne Einrückung; Boxen und leere Zeilen nicht")
+    func buildLinesUnderlined() async throws {
+        let text = "eins\n   zwei fehler\n\ndrei warnung\nvier box\n"
+        let harness = CompletionHarness(text: text)
+        try await harness.start()
+        let source = text as NSString
+        let marks: [Int: BuildIssue.Severity] = [2: .error, 3: .error, 4: .warning, 5: .badBox]
+        harness.coordinator.updateTextMarks(problems: [], hints: [], buildLines: marks, buildMessages: [2: "Undefined control sequence."])
+        try await Task.sleep(for: .milliseconds(60))
+        let layoutManager = try #require(harness.textView.layoutManager)
+        func color(at index: Int) -> NSColor? {
+            layoutManager.temporaryAttribute(.underlineColor, atCharacterIndex: index, effectiveRange: nil) as? NSColor
+        }
+        let errorLine = source.range(of: "zwei")
+        #expect(color(at: errorLine.location) == .systemRed)
+        #expect(color(at: errorLine.location - 1) == nil, "Einrückung bleibt frei")
+        #expect(layoutManager.temporaryAttribute(.toolTip, atCharacterIndex: errorLine.location, effectiveRange: nil) as? String == "Undefined control sequence.")
+        #expect(color(at: source.range(of: "drei").location) == .systemOrange)
+        #expect(color(at: source.range(of: "vier").location) == nil)
+        #expect(color(at: 0) == nil)
+    }
+
     @Test("Ränge hinter dem Textende werden ignoriert")
     func staleRanges() async throws {
         let harness = CompletionHarness(text: "kurz")

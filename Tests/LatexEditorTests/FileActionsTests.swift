@@ -5,7 +5,7 @@ import Testing
 
 /// Ersetzt Nachfragen und Papierkorb, damit nichts Modales blockiert und nie der echte Papierkorb benutzt wird.
 @MainActor
-private struct Sandbox {
+struct Sandbox {
     let model = AppModel.shared
     let project: TemporaryProject
     let trashFolder: TemporaryProject
@@ -20,12 +20,16 @@ private struct Sandbox {
         model.confirmReferenceUpdate = { _, _ in updateChoice }
         model.confirmTrash = { _, _ in trashConfirmation }
         let folder = trashFolder.root
+        model.fileActions.undoManagerOverride = UndoManager()
         model.moveToTrash = { url in
-            try FileManager.default.moveItem(at: url, to: folder.appendingPathComponent(url.lastPathComponent))
+            let target = folder.appendingPathComponent(url.lastPathComponent)
+            try FileManager.default.moveItem(at: url, to: target)
+            return target
         }
     }
 
     func cleanUp() {
+        model.fileActions.undoManagerOverride = nil
         project.remove()
         trashFolder.remove()
     }
@@ -35,7 +39,7 @@ private struct Sandbox {
     }
 }
 
-private func makeThesis(_ sandbox: Sandbox) throws {
+func makeThesis(_ sandbox: Sandbox) throws {
     try sandbox.project.write("main.tex", """
         \\documentclass{report}
         \\graphicspath{{images/}}

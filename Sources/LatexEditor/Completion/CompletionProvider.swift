@@ -77,6 +77,8 @@ final class CompletionProvider {
                 CompletionItem(kind: .citation, text: entry.key, detail: entry.summary,
                                searchableExtra: [entry.allAuthors, entry.title, entry.year].joined(separator: " "))
             }
+        case .argument(.acronym):
+            index.acronymEntries.map { CompletionItem(kind: .acronym, text: $0.key, detail: $0.summary, searchableExtra: $0.summary) }
         case .argument(.graphics): index.graphicsReferences.map { CompletionItem(kind: .image, text: $0) }
         case .argument(.input): index.inputPaths.map { CompletionItem(kind: .file, text: $0) }
         case .argument(.beginEnvironment): environmentNames.map { CompletionItem(kind: .environment, text: $0) }
@@ -137,6 +139,17 @@ final class CompletionProvider {
     /// Bekannte Labels für die Prüfung; `nil`, solange der Index nicht gelesen ist
     func knownLabels() -> Set<String>? {
         hasIndex ? Set(allLabels().map(\.label)) : nil
+    }
+
+    /// Mehrfach definierte Labels mit allen Stellen; leer, solange der Index nicht gelesen ist
+    func duplicateLabels() -> [String: [LabelEntry]] {
+        hasIndex ? DuplicateLabelChecker.duplicates(in: allLabels()) : [:]
+    }
+
+    /// Bekannte Abkürzungen für die Prüfung; `nil` ohne Index oder ohne jede Definition (dann stehen sie vielleicht in
+    /// einer Datei, die das Projekt nicht kennt, und jede Verwendung wäre „unbekannt“)
+    func knownAcronyms() -> Set<String>? {
+        hasIndex && !index.acronyms.isEmpty ? index.acronyms : nil
     }
 
     /// Bekannte Literaturschlüssel; `nil` ohne Index oder ohne Einträge (z. B. Literaturdatei außerhalb des Projekts)

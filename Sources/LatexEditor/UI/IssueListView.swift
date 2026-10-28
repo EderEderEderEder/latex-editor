@@ -35,7 +35,7 @@ struct IssueListView: View {
             EmptyStateView("Kompilieren nicht möglich", systemImage: "exclamationmark.triangle", description: message)
         } else if model.build.issues.isEmpty, !hasHints {
             EmptyStateView(emptyTitle, systemImage: emptySymbol, description: emptyDescription)
-        } else if filteredIssues.isEmpty, filteredLabels.isEmpty, filteredSources.isEmpty, !filter.isEmpty {
+        } else if filteredIssues.isEmpty, filteredLabels.isEmpty, filteredSources.isEmpty, filteredDuplicates.isEmpty, filteredAcronyms.isEmpty, !filter.isEmpty {
             NoFilterMatches(filter: filter)
         } else {
             List {
@@ -62,6 +62,19 @@ struct IssueListView: View {
 
     private var hasHints: Bool {
         !model.referenceChecks.unusedLabels.isEmpty || !model.referenceChecks.unusedSources.isEmpty
+            || !model.referenceChecks.duplicateLabels.isEmpty || !model.referenceChecks.unusedAcronyms.isEmpty
+    }
+
+    private var filteredAcronyms: [AcronymEntry] {
+        guard !filter.isEmpty else { return model.referenceChecks.unusedAcronyms }
+        return model.referenceChecks.unusedAcronyms.filter {
+            $0.key.localizedCaseInsensitiveContains(filter) || $0.summary.localizedCaseInsensitiveContains(filter)
+        }
+    }
+
+    private var filteredDuplicates: [LabelEntry] {
+        guard !filter.isEmpty else { return model.referenceChecks.duplicateLabels }
+        return model.referenceChecks.duplicateLabels.filter { $0.label.localizedCaseInsensitiveContains(filter) }
     }
 
     private var filteredLabels: [LabelEntry] {
@@ -79,10 +92,28 @@ struct IssueListView: View {
     @ViewBuilder
     private var hints: some View {
         Section {
+            if !filteredDuplicates.isEmpty {
+                hintGroup("duplicates", title: "Doppelte Labels (\(filteredDuplicates.count))") {
+                    ForEach(filteredDuplicates, id: \.self) { entry in
+                        HintRow(title: entry.label, detail: "\(entry.file.lastPathComponent):\(entry.line)") {
+                            Task { await model.editor.open(entry.file, line: entry.line) }
+                        }
+                    }
+                }
+            }
             if !filteredLabels.isEmpty {
                 hintGroup("labels", title: "Ungenutzte Labels (\(filteredLabels.count))") {
                     ForEach(filteredLabels) { entry in
                         HintRow(title: entry.label, detail: "\(entry.file.lastPathComponent):\(entry.line)") {
+                            Task { await model.editor.open(entry.file, line: entry.line) }
+                        }
+                    }
+                }
+            }
+            if !filteredAcronyms.isEmpty {
+                hintGroup("acronyms", title: "Ungenutzte Abkürzungen (\(filteredAcronyms.count))") {
+                    ForEach(filteredAcronyms, id: \.self) { entry in
+                        HintRow(title: entry.key, detail: entry.summary) {
                             Task { await model.editor.open(entry.file, line: entry.line) }
                         }
                     }
@@ -100,7 +131,7 @@ struct IssueListView: View {
             }
         } header: {
             Text("Hinweise").scaledFont(.subheadline, weight: .semibold)
-                .help("Kein Fehler: Diese Labels und Quellen werden im Text nirgends verwendet.")
+                .help("Kein Fehler beim Kompilieren: doppelte Labels (LaTeX warnt), ungenutzte Labels und nicht zitierte Quellen.")
         }
     }
 

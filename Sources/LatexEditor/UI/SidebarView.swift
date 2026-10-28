@@ -21,7 +21,7 @@ struct SidebarView: View {
                 // „Suchen“ hat eigene Felder oben
                 if model.sidebar.tab != .search {
                     Divider()
-                    SidebarFilterField(text: filterBinding, placeholder: filterPlaceholder)
+                    SidebarFilterField(text: filterBinding, placeholder: filterPlaceholder, showsBuildFiles: buildFilesBinding)
                 }
             }
             // Grundschrift aller Listen (Zeilen ohne eigene Schrift)
@@ -39,6 +39,12 @@ struct SidebarView: View {
         case .issues: IssueListView(model: model, filter: filter)
         case .changes: ChangesListView(model: model, filter: filter)
         }
+    }
+
+    /// Nur der Dateibaum hat Optionen im Filter
+    private var buildFilesBinding: Binding<Bool>? {
+        guard model.sidebar.tab == .files else { return nil }
+        return Binding(get: { model.project.showsBuildFiles }, set: { model.project.showsBuildFiles = $0 })
     }
 
     private var filterPlaceholder: String {
@@ -216,11 +222,12 @@ struct NoFilterMatches: View {
 private struct SidebarFilterField: View {
     @Binding var text: String
     let placeholder: String
+    /// Nur im Dateibaum: Schalter „Build-Dateien zeigen“ im Menü des Filtersymbols
+    var showsBuildFiles: Binding<Bool>?
 
     var body: some View {
         HStack(spacing: 4) {
-            Image(systemName: "line.3.horizontal.decrease.circle")
-                .foregroundStyle(.secondary)
+            icon
             TextField(placeholder, text: $text)
                 .textFieldStyle(.plain)
             if !text.isEmpty {
@@ -233,5 +240,24 @@ private struct SidebarFilterField: View {
         .scaledFont(.callout)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
+    }
+
+    @ViewBuilder
+    private var icon: some View {
+        if let showsBuildFiles {
+            Menu {
+                Toggle("Build-Dateien zeigen", isOn: showsBuildFiles)
+            } label: {
+                Image(systemName: "line.3.horizontal.decrease.circle" + (showsBuildFiles.wrappedValue ? ".fill" : ""))
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .foregroundStyle(showsBuildFiles.wrappedValue ? Color.accentColor : .secondary)
+            .help("Filteroptionen: Hilfsdateien von LaTeX (.aux, .log, .synctex.gz …) \(showsBuildFiles.wrappedValue ? "verbergen" : "zeigen")")
+            .accessibilityLabel("Filteroptionen")
+        } else {
+            Image(systemName: "line.3.horizontal.decrease.circle").foregroundStyle(.secondary)
+        }
     }
 }

@@ -10,7 +10,11 @@ final class OutlineStore {
     /// Abschnitt an der Cursorposition (wird nur gesetzt, wenn er sich ändert).
     private(set) var currentEntryID: String?
 
+    /// Überschriften an der obersten sichtbaren Zeile des Editors, von außen nach innen (wird nur bei Änderung gesetzt)
+    private(set) var sectionChain: [OutlineEntry] = []
+
     @ObservationIgnored private var cursor: (file: URL, line: Int)?
+    @ObservationIgnored private var viewport: (file: URL, line: Int)?
     /// Nach einer geänderten Gliederung oder anderen Include-Struktur (z. B. für die Projekt-Wortzahl)
     @ObservationIgnored var onChanged: (() -> Void)?
 
@@ -25,6 +29,7 @@ final class OutlineStore {
             tree = []
             includingFile = [:]
             currentEntryID = nil
+            sectionChain = []
             return
         }
         refreshTask = Task { [parser] in
@@ -57,6 +62,17 @@ final class OutlineStore {
         updateCurrentEntry()
     }
 
+    /// Vom Editor entprellt gemeldete oberste sichtbare Zeile (1-basiert); `nil`: keine Datei im Editor.
+    func updateViewport(file: URL?, topLine: Int) {
+        viewport = file.map { ($0, topLine) }
+        updateSectionChain()
+    }
+
+    private func updateSectionChain() {
+        let chain = viewport.map { OutlineTree.sectionChain(in: entries, file: $0.file, line: $0.line) } ?? []
+        if chain != sectionChain { sectionChain = chain }
+    }
+
     private func updateCurrentEntry() {
         let newID = cursor.flatMap { OutlineTree.currentEntry(in: entries, file: $0.file, line: $0.line)?.id }
         if newID != currentEntryID { currentEntryID = newID }
@@ -67,6 +83,7 @@ final class OutlineStore {
             entries = result.entries
             tree = OutlineTree.build(result.entries)
             updateCurrentEntry()
+            updateSectionChain()
         }
         if result.includingFile != includingFile {
             includingFile = result.includingFile

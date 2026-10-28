@@ -45,7 +45,9 @@ struct GitResetTests {
         let trash = try TemporaryProject()
         model.git.extraEnvironment = TemporaryRepository.isolatedEnvironment
         model.moveToTrash = { url in
-            try FileManager.default.moveItem(at: url, to: trash.root.appendingPathComponent(url.lastPathComponent))
+            let target = trash.root.appendingPathComponent(url.lastPathComponent)
+            try FileManager.default.moveItem(at: url, to: target)
+            return target
         }
         var details: [String] = []
         model.confirmReset = { _, lines in details = lines; return confirm }

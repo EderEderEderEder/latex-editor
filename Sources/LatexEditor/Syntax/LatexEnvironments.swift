@@ -11,13 +11,8 @@ enum LatexEnvironments {
     /// Sprachumgebungen der HgbThesis (`PythonCode`, `JavaCode` …)
     private static let codeSuffix = "Code"
 
-    /// Echte Verbatim-Umgebungen (der Tokenizer färbt ihren Inhalt als Code). Die Sprachumgebungen der HgbThesis
-    /// (`PythonCode` …) gehören nur zu `isCode`: Der Tokenizer kennt sie bisher nicht als Verbatim.
-    static func isVerbatim(_ name: String) -> Bool {
-        verbatimLike.contains(name)
-    }
-
     /// Quelltext, der nicht gesetzt, sondern abgedruckt wird (Zeichen wie `%` oder `\ref` sind dort keine LaTeX-Befehle).
+    /// Der Tokenizer färbt den Inhalt als Code.
     static func isCode(_ name: String) -> Bool {
         verbatimLike.contains(name) || (name.hasSuffix(codeSuffix) && name.count > codeSuffix.count)
     }

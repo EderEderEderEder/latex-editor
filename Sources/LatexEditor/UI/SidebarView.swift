@@ -21,7 +21,7 @@ struct SidebarView: View {
                 // „Suchen“ hat eigene Felder oben
                 if model.sidebar.tab != .search {
                     Divider()
-                    SidebarFilterField(text: filterBinding, placeholder: filterPlaceholder, showsBuildFiles: buildFilesBinding)
+                    SidebarFilterField(text: filterBinding, placeholder: filterPlaceholder, fileFilter: fileFilterProject)
                 }
             }
             // Grundschrift aller Listen (Zeilen ohne eigene Schrift)
@@ -42,9 +42,8 @@ struct SidebarView: View {
     }
 
     /// Nur der Dateibaum hat Optionen im Filter
-    private var buildFilesBinding: Binding<Bool>? {
-        guard model.sidebar.tab == .files else { return nil }
-        return Binding(get: { model.project.showsBuildFiles }, set: { model.project.showsBuildFiles = $0 })
+    private var fileFilterProject: ProjectStore? {
+        model.sidebar.tab == .files ? model.project : nil
     }
 
     private var filterPlaceholder: String {
@@ -213,17 +212,25 @@ private struct SidebarStatistics: View {
 /// Filter ohne Treffer (statt einer leeren Liste)
 struct NoFilterMatches: View {
     let filter: String
+    /// Im Dateibaum: Wie viele Dateitypen ausgeblendet sind (ein Treffer kann unter ihnen liegen)
+    var hiddenTypeCount = 0
 
     var body: some View {
-        EmptyStateView("Keine Treffer", systemImage: "magnifyingglass", description: "Nichts passt zu „\(filter)“.")
+        EmptyStateView("Keine Treffer", systemImage: "magnifyingglass", description: description)
+    }
+
+    private var description: String {
+        let base = "Nichts passt zu „\(filter)“."
+        guard hiddenTypeCount > 0 else { return base }
+        return base + " \(hiddenTypeCount == 1 ? "Ein Dateityp ist" : "\(hiddenTypeCount) Dateitypen sind") ausgeblendet."
     }
 }
 
 private struct SidebarFilterField: View {
     @Binding var text: String
     let placeholder: String
-    /// Nur im Dateibaum: Schalter „Build-Dateien zeigen“ im Menü des Filtersymbols
-    var showsBuildFiles: Binding<Bool>?
+    /// Nur im Dateibaum: Menü des Filtersymbols mit den Dateitypen
+    var fileFilter: ProjectStore?
 
     var body: some View {
         HStack(spacing: 4) {
@@ -244,18 +251,8 @@ private struct SidebarFilterField: View {
 
     @ViewBuilder
     private var icon: some View {
-        if let showsBuildFiles {
-            Menu {
-                Toggle("Build-Dateien zeigen", isOn: showsBuildFiles)
-            } label: {
-                Image(systemName: "line.3.horizontal.decrease.circle" + (showsBuildFiles.wrappedValue ? ".fill" : ""))
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .foregroundStyle(showsBuildFiles.wrappedValue ? Color.accentColor : .secondary)
-            .help("Filteroptionen: Hilfsdateien von LaTeX (.aux, .log, .synctex.gz …) \(showsBuildFiles.wrappedValue ? "verbergen" : "zeigen")")
-            .accessibilityLabel("Filteroptionen")
+        if let fileFilter {
+            FileFilterMenu(project: fileFilter)
         } else {
             Image(systemName: "line.3.horizontal.decrease.circle").foregroundStyle(.secondary)
         }

@@ -263,7 +263,7 @@ private struct LatexLineScanner {
         if LatexEnvironments.isMath(environment) {
             regionStart = index
             state = .mathEnvironment(environment)
-        } else if LatexEnvironments.isVerbatim(environment) {
+        } else if LatexEnvironments.isCode(environment) {
             scanOptionalArguments()
             state = .verbatimEnvironment(environment)
         }

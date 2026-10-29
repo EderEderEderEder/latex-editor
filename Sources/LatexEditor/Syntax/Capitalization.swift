@@ -29,6 +29,8 @@ enum Capitalization {
     /// Bei Wörtern aus Großbuchstaben + „s“ (Mehrzahl von Abkürzungen: „IDs“, „PCs“) nichts ändern
     private static let pluralSuffix = "s"
     private static let minimumTwoCapitalsLength = 3
+    private static let endCommand = "\\end{"
+    private static let maximumEnvironmentCommandLength = 40
 
     /// Korrektur für das Wort, das direkt vor `end` endet (gerade wurde ein Leerzeichen oder Satzzeichen getippt).
     static func correction(forWordEndingAt end: Int, in text: NSString) -> TextCorrection? {
@@ -66,6 +68,7 @@ enum Capitalization {
     }
 
     /// Beginnt bei `wordStart` ein Satz? Nach `.`, `!`, `?` (nicht nach Abkürzung, Zahl oder „…“) oder am Absatzanfang.
+    /// Nach einer abgesetzten Formel mit Leerzeile geht der Satz weiter, es sei denn, die Formel endet mit einem Satzzeichen.
     static func startsSentence(at wordStart: Int, in text: NSString) -> Bool {
         var index = wordStart - 1
         var newlines = 0
@@ -78,13 +81,42 @@ enum Capitalization {
             }
             index -= 1
         }
-        if newlines >= 2 { return true }
+        if newlines >= 2 {
+            guard index >= 0, let formulaStart = displayMathStart(endingAt: index, in: text) else { return true }
+            return formulaEndsSentence(before: formulaStart, in: text)
+        }
         guard index >= 0 else { return false }
         switch text.character(at: index) {
         case Unit.exclamation, Unit.question: return true
         case Unit.period: return isSentenceEndingPeriod(at: index, in: text)
         default: return false
         }
+    }
+
+    /// Beginn der abgesetzten Formel (`\end{equation}`, `\]`, `$$`), die bei `last` endet; `nil`, wenn dort keine endet
+    private static func displayMathStart(endingAt last: Int, in text: NSString) -> Int? {
+        switch text.character(at: last) {
+        case Unit.closeBrace:
+            let searchStart = max(0, last - maximumEnvironmentCommandLength)
+            let found = text.range(of: endCommand, options: .backwards, range: NSRange(location: searchStart, length: last - searchStart))
+            guard found.location != NSNotFound else { return nil }
+            let nameStart = NSMaxRange(found)
+            let name = text.substring(with: NSRange(location: nameStart, length: last - nameStart))
+            return LatexEnvironments.isMath(name) ? found.location : nil
+        case Unit.closeBracket where last > 0 && text.character(at: last - 1) == Unit.backslash:
+            return last - 1
+        case Unit.dollar where last > 0 && text.character(at: last - 1) == Unit.dollar:
+            return last - 1
+        default:
+            return nil
+        }
+    }
+
+    private static func formulaEndsSentence(before formulaEnd: Int, in text: NSString) -> Bool {
+        var index = formulaEnd - 1
+        while index >= 0, isWhitespace(text.character(at: index)) { index -= 1 }
+        guard index >= 0 else { return false }
+        return [Unit.period, Unit.exclamation, Unit.question].contains(text.character(at: index))
     }
 
     private static func isSentenceEndingPeriod(at period: Int, in text: NSString) -> Bool {
@@ -107,6 +139,10 @@ enum Capitalization {
         static let period = UInt16(UInt8(ascii: "."))
         static let exclamation = UInt16(UInt8(ascii: "!"))
         static let question = UInt16(UInt8(ascii: "?"))
+        static let closeBrace = UInt16(UInt8(ascii: "}"))
+        static let closeBracket = UInt16(UInt8(ascii: "]"))
+        static let backslash = UInt16(UInt8(ascii: "\\"))
+        static let dollar = UInt16(UInt8(ascii: "$"))
         static let openParenthesis = UInt16(UInt8(ascii: "("))
         /// Satzende nach Klammer, Anführung oder Formel: „(siehe oben).“, „\enquote{so}.“, „$x$.“
         static let closers: Set<UInt16> = Set(")]}\"'$“”«»".utf16)

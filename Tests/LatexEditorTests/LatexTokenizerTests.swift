@@ -128,6 +128,19 @@ struct LatexTokenizerTests {
         #expect(end.state == .normal)
     }
 
+    @Test("Sprachumgebungen der HgbThesis (PythonCode …) sind Code wie lstlisting")
+    func languageCodeEnvironment() {
+        let begin = scan("\\begin{PythonCode}[numbers=none]")
+        #expect(begin.state == .verbatimEnvironment("PythonCode"))
+
+        let body = scan("def f(x): return x  # \\ref{a} $", from: begin.state)
+        #expect(body.tokens == [Pair(.verbatim, "def f(x): return x  # \\ref{a} $")])
+
+        let end = scan("\\end{PythonCode}", from: body.state)
+        #expect(end.state == .normal)
+        #expect(scan("\\begin{Code}").state == .normal, "Nur mit Sprachvorsatz, „Code“ allein nicht")
+    }
+
     @Test("Kommentar in Mathe beendet die Mathe nicht")
     func commentInsideMath() {
         let result = scan("$a % b")

@@ -23,6 +23,19 @@ struct CapitalizationTests {
         #expect(corrected("Er sagte \\enquote{so}. dann") == "Dann")
     }
 
+    @Test("Nach einer abgesetzten Formel geht der Satz weiter, außer sie endet mit einem Satzzeichen")
+    func afterDisplayMath() {
+        let equation = "muss die Bedingung\n\n\\begin{equation}\n  a = 1\n\\end{equation}\n\n"
+        #expect(corrected(equation + "erfüllt") == nil)
+        #expect(corrected("muss gelten\n\n\\begin{align*}\n a &= 1 \\\\\n b &= 2\n\\end{align*}\n\nwobei") == nil)
+        #expect(corrected("muss gelten\n\n\\[\n a = 1\n\\]\n\nerfüllt") == nil)
+        #expect(corrected("muss gelten\n\n$$\n a = 1\n$$\n\nerfüllt") == nil)
+        #expect(corrected("Es gilt\n\n\\begin{equation}\n  a = 1,\n\\end{equation}\n\nwobei") == nil)
+        #expect(corrected("Es gilt\n\n\\begin{equation}\n  a = 1.\n\\end{equation}\n\nneuer") == "Neuer", "Satzzeichen in der Formel")
+        #expect(corrected("Es gilt\n\n\\[\n a = 1 .\n\\]\n\nneuer") == "Neuer")
+        #expect(corrected("Liste\n\\begin{itemize}\n\\item a\n\\end{itemize}\n\nneuer") == "Neuer", "Nur Formeln")
+    }
+
     @Test("Kein Satzende: Abkürzungen, Zahlen, Auslassungspunkte, Wortmitte, Textanfang")
     func notSentenceStart() {
         #expect(corrected("Das ist z. B. ein") == nil)
@@ -116,6 +129,21 @@ struct WritingHintsTests {
         #expect(marked("Absatz.\n\n  neuer Absatz.") == ["neuer"])
         #expect(marked("Siehe z. B. dort und DIe Wand.").filter { !$0.contains(".") } == ["DIe"])
         #expect(kinds("Viele IDs. Und mehr.").isEmpty)
+    }
+
+    @Test("Fortgesetzter Satz nach einer Gleichung ist kein Fehlalarm")
+    func noHintAfterEquation() {
+        let text = """
+            Um einen validen Zustand darzustellen, muss die Bedingung
+
+            \\begin{equation}
+              \\lvert\\alpha\\rvert^2 + \\lvert\\beta\\rvert^2 = 1
+            \\end{equation}
+
+            erfüllt sein.
+            """
+        #expect(!kinds(text).contains(.lowercaseSentenceStart))
+        #expect(kinds("Text.\n\nerfüllt sein.").contains(.lowercaseSentenceStart))
     }
 
     @Test("Nur Fließtext: nicht in Präambel, Befehlen, Schlüsseln, Mathe, Kommentaren, Code, \\verb")

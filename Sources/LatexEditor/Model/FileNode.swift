@@ -34,20 +34,27 @@ enum FileKind: Sendable {
 
 /// Symbol einer Datei im Baum nach ihrer Endung (SF Symbols; ein Symbol pro Art, nicht pro Endung)
 enum FileGlyph {
-    private static let groups: [(symbol: String, extensions: Set<String>)] = [
-        ("doc.richtext", ["pdf"]),
-        ("photo", ["png", "jpg", "jpeg", "gif", "tif", "tiff", "svg", "heic", "webp", "bmp", "eps"]),
-        ("doc.zipper", ["zip", "gz", "tar", "tgz", "7z", "rar", "bz2", "xz"]),
-        ("chevron.left.forwardslash.chevron.right", ["py", "swift", "java", "c", "cpp", "h", "hpp", "js", "ts", "sh", "rb", "go", "rs", "cs", "php", "kt", "m", "r", "sql", "html", "css"]),
-        ("tablecells", ["csv", "tsv", "xlsx", "xls", "numbers", "ods"]),
-        ("doc.plaintext", ["txt", "md", "markdown", "rtf"]),
-        ("gearshape", ["sty", "cls", "bst", "def", "cfg", "clo", "ini"]),
-        ("curlybraces", ["json", "xml", "yaml", "yml", "toml", "plist"]),
-        ("film", ["mp4", "mov", "m4v", "avi"]),
-        ("waveform", ["mp3", "wav", "m4a", "aac"]),
-        ("rectangle.on.rectangle", ["pptx", "ppt", "key"]),
-        ("doc.text", ["docx", "doc", "pages", "odt"]),
+    private static let groups: [(symbol: String, title: String, extensions: Set<String>)] = [
+        ("doc.richtext", "PDF", ["pdf"]),
+        ("photo", "Bilder", ["png", "jpg", "jpeg", "gif", "tif", "tiff", "svg", "heic", "webp", "bmp", "eps"]),
+        ("doc.zipper", "Archive", ["zip", "gz", "tar", "tgz", "7z", "rar", "bz2", "xz"]),
+        ("chevron.left.forwardslash.chevron.right", "Code", ["py", "swift", "java", "c", "cpp", "h", "hpp", "js", "ts", "sh", "rb", "go", "rs", "cs", "php", "kt", "m", "r", "sql", "html", "css"]),
+        ("tablecells", "Tabellen", ["csv", "tsv", "xlsx", "xls", "numbers", "ods"]),
+        ("doc.plaintext", "Text", ["txt", "md", "markdown", "rtf"]),
+        ("gearshape", "Pakete und Klassen", ["sty", "cls", "bst", "def", "cfg", "clo", "ini"]),
+        ("curlybraces", "Daten", ["json", "xml", "yaml", "yml", "toml", "plist"]),
+        ("film", "Video", ["mp4", "mov", "m4v", "avi"]),
+        ("waveform", "Audio", ["mp3", "wav", "m4a", "aac"]),
+        ("rectangle.on.rectangle", "Präsentationen", ["pptx", "ppt", "key"]),
+        ("doc.text", "Dokumente", ["docx", "doc", "pages", "odt"]),
     ]
+
+    /// Namen der Gruppen in der Reihenfolge, in der der Filter des Dateibaums sie zeigt
+    static let groupTitles = groups.map(\.title)
+
+    static func groupTitle(forExtension fileExtension: String) -> String? {
+        groups.first { $0.extensions.contains(fileExtension) }?.title
+    }
 
     static func symbol(for url: URL) -> String {
         switch FileKind(url: url) {
@@ -68,6 +75,10 @@ enum BuildArtifacts {
         "glo", "gls", "glg", "acn", "acr", "alg", "xdv", "dvi", "synctex", "thm", "loa", "lol",
     ]
     private static let suffixes = [".synctex.gz", ".run.xml", "-blx.bib", ".synctex(busy)", ".bib.bak"]
+
+    static func isArtifactExtension(_ fileExtension: String) -> Bool {
+        extensions.contains(fileExtension)
+    }
 
     static func isArtifact(_ url: URL) -> Bool {
         let name = url.lastPathComponent.lowercased()

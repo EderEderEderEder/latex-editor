@@ -21,16 +21,19 @@ struct FileTreeView: View {
     @State private var selection: URL?
 
     var body: some View {
-        if let tree = project.tree {
+        if let fullTree = project.tree {
+            let tree = fullTree.hidingFileTypes(project.hiddenFileExtensions, keeping: editor.current?.url)
             Group {
-                if filter.isEmpty {
+                if filter.isEmpty, (tree.children ?? []).isEmpty, !(fullTree.children ?? []).isEmpty {
+                    AllFileTypesHidden(showAll: project.showAllFileTypes)
+                } else if filter.isEmpty {
                     List(selection: $selection) {
                         ForEach(tree.children ?? []) { node in
                             FileNodeRow(model: model, node: node, expanded: expandedBinding)
                         }
                     }
                 } else if matches(in: tree).isEmpty {
-                    NoFilterMatches(filter: filter)
+                    NoFilterMatches(filter: filter, hiddenTypeCount: project.hiddenFileExtensions.count)
                 } else {
                     List(matches(in: tree), selection: $selection) { node in
                         FileRow(node: node, label: relativePath(of: node, in: tree), git: model.git)
@@ -278,5 +281,19 @@ private struct ImageHoverPreview: ViewModifier {
                 }
             }
             .popover(isPresented: $isShown, arrowEdge: .trailing) { ImagePreviewView(url: url) }
+    }
+}
+
+/// Alle Dateien sind durch den Typfilter ausgeblendet: statt einer leeren Liste ein Ausweg
+private struct AllFileTypesHidden: View {
+    let showAll: () -> Void
+
+    var body: some View {
+        EmptyStateView(
+            "Alle Dateien ausgeblendet", systemImage: "eye.slash",
+            description: "Der Filter unten blendet alle Dateitypen dieses Projekts aus."
+        ) {
+            Button("Alle Dateitypen zeigen", action: showAll)
+        }
     }
 }

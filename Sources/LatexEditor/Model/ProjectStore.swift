@@ -25,7 +25,17 @@ final class ProjectStore {
         }
     }
 
+    /// Endungen (klein, ohne Punkt, „“ = ohne Endung), die der Dateibaum nicht zeigt; gilt für alle Projekte. Nur die
+    /// Anzeige: Schnell öffnen, Zähler und Suche kennen weiter alle Dateien.
+    private(set) var hiddenFileExtensions: Set<String> {
+        didSet {
+            guard hiddenFileExtensions != oldValue else { return }
+            defaults.set(hiddenFileExtensions.sorted(), forKey: Self.hiddenFileExtensionsKey)
+        }
+    }
+
     static let showsBuildFilesKey = "showsBuildFiles"
+    static let hiddenFileExtensionsKey = "hiddenFileExtensions"
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var reloadTask: Task<Void, Never>?
@@ -36,6 +46,15 @@ final class ProjectStore {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         showsBuildFiles = defaults.bool(forKey: Self.showsBuildFilesKey)
+        hiddenFileExtensions = Set(defaults.stringArray(forKey: Self.hiddenFileExtensionsKey) ?? [])
+    }
+
+    func setFileType(_ fileExtension: String, hidden: Bool) {
+        if hidden { hiddenFileExtensions.insert(fileExtension) } else { hiddenFileExtensions.remove(fileExtension) }
+    }
+
+    func showAllFileTypes() {
+        hiddenFileExtensions = []
     }
 
     func open(root: URL) async {

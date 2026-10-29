@@ -22,7 +22,7 @@ scripts/install-app.sh       # baut und installiert nach /Applications
 scripts/demo-projekt.sh      # Testdaten/Arbeitskopie/ zum Ausprobieren neu anlegen
 ```
 
-Es gibt keinen Linter. Voller Testlauf: ca. 100 s; hängt er (siehe `Tests/CLAUDE.md`), nicht blind wiederholen. Handtests und UI-Checkliste: `TESTING.md` (fortlaufend nummeriert, zuletzt #253).
+Es gibt keinen Linter. Voller Testlauf: ca. 100 s; hängt er (siehe `Tests/CLAUDE.md`), nicht blind wiederholen. Handtests und UI-Checkliste: `TESTING.md` (fortlaufend nummeriert, zuletzt #255).
 
 ## Landkarte (`Sources/LatexEditor/`)
 

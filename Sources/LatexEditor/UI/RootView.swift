@@ -47,11 +47,13 @@ struct RootView: View {
                 )
         } detail: {
             workspace.overlay {
-                SidebarPeekPanel(model: model, peek: sidebarPeek, width: Self.sidebarWidths.ideal * zoom)
+                if isSidebarCollapsed {
+                    SidebarPeekPanel(model: model, peek: sidebarPeek, width: Self.sidebarWidths.ideal * zoom)
+                }
             }
         }
-        // Eigener Button (Hover zeigt die eingeklappte Seitenleiste); ⌃⌘S im Menü bleibt beim System
-        .toolbar(removing: .sidebarToggle)
+        // Hover über dem Seitenleisten-Button des Systems zeigt die eingeklappte Seitenleiste
+        .background(SidebarButtonHover(peek: sidebarPeek, isCollapsed: isSidebarCollapsed))
         .onChange(of: columnVisibility) { sidebarPeek.dismiss() }
         .interfaceZoomRoot()
         // Nicht der App-Name (HIG `toolbars.md › Titles`)
@@ -125,11 +127,6 @@ struct RootView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .navigation) {
-            SidebarToggleButton(peek: sidebarPeek, isCollapsed: isSidebarCollapsed) {
-                columnVisibility = isSidebarCollapsed ? .all : .detailOnly
-            }
-        }
         ToolbarItem(placement: .principal) {
             Picker("Ansicht", selection: $viewMode) {
                 ForEach(ViewMode.allCases, id: \.self) { mode in

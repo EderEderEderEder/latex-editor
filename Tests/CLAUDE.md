@@ -1,0 +1,12 @@
+# Tests/ – Regeln und Diagnose
+
+- Aufruf immer `scripts/test.sh [--filter …]`; nie nacktes `swift test` (ohne Flags: "no such module 'Testing'" oder still 0 Tests). `--filter` ist ein Regex auf Test- und Suitennamen, Umlaute im Namen matchen nicht zuverlässig: auf den Funktionsnamen filtern.
+- **Parallel**: Über 100 Suiten laufen gleichzeitig. Tests mit `AppModel.shared` gehören unter `AppModelSuite` (serielles Dach in `WindowLayoutTests.swift`), sonst zieht eine Gruppe der anderen das Projekt weg.
+- **UserDefaults nur über `temporaryDefaults()`**, nie `.standard`. Nie Dateien in `~/Library/Preferences` erzeugen.
+- **Echte Prozesse und Fenster**: `CompletionHarness` (CompletionTests.swift) = echter `EditorCoordinator` im Offscreen-Fenster; `Sandbox` (FileActionsTests.swift) ersetzt Nachfragen, Papierkorb und Undo-Manager; `TemporaryProject`, `LargeDocument`, `DemoProject.copy(to:)` in `Support/`. Tests, die `Testdaten/` brauchen, überspringen sich ohne.
+- **Zeitabhängiges nie mit festem `sleep` prüfen**: unter Last kommt die entprellte Meldung spät. Stattdessen abfragen (`for _ in 0..<250 where !bedingung { try await Task.sleep(…) }`). Zeitbudgets messen den schnellsten von mehreren Läufen (`fastestDuration`).
+- **`NSApp` ist in Tests `nil`**: `NSApp?.mainWindow` statt `NSApp.mainWindow`. Offscreen-Fenster früherer Tests hängen am gemeinsamen Modell: `WindowLayoutTests.discardWindowsOfEarlierTests`.
+- **Bekannt unzuverlässig**: `EditorSettingsTests.lineWrapping` (schlägt auch auf dem letzten Commit gelegentlich fehl), „Statuslauf für das Demo-Projekt bleibt schnell“ in `GitActionsTests` (Zeittest, unter Last). Ein einzelner Fehlschlag dort ist kein Fehler der eigenen Änderung; Test allein wiederholen.
+- **Hängender voller Lauf** (selten, Ursache nicht endgültig geklärt, `docs/VERLAUF.md`): Lauf im Hintergrund starten (PID merken!), Fortschritt am Logfile (`stat -f %m`) beobachten, bei Stillstand `sample <PID> 3 -file x.txt` und im Hauptthread nach `LineNumberRulerView.visibleLabels`/`setFrameSize` suchen. Beenden nur den eigenen Prozessbaum (`pgrep -P` rekursiv), nie per Name. Teilmengen einzeln zu laufen, grenzt ein (`--filter AppModelSuite`, `--skip AppModelSuite`).
+- **Bilder zur Sichtprüfung** (PNG per `cacheDisplay` in den Scratchpad) mit einer *vorübergehenden* Testdatei erzeugen und danach löschen.
+- Handtests, die nur mit echter Maus/Toolbar/Fenster gehen, stehen in `../TESTING.md`.

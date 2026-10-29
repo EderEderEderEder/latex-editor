@@ -492,7 +492,7 @@ Vorher einmal kompilieren (⌘B), damit `main.synctex.gz` existiert.
 | 235 | ⌘, : Bereiche durchklicken, Suchfeld „tab“, „pdf“, „xyz“ | Systemeinstellungen-Optik (Symbol, Titel, Beschreibung); Suche zeigt passende Bereiche bzw. „Keine Treffer“; nach Schließen und Öffnen ist der letzte Bereich wieder da |
 | 236 | Darstellung: Farbschema-Karten anklicken; System auf Dunkel umschalten | Editor und Vorschau wechseln sofort; Karten zeigen die dunklen Farben; kein eigener Hell/Dunkel-Schalter mehr |
 | 237 | Seitenleiste einklappen (Button oder ⌃⌘S), Maus auf den Seitenleisten-Button, dann nach unten in die Vorschau, dann weg | Seitenleiste schwebt über dem Editor, bleibt beim Wechsel von Button zu Vorschau, verschwindet kurz nach dem Verlassen; Klick auf den Button klappt sie fest wieder aus; Dateien/Tabs in der Vorschau sind bedienbar |
-| 238 | Seitenleiste ausgeklappt: Maus auf den Button | Keine Vorschau; Tooltip „Seitenleiste ausblenden (⌃⌘S)“ |
+| 238 | Seitenleiste ausgeklappt: Maus auf den Button | Keine Vorschau |
 | 239 | Im Text `\textbf{a` tippen, dann `\begin{figure}` ohne `\end`, dann `Ein $x` und Leerzeile | Kurz nach der Tipp-Pause rot gestrichelt (`{a`, `\begin{figure}`, `$x`), Tooltip erklärt; nach der Korrektur weg |
 | 240 | Dasselbe `\label{x}` in zwei Dateien; Seitenleiste Meldungen | Orange strichpunktiert, Tooltip nennt die andere Datei und Zeile; unter „Hinweise“ „Doppelte Labels (2)“ |
 | 241 | Kompilieren mit einem Fehler und einer Warnung | Die Zeilen sind im Text unterstrichen (rot bzw. orange) zusätzlich zur Marke in der Zeilenleiste; Box-Warnungen nur in der Leiste |
@@ -507,3 +507,4 @@ Vorher einmal kompilieren (⌘B), damit `main.synctex.gz` existiert.
 | 250 | Maus auf eine Bilddatei im Baum, dann auf den Pfad in `\includegraphics{…}` | Nach kurzer Pause Popover mit Bild, Maßen und Größe; Maus weg, Klick oder Tippen schließt |
 | 251 | Einfügen › Bildbibliothek … (⌥⌘I), suchen, Doppelklick | Raster aller Projektbilder (ohne das PDF der Hauptdatei); Doppelklick öffnet das Einfügen-Fenster mit dem Bild |
 | 252 | `\newacronym{api}{API}{…}` anlegen, `\gls{a` tippen; `\gls{xyz}`; ⌘-Klick auf `api` | Vorschlag „api – API – Application …“; `xyz` rot mit Tooltip; Sprung zur Definition; ungenutzte Abkürzungen unter „Hinweise“ |
+| 253 | Toolbar links neben dem Projektnamen, Seitenleiste ein- und ausgeklappt | Genau ein Seitenleisten-Button (der des Systems); Hover darauf zeigt eingeklappt die Vorschau (#237), auch nach mehrmaligem Ein-/Ausklappen und Projektwechsel |

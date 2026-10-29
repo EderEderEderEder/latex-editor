@@ -9,7 +9,9 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "LatexEditor",
-            path: "Sources/LatexEditor"
+            path: "Sources/LatexEditor",
+            // Hinweise für Claude Code, nicht Teil der App
+            exclude: ["App/CLAUDE.md", "Editor/CLAUDE.md", "UI/CLAUDE.md"]
         ),
         .testTarget(
             name: "LatexEditorTests",

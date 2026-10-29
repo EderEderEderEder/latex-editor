@@ -1,3 +1,4 @@
+import SwiftUI
 import Testing
 @testable import LatexEditor
 
@@ -37,6 +38,52 @@ struct SidebarPeekTests {
         peek.hover(.panel, inside: false)
         try await waitUntilHidden(peek)
         #expect(!peek.isShown)
+    }
+
+    @Test("Hover hängt am Seitenleisten-Button des Systems und zeigt nur eingeklappt etwas")
+    func tracksSystemToggleButton() async throws {
+        let window = makeSplitViewWindow()
+        let deadline = ContinuousClock.now + Self.timeout
+        while SidebarButtonHoverTracker.toggleButtonView(in: window) == nil, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let buttonView = try #require(SidebarButtonHoverTracker.toggleButtonView(in: window))
+
+        let peek = SidebarPeek(hideDelay: Self.delay)
+        let tracker = SidebarButtonHoverTracker(peek: peek)
+        tracker.attach(in: window)
+        #expect(buttonView.trackingAreas.contains { $0.owner === tracker })
+
+        let entered = try #require(enterExitEvent(.mouseEntered, in: window))
+        tracker.mouseEntered(with: entered)
+        #expect(!peek.isShown)
+        tracker.isCollapsed = true
+        tracker.mouseEntered(with: entered)
+        #expect(peek.isShown)
+        tracker.mouseExited(with: try #require(enterExitEvent(.mouseExited, in: window)))
+        try await waitUntilHidden(peek)
+        #expect(!peek.isShown)
+        window.close()
+    }
+
+    private func makeSplitViewWindow() -> NSWindow {
+        let content = NavigationSplitView { Text("Seitenleiste") } detail: { Text("Arbeitsbereich") }
+        let controller = NSHostingController(rootView: content)
+        controller.sceneBridgingOptions = [.toolbars]
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 500),
+            styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.contentViewController = controller
+        return window
+    }
+
+    private func enterExitEvent(_ type: NSEvent.EventType, in window: NSWindow) -> NSEvent? {
+        NSEvent.enterExitEvent(
+            with: type, location: .zero, modifierFlags: [], timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil
+        )
     }
 
     @Test("dismiss blendet sofort aus und verwirft den Hover")

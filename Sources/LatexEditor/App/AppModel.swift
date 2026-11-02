@@ -86,6 +86,7 @@ final class AppModel {
     let markPopover = MarkPopoverPresenter()
     /// PDF → Quelltext für Markierungen; in Tests ersetzbar (sonst SyncTeX des letzten Builds)
     var markBackwardLookup: ((Int, CGPoint) -> SyncTeXSourceLocation?)?
+    var markForwardOverride: ((URL, Int) -> SyncTeXBox?)?
 
     init() {
         editor.onDidSave = { [weak self] in self?.didSave() }

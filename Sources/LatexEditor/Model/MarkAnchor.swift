@@ -52,6 +52,10 @@ struct MarkAnchor: Codable, Equatable, Sendable {
     var after: String
     /// Die ersten (Anfang) bzw. letzten (Ende) Wörter der Markierung im PDF, kleingeschrieben; verfeinern die Zeile auf das Wort
     var words: [String]
+    /// Kommen die Wörter in der Zeile mehrfach vor (Gleichungsnummer „(1)“ neben „= 1“), merkt sich das: mit wie vielen Wörtern
+    /// gesucht wurde und der wievielte Treffer es war (am Ende der Markierung von hinten gezählt). Fehlt bei älteren Dateien.
+    var matchedWords: Int? = nil
+    var occurrence: Int? = nil
 }
 
 enum MarkAnchorLocator {

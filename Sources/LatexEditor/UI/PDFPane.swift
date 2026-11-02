@@ -30,6 +30,8 @@ struct PDFPane: View {
 
 private struct PDFStatusBar: View {
     private static let separatorHeight: CGFloat = 14
+    private static let activeBackgroundOpacity = 0.3
+    private static let activeCornerRadius: CGFloat = 5
 
     let model: AppModel
     @Environment(\.interfaceScale) private var scale
@@ -56,6 +58,7 @@ private struct PDFStatusBar: View {
                 .foregroundStyle(synctex.followCursor ? Color.accentColor : .secondary)
                 .help("PDF folgt Cursor: Das PDF scrollt zur Stelle, an der du schreibst. ⌘J springt einmalig, ⌘-Klick ins PDF springt in den Text.")
             Divider().frame(height: Self.separatorHeight * scale)
+            markingControl
             marksButton
             Spacer()
             Text(pageLabel)
@@ -67,11 +70,42 @@ private struct PDFStatusBar: View {
         .disabled(store.pdfURL == nil)
     }
 
+    /// Stift mit kleinem Pfeil: Knopf schaltet den Markierungsmodus, das Menü wählt die Farbe
+    private var markingControl: some View {
+        let color = model.marks.lastColor
+        let isOn = store.isMarkingMode
+        return Menu {
+            ForEach(MarkColor.allCases, id: \.self) { choice in
+                Toggle(isOn: Binding(get: { choice == color }, set: { _ in model.chooseMarkColor(choice) })) {
+                    Label { Text(choice.title) } icon: { Image(nsImage: choice.swatch) }
+                }
+            }
+        } label: {
+            Label("Markierungsmodus", systemImage: "highlighter")
+        } primaryAction: {
+            model.toggleMarkingMode()
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        // Außen statt im Label: Das Label eines Menüs übernimmt Farbe und Variante nicht. Aktiv: Farbe der Markierung,
+        // gefülltes Symbol und getönter Grund (nicht nur die Farbe zeigt es an).
+        .symbolVariant(isOn ? .fill : .none)
+        .foregroundStyle(isOn ? Color(nsColor: color.iconColor) : .secondary)
+        .padding(.horizontal, 3)
+        .background(isOn ? Color(nsColor: color.baseColor).opacity(Self.activeBackgroundOpacity) : .clear, in: RoundedRectangle(cornerRadius: Self.activeCornerRadius))
+        .help(isOn
+              ? "Markierungsmodus ist an (\(color.title)): Ausgewählter Text wird sofort markiert. Klicken beendet ihn, der Pfeil wählt die Farbe."
+              : "Markierungsmodus: Danach wird ausgewählter Text sofort markiert. Der Pfeil wählt die Farbe.")
+        .accessibilityLabel("Markierungsmodus")
+        .accessibilityValue(isOn ? "Ein, \(color.title)" : "Aus")
+        .disabled(store.pdfURL == nil)
+    }
+
     /// „Markierungen“ mit Anzahl; ein Warnsymbol, solange Markierungen nicht zugeordnet sind
     private var marksButton: some View {
         let unplaced = model.marks.resolutions.values.filter { $0 == .orphaned }.count
         return Button { store.isMarkListShown.toggle() } label: {
-            Label("Markierungen", systemImage: unplaced > 0 ? "exclamationmark.triangle.fill" : "highlighter")
+            Label("Markierungen", systemImage: unplaced > 0 ? "exclamationmark.triangle.fill" : "list.bullet.rectangle")
             if !model.marks.marks.isEmpty { Text("\(model.marks.marks.count)").monospacedDigit() }
         }
         .labelStyle(.titleAndIcon)
@@ -86,7 +120,8 @@ private struct PDFStatusBar: View {
                     model.showMarkPopover(id)
                 },
                 remove: { model.removeMarks([$0]) },
-                reassign: { id in Task { await model.reassignMark(id) } }
+                reassign: { id in Task { await model.reassignMark(id) } },
+                removeAll: { model.removeAllMarks() }
             )
         }
     }

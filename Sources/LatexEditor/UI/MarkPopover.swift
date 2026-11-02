@@ -31,7 +31,6 @@ struct MarkPopoverView: View {
     let draft: MarkDraft
     let actions: MarkPopoverActions
     let close: () -> Void
-    @FocusState private var isEditing: Bool
 
     var body: some View {
         if let mark = store.marks.first(where: { $0.id == id }) {
@@ -52,7 +51,6 @@ struct MarkPopoverView: View {
             }
             .padding(12)
             .frame(width: Self.width)
-            .onAppear { isEditing = true }
         }
     }
 
@@ -64,10 +62,7 @@ struct MarkPopoverView: View {
     }
 
     private var editor: some View {
-        TextEditor(text: Binding(get: { draft.text }, set: { draft.text = $0 }))
-            .font(.body)
-            .focused($isEditing)
-            .scrollContentBackground(.hidden)
+        MarkCommentField(text: Binding(get: { draft.text }, set: { draft.text = $0 }))
             .padding(4)
             .frame(height: Self.editorHeight)
             .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
@@ -90,6 +85,74 @@ struct MarkPopoverView: View {
         .help(color.title)
         .accessibilityLabel(color.title)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+/// Mehrzeiliges Textfeld für den Kommentar. Es nimmt die Schreibmarke selbst, sobald es im Fenster des Popovers steht:
+/// `@FocusState` von `TextEditor` greift in einem Popover nicht (sein Fenster ist beim Aufbau noch nicht aktiv).
+struct MarkCommentField: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        Self.makeScrollView(text: text, delegate: context.coordinator)
+    }
+
+    static func makeScrollView(text: String, delegate: NSTextViewDelegate) -> NSScrollView {
+        let textView = FocusingTextView(frame: .zero)
+        textView.delegate = delegate
+        textView.isRichText = false
+        textView.allowsUndo = true
+        textView.drawsBackground = false
+        textView.font = .preferredFont(forTextStyle: .body)
+        textView.textContainerInset = NSSize(width: 2, height: 4)
+        textView.minSize = .zero
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainer?.widthTracksTextView = true
+        textView.string = text
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.documentView = textView
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = scrollView.documentView as? NSTextView, textView.string != text else { return }
+        textView.string = text
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        private let text: Binding<String>
+
+        init(text: Binding<String>) {
+            self.text = text
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView, textView.string != text.wrappedValue else { return }
+            text.wrappedValue = textView.string
+        }
+    }
+}
+
+/// Wird zum ersten Responder, sobald es in einem Fenster steht, mit der Schreibmarke hinter dem vorhandenen Text
+final class FocusingTextView: NSTextView {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        // Einen Durchlauf später: Beim Einhängen ist das Fenster des Popovers noch nicht fertig
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let window = self.window else { return }
+            window.makeFirstResponder(self)
+            self.setSelectedRange(NSRange(location: (self.string as NSString).length, length: 0))
+        }
     }
 }
 

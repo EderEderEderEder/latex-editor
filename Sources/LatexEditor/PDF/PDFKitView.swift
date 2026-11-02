@@ -148,6 +148,8 @@ final class SyncTeXPDFView: PDFView {
     private var menuClick: (page: PDFPage, point: CGPoint)?
     nonisolated(unsafe) private var mouseMonitor: Any?
     private var mouseDownPoint: NSPoint?
+    /// Die Maustaste wurde im PDF gedrückt (für den Markierungsmodus auch bei Doppel- und Dreifachklick)
+    private var pressedInside = false
 
     deinit {
         if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
@@ -184,15 +186,26 @@ final class SyncTeXPDFView: PDFView {
         switch event.type {
         case .leftMouseDown:
             let plain = event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty
-            mouseDownPoint = bounds.contains(point) && event.clickCount == 1 && plain ? point : nil
+            pressedInside = bounds.contains(point) && plain
+            mouseDownPoint = pressedInside && event.clickCount == 1 ? point : nil
         case .leftMouseUp:
-            defer { mouseDownPoint = nil }
+            defer { mouseDownPoint = nil; pressedInside = false }
+            if pressedInside, store?.isMarkingMode == true {
+                // Erst nach der Mausverfolgung: Vorher ist die Auswahl noch nicht abgeschlossen
+                DispatchQueue.main.async { [weak self] in self?.markSelectionInMarkingMode() }
+            }
             guard let down = mouseDownPoint, hypot(point.x - down.x, point.y - down.y) < Self.clickTolerance,
                   currentSelection?.string?.isEmpty != false, let id = markID(atViewPoint: point) else { return }
             store?.onClickMark?(id)
         default:
             break
         }
+    }
+
+    /// Markierungsmodus: Die gerade fertig ausgewählte Textstelle wird markiert
+    func markSelectionInMarkingMode() {
+        guard store?.isMarkingMode == true, currentSelection?.string?.isEmpty == false else { return }
+        store?.onMarkSelection?(nil)
     }
 
     func markID(atViewPoint viewPoint: CGPoint) -> UUID? {

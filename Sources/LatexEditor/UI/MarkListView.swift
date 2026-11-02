@@ -12,6 +12,7 @@ struct MarkListView: View {
     let edit: (UUID) -> Void
     let remove: (UUID) -> Void
     let reassign: (UUID) -> Void
+    let removeAll: () -> Void
 
     private var sections: [MarkListSection] {
         MarkListGrouping.sections(marks: store.marks, resolutions: store.resolutions)
@@ -33,6 +34,17 @@ struct MarkListView: View {
                 }
                 .listStyle(.plain)
                 .frame(height: min(Self.maximumHeight, CGFloat(store.marks.count + sections.count) * Self.rowHeight))
+                Divider()
+                HStack {
+                    Text(store.marks.count == 1 ? "1 Markierung" : "\(store.marks.count) Markierungen")
+                        .font(.callout).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Alle entfernen", systemImage: "trash", role: .destructive, action: removeAll)
+                        .controlSize(.small)
+                        .help("Entfernt alle Markierungen und Notizen dieses Projekts; Rückgängig holt sie zurück")
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
             }
         }
         .frame(width: Self.width)

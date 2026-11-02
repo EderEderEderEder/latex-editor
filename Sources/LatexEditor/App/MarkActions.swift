@@ -46,6 +46,11 @@ extension AppModel {
         return known
     }
 
+    /// Quelle → PDF für das Anlegen; in Tests ersetzbar (`markForwardOverride`)
+    private func markForwardLookup() -> (URL, Int) -> SyncTeXBox? {
+        markForwardOverride ?? { [synctex] in synctex.forward(file: $0, line: $1) }
+    }
+
     func refreshMarkDisplay() {
         pdf.showMarks(marks.marks, marks.resolutions)
     }
@@ -67,6 +72,17 @@ extension AppModel {
         }
     }
 
+    func toggleMarkingMode() {
+        pdf.isMarkingMode.toggle()
+    }
+
+    /// Farbe im Menü des Stiftknopfs: Sie gilt ab jetzt, der Markierungsmodus ist an, eine bestehende Auswahl wird gleich markiert
+    func chooseMarkColor(_ color: MarkColor) {
+        marks.lastColor = color
+        pdf.isMarkingMode = true
+        if !pdf.selectionSegments.isEmpty { markSelection(color: color) }
+    }
+
     func commentSelection() {
         markSelection(thenComment: true)
     }
@@ -82,12 +98,16 @@ extension AppModel {
         let probe = MarkCreator(root: root, document: document, linesOf: { _ in nil }, backward: lookup)
         let sources = await Self.readSources(probe.sourcePaths(of: selection), root: root)
         guard document === pdf.pdfView?.document else { return nil }
-        let creator = MarkCreator(root: root, document: document, linesOf: { sources[$0]?.lines }, backward: lookup)
+        let creator = MarkCreator(root: root, document: document, linesOf: { sources[$0]?.lines }, backward: lookup, forward: markForwardLookup())
         do {
-            let mark = try creator.makeMark(from: selection, color: color)
+            var mark = try creator.makeMark(from: selection, color: color)
             // Bis zum nächsten Build liegt sie genau dort, wo markiert wurde
-            let placed = MarkResolution.placed(segments: MarkResolution.segments(of: selection, in: document), precision: .words)
-            insertMarks([(mark, placed)], actionName: "Markierung hinzufügen")
+            let segments = MarkResolution.segments(of: selection, in: document)
+            let placed = MarkResolution.placed(segments: segments, precision: .words)
+            // Wer dieselbe Stelle noch einmal markiert, ersetzt die alte Markierung (ein Kommentar der alten bleibt erhalten)
+            let replaced = marks.marks(overlapping: segments).filter { $0.kind == .highlight }
+            if mark.comment.isEmpty, let comment = replaced.first(where: { !$0.comment.isEmpty })?.comment { mark.comment = comment }
+            insertMarks([(mark, placed)], replacing: replaced, actionName: replaced.isEmpty ? "Markierung hinzufügen" : "Markierung ersetzen")
             marks.lastColor = color
             pdf.pdfView?.clearSelection()
             return mark.id
@@ -116,7 +136,7 @@ extension AppModel {
         let paths = probe.sourcePath(on: page, at: point).map { Set([$0]) } ?? []
         let sources = await Self.readSources(paths, root: root)
         guard document === pdf.pdfView?.document else { return nil }
-        let creator = MarkCreator(root: root, document: document, linesOf: { sources[$0]?.lines }, backward: lookup)
+        let creator = MarkCreator(root: root, document: document, linesOf: { sources[$0]?.lines }, backward: lookup, forward: markForwardLookup())
         do {
             let note = try creator.makeNote(on: page, at: point, color: marks.lastColor)
             // Vorläufig am Rand der Stelle, an der geklickt wurde; nach dem nächsten Build am Rand der Zeile
@@ -158,7 +178,7 @@ extension AppModel {
         let lookup = markBackwardLookup ?? { [synctex] in synctex.backward(page: $0, point: $1) }
         let probe = MarkCreator(root: root, document: document, linesOf: { _ in nil }, backward: lookup)
         let sources = await Self.readSources(probe.sourcePaths(of: selection), root: root)
-        let creator = MarkCreator(root: root, document: document, linesOf: { sources[$0]?.lines }, backward: lookup)
+        let creator = MarkCreator(root: root, document: document, linesOf: { sources[$0]?.lines }, backward: lookup, forward: markForwardLookup())
         do {
             var moved = try creator.makeMark(from: selection, color: old.color, comment: old.comment)
             moved = PDFMark(id: old.id, color: old.color, comment: old.comment, text: moved.text, start: moved.start, end: moved.end, pageHint: moved.pageHint, createdAt: old.createdAt)
@@ -218,19 +238,24 @@ extension AppModel {
 
     private func applyColor(_ color: MarkColor, to id: UUID) {
         marks.update(id) { $0.color = color }
-        refreshMarkDisplay()
+        if !pdf.recolorMarkAnnotations(id, to: color) { refreshMarkDisplay() }
     }
 
-    func removeMarks(_ ids: [UUID]) {
+    func removeMarks(_ ids: [UUID], actionName: String = "Markierung entfernen") {
         let removed = ids.compactMap { marks.remove($0) }
         guard !removed.isEmpty else { return }
         refreshMarkDisplay()
         let snapshots = removed.map { ($0.mark, $0.resolution) }
         registerFileUndo(FileUndoAction(
-            name: "Markierung entfernen",
+            name: actionName,
             undo: { [weak self] in self?.restoreMarks(snapshots) },
             redo: { [weak self] in self?.deleteMarks(snapshots.map(\.0.id)) }
         ))
+    }
+
+    /// Alle Markierungen und Notizen des Projekts in einem Schritt (Rückgängig holt alle zurück)
+    func removeAllMarks() {
+        removeMarks(marks.marks.map(\.id), actionName: "Alle Markierungen entfernen")
     }
 
     /// Menü Bearbeiten: entfernt die Markierungen, die auf der markierten Textstelle liegen
@@ -238,13 +263,22 @@ extension AppModel {
         removeMarks(marks.marks(overlapping: pdf.selectionSegments).map(\.id))
     }
 
-    private func insertMarks(_ snapshots: [(PDFMark, MarkResolution?)], actionName: String) {
+    /// Legt Markierungen an und entfernt dabei `replaced` (ein Schritt für Rückgängig)
+    private func insertMarks(_ snapshots: [(PDFMark, MarkResolution?)], replacing replaced: [PDFMark] = [], actionName: String) {
         let pdfDate = pdfModificationDate()
+        let old = replaced.map { ($0, marks.resolutions[$0.id]) }
+        deleteMarks(replaced.map(\.id))
         restoreMarks(snapshots, pdfDate: pdfDate)
         registerFileUndo(FileUndoAction(
             name: actionName,
-            undo: { [weak self] in self?.deleteMarks(snapshots.map(\.0.id)) },
-            redo: { [weak self] in self?.restoreMarks(snapshots, pdfDate: pdfDate) }
+            undo: { [weak self] in
+                self?.deleteMarks(snapshots.map(\.0.id))
+                self?.restoreMarks(old, pdfDate: pdfDate)
+            },
+            redo: { [weak self] in
+                self?.deleteMarks(old.map(\.0.id))
+                self?.restoreMarks(snapshots, pdfDate: pdfDate)
+            }
         ))
     }
 

@@ -23,6 +23,10 @@ struct MarkResolver {
     static let noteIconSize: CGFloat = 16
     private static let noteIconGap: CGFloat = 6
     private static let pageEdgeInset: CGFloat = 4
+    /// Wie weit (in Zeichen) ein Treffer von der gewählten Stelle abweichen darf, um als dieser zu gelten
+    private static let occurrenceTolerance = 2
+    /// SyncTeX liefert für manche Zeilen (Gleichungsrahmen, Leerraum) Rechtecke ohne Höhe: sichtbar machen
+    private static let minimumLineHeight: CGFloat = 8
 
     let root: URL
     let document: PDFDocument
@@ -57,7 +61,11 @@ struct MarkResolver {
         guard let lines = linesOf(anchor.path), let line = MarkAnchorLocator.locate(anchor, in: lines),
               let box = forward(MarkPaths.absolute(anchor.path, in: root), line),
               let page = document.page(at: box.page - 1) else { return nil }
-        return (page, box.page - 1, SyncTeXCoordinates.pdfRect(from: box.rect, mediaBox: page.bounds(for: .mediaBox)))
+        var rect = SyncTeXCoordinates.pdfRect(from: box.rect, mediaBox: page.bounds(for: .mediaBox))
+        if rect.height < Self.minimumLineHeight {
+            rect = rect.insetBy(dx: 0, dy: -(Self.minimumLineHeight - rect.height) / 2)
+        }
+        return (page, box.page - 1, rect)
     }
 
     /// Eine Notiz sitzt am linken Rand, auf der Höhe der ersten Zeile ihres Absatzes (die Stelle in der Zeile ist nicht bekannt)
@@ -74,7 +82,7 @@ struct MarkResolver {
         guard let box = lineBox(of: anchor) else { return nil }
         let (page, pageIndex, rect) = (box.page, box.index, box.rect)
         let characters = charactersInside(rect, on: page)
-        let matched = characters.flatMap { matchWords(anchor.words, isStart: isStart, in: $0, on: page) }
+        let matched = characters.flatMap { matchWords(anchor, isStart: isStart, in: $0, on: page) }
         return Side(page: page, pageIndex: pageIndex, rect: rect, characters: characters, matched: matched)
     }
 
@@ -91,22 +99,45 @@ struct MarkResolver {
         return first.map { NSRange(location: $0, length: last - $0 + 1) }
     }
 
-    /// Zuerst die ersten (letzten) drei Wörter hintereinander, dann zwei, dann eins. Ein einzelnes Wort zählt nur, wenn es in
-    /// der Zeile genau einmal vorkommt: Sonst wäre es geraten.
-    private func matchWords(_ words: [String], isStart: Bool, in range: NSRange, on page: PDFPage) -> NSRange? {
-        guard !words.isEmpty, let text = page.string as NSString?, NSMaxRange(range) <= text.length else { return nil }
+    /// Treffer der ersten (letzten) drei, zwei, ein Wort(e) in den Wörtern der Zeile, in Lesereihenfolge
+    private func wordCandidates(_ words: [String], isStart: Bool, in range: NSRange, on page: PDFPage) -> [(count: Int, ranges: [NSRange])] {
+        guard !words.isEmpty, let text = page.string as NSString?, NSMaxRange(range) <= text.length else { return [] }
         let tokens = MarkText.tokens(in: text.substring(with: range)).map {
             MarkText.Token(text: $0.text, range: NSRange(location: $0.range.location + range.location, length: $0.range.length))
         }
-        for count in stride(from: min(words.count, Self.maximumWordsMatched), through: 1, by: -1) {
+        return stride(from: min(words.count, Self.maximumWordsMatched), through: 1, by: -1).map { count in
             let wanted = isStart ? Array(words.prefix(count)) : Array(words.suffix(count))
             let hits = tokens.indices.filter { index in
                 index + count <= tokens.count && (0..<count).allSatisfy { tokens[index + $0].text == wanted[$0] }
             }
-            guard let hit = isStart ? hits.first : hits.last, count > 1 || hits.count == 1 else { continue }
-            let first = tokens[hit].range
-            let last = tokens[hit + count - 1].range
-            return NSRange(location: first.location, length: NSMaxRange(last) - first.location)
+            let ranges = hits.map { NSRange(location: tokens[$0].range.location, length: NSMaxRange(tokens[$0 + count - 1].range) - tokens[$0].range.location) }
+            return (count, ranges)
+        }
+    }
+
+    /// Zuerst die ersten (letzten) drei Wörter hintereinander, dann zwei, dann eins. Hat der Anker sich den Treffer gemerkt
+    /// (`occurrence`), gilt er; sonst der erste (letzte), und ein einzelnes Wort nur, wenn es in der Zeile genau einmal
+    /// vorkommt: Sonst wäre es geraten.
+    private func matchWords(_ anchor: MarkAnchor, isStart: Bool, in range: NSRange, on page: PDFPage) -> NSRange? {
+        for (count, ranges) in wordCandidates(anchor.words, isStart: isStart, in: range, on: page) where !ranges.isEmpty {
+            if count == anchor.matchedWords, let occurrence = anchor.occurrence, occurrence < ranges.count {
+                return isStart ? ranges[occurrence] : ranges[ranges.count - 1 - occurrence]
+            }
+            guard count > 1 || ranges.count == 1 else { continue }
+            return isStart ? ranges.first : ranges.last
+        }
+        return nil
+    }
+
+    /// Beim Anlegen: der wievielte Treffer der Wortfolge in der Zeile ist die gewählte Stelle? `characterIndex` ist das Zeichen
+    /// der Seite am Rand der Auswahl (Anfang bzw. Ende). `nil`, wenn kein Treffer bei dieser Stelle liegt.
+    func occurrence(for anchor: MarkAnchor, isStart: Bool, characterIndex: Int) -> (words: Int, occurrence: Int)? {
+        guard let box = lineBox(of: anchor), let characters = charactersInside(box.rect, on: box.page) else { return nil }
+        for (count, ranges) in wordCandidates(anchor.words, isStart: isStart, in: characters, on: box.page) where !ranges.isEmpty {
+            let distances = ranges.map { isStart ? abs($0.location - characterIndex) : abs(NSMaxRange($0) - 1 - characterIndex) }
+            guard let nearest = distances.indices.min(by: { distances[$0] < distances[$1] }),
+                  distances[nearest] <= Self.occurrenceTolerance else { return nil }
+            return (count, isStart ? nearest : ranges.count - 1 - nearest)
         }
         return nil
     }
@@ -149,11 +180,17 @@ extension MarkResolution {
         }.filter { !$0.rect.isEmpty }
     }
 
-    /// Liegt die Markierung (zumindest teilweise) auf einem der Rechtecke? `nil` für Nicht-Zugeordnete.
+    /// Wie viel zwei Rechtecke mindestens übereinander liegen müssen (Punkte): Nachbarwörter berühren sich um Bruchteile
+    static let minimumOverlap: CGFloat = 1
+
+    /// Liegt die Markierung (zumindest teilweise) auf einem der Rechtecke? `false` für Nicht-Zugeordnete.
     func overlaps(_ others: [Segment]) -> Bool {
         guard case .placed(let segments, _) = self else { return false }
         return segments.contains { mine in
-            others.contains { $0.pageIndex == mine.pageIndex && !$0.rect.intersection(mine.rect).isNull && $0.rect.intersection(mine.rect).width > 0 && $0.rect.intersection(mine.rect).height > 0 }
+            others.contains {
+                let common = $0.rect.intersection(mine.rect)
+                return $0.pageIndex == mine.pageIndex && !common.isNull && common.width > Self.minimumOverlap && common.height > Self.minimumOverlap
+            }
         }
     }
 }
@@ -184,6 +221,8 @@ struct MarkCreator {
     let document: PDFDocument
     let linesOf: (String) -> [String]?
     let backward: (Int, CGPoint) -> SyncTeXSourceLocation?
+    /// Quelle → PDF: damit sich der Anker den Treffer merken kann, wenn die Wörter in der Zeile mehrfach vorkommen
+    var forward: ((URL, Int) -> SyncTeXBox?)?
 
     /// Die Dateien, in denen Anfang und Ende der Auswahl liegen (zum Lesen, bevor die Markierung angelegt wird)
     func sourcePaths(of selection: PDFSelection) -> Set<String> {
@@ -200,7 +239,7 @@ struct MarkCreator {
 
     /// Eine Notiz an der Zeile unter `point` (PDFKit-Seitenkoordinaten)
     func makeNote(on page: PDFPage, at point: CGPoint, color: MarkColor, comment: String = "") throws -> PDFMark {
-        let anchor = try anchor(on: page, at: point, words: [])
+        let anchor = try anchor(on: page, at: point, words: [], isStart: true)
         return PDFMark(
             id: UUID(), kind: .note, color: color, comment: comment, text: "", start: anchor, end: anchor,
             pageHint: document.index(for: page) + 1, createdAt: Date()
@@ -216,9 +255,9 @@ struct MarkCreator {
         let startBounds = first.bounds(for: firstPage)
         let endBounds = last.bounds(for: lastPage)
         let start = try anchor(on: firstPage, at: CGPoint(x: startBounds.minX + Self.edgeInset, y: startBounds.midY),
-                               words: Array(words.prefix(Self.maximumStoredWords)))
+                               words: Array(words.prefix(Self.maximumStoredWords)), isStart: true)
         let end = try anchor(on: lastPage, at: CGPoint(x: endBounds.maxX - Self.edgeInset, y: endBounds.midY),
-                             words: Array(words.suffix(Self.maximumStoredWords)))
+                             words: Array(words.suffix(Self.maximumStoredWords)), isStart: false)
         return PDFMark(
             id: UUID(), color: color, comment: comment, text: String(text.prefix(Self.maximumStoredTextLength)),
             start: start, end: end, pageHint: document.index(for: firstPage) + 1, createdAt: Date()
@@ -231,12 +270,20 @@ struct MarkCreator {
         return backward(document.index(for: page) + 1, syncPoint).flatMap { MarkPaths.relative($0.file, to: root) }
     }
 
-    private func anchor(on page: PDFPage, at point: CGPoint, words: [String]) throws -> MarkAnchor {
+    private func anchor(on page: PDFPage, at point: CGPoint, words: [String], isStart: Bool) throws -> MarkAnchor {
         let syncPoint = SyncTeXCoordinates.syncTeXPoint(fromPDF: point, mediaBox: page.bounds(for: .mediaBox))
         guard let location = backward(document.index(for: page) + 1, syncPoint) else { throw Failure.noSourceLine }
         guard let path = MarkPaths.relative(location.file, to: root) else { throw Failure.outsideProject }
         guard let lines = linesOf(path) else { throw Failure.noSourceLine }
         let line = MarkAnchorLocator.bestLine(near: location.line, containing: words, in: lines)
-        return MarkAnchorLocator.anchor(path: path, line: line, in: lines, words: words)
+        var anchor = MarkAnchorLocator.anchor(path: path, line: line, in: lines, words: words)
+        let characterIndex = page.characterIndex(at: point)
+        guard let forward, !words.isEmpty, characterIndex >= 0 else { return anchor }
+        let resolver = MarkResolver(root: root, document: document, linesOf: linesOf, forward: forward, isNewerThanPDF: { _ in false })
+        if let found = resolver.occurrence(for: anchor, isStart: isStart, characterIndex: characterIndex) {
+            anchor.matchedWords = found.words
+            anchor.occurrence = found.occurrence
+        }
+        return anchor
     }
 }

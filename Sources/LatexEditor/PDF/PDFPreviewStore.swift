@@ -18,6 +18,8 @@ final class PDFPreviewStore {
     private(set) var selectionSegments: [MarkResolution.Segment] = []
     /// Die Liste der Markierungen (Popover der unteren Leiste) ist offen
     var isMarkListShown = false
+    /// Markierungsmodus: Was im PDF ausgewählt wird, ist sofort markiert (Farbe: `MarkStore.lastColor`)
+    var isMarkingMode = false
 
     @ObservationIgnored weak var pdfView: PDFView?
     /// Stand der PDF-View, die zuletzt verschwunden ist (Wechsel der Ansicht); die nächste View übernimmt ihn
@@ -36,6 +38,8 @@ final class PDFPreviewStore {
     @ObservationIgnored var onDocumentLoaded: (() -> Void)?
     /// Die Markierungen, die gerade im Dokument stehen (nur in der Ansicht, nie in der PDF-Datei)
     @ObservationIgnored var markAnnotations: [PDFAnnotation] = []
+    /// Entfernte Markierungen leben noch kurz weiter: PDFKit zeichnet auf einem Hintergrund-Thread und könnte sie noch brauchen
+    @ObservationIgnored var retiredMarkAnnotations: [PDFAnnotation] = []
     @ObservationIgnored private var candidateURLs: [URL] = []
 
     private static let zoomStep: CGFloat = 1.25

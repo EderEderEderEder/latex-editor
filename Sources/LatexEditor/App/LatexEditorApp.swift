@@ -55,6 +55,10 @@ struct AppCommands: Commands {
     private var pdfMarkCommands: some View {
         let hasSelection = !model.pdf.selectionSegments.isEmpty
         Menu("PDF-Markierung") {
+            Toggle("Markierungsmodus", isOn: Binding(get: { model.pdf.isMarkingMode }, set: { model.pdf.isMarkingMode = $0 }))
+                .keyboardShortcut("m", modifiers: [.control, .command])
+                .disabled(model.pdf.pdfURL == nil)
+            Divider()
             Button("Markieren") { model.markSelection() }
                 .keyboardShortcut("h", modifiers: [.control, .command])
                 .disabled(!hasSelection)
@@ -71,6 +75,8 @@ struct AppCommands: Commands {
                 .disabled(!hasSelection)
             Button("Markierung entfernen") { model.removeMarksUnderSelection() }
                 .disabled(model.marks.marks(overlapping: model.pdf.selectionSegments).isEmpty)
+            Button("Alle Markierungen entfernen") { model.removeAllMarks() }
+                .disabled(model.marks.marks.isEmpty)
             Divider()
             Button(model.pdf.isMarkListShown ? "Liste der Markierungen ausblenden" : "Liste der Markierungen anzeigen") {
                 model.pdf.isMarkListShown.toggle()

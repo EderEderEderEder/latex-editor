@@ -110,7 +110,7 @@ struct RootView: View {
         WorkspaceSplit(mode: viewMode, leadingMinWidth: Self.editorMinWidth, trailingMinWidth: Self.pdfMinWidth) {
             EditorPane(model: model).frame(maxHeight: .infinity)
         } trailing: {
-            PDFPane(store: model.pdf, synctex: model.synctex).frame(maxHeight: .infinity)
+            PDFPane(model: model).frame(maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Der ausgeblendete Editor darf keine Tastatureingaben mehr bekommen

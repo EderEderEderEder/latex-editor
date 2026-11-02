@@ -16,13 +16,16 @@ Nativer macOS-LaTeX-Editor nach dem Vorbild von Texifier, nur für lokale Nutzun
 
 ```bash
 swift build                  # Debug, ohne Warnungen
-scripts/test.sh              # alle Tests; --filter <Name> für einzelne (nie nacktes `swift test`)
+scripts/test-run.sh --fast   # Logik-Tests in ca. 20 s; kurze Zusammenfassung, Hänger-Überwachung (zum Entwickeln)
+scripts/test-run.sh          # voller Lauf (ca. 100 s) mit Überwachung; einmal vor Commit/Installation
+scripts/test-run.sh --filter MarkActionsTests   # einzelne Suiten/Tests (Argumente gehen an `swift test`)
+scripts/test.sh              # roher Lauf ohne Überwachung (nie nacktes `swift test`)
 scripts/build-app.sh         # Universal-App nach build/LatexEditor.app (ad-hoc signiert)
 scripts/install-app.sh       # baut und installiert nach /Applications
 scripts/demo-projekt.sh      # Testdaten/Arbeitskopie/ zum Ausprobieren neu anlegen
 ```
 
-Es gibt keinen Linter. Voller Testlauf: ca. 100 s; hängt er (siehe `Tests/CLAUDE.md`), nicht blind wiederholen. Handtests und UI-Checkliste: `TESTING.md` (fortlaufend nummeriert, zuletzt #255).
+Es gibt keinen Linter. **Tests immer über `scripts/test-run.sh`**: Es gibt nur eine kurze Zusammenfassung aus (Log: `.build/test-logs/last.log`, nur bei Bedarf lesen), beendet bei Stillstand (60 s ohne Ausgabe) oder nach 300 s den eigenen Prozessbaum, nimmt den Hänger per `sample` auf (`stall-sample.txt`) und wiederholt bekannt unzuverlässige Tests (`lineWrapping`, `statusDuration`) einzeln. Nie in Schleifen auf Tests warten, keine eigenen Hilfsskripte in `/tmp`; nach Änderungen `--fast` oder `--filter`, den vollen Lauf einmal vor Commit/Installation (am besten im Hintergrund starten und auf das Ende warten). Bei einem Hänger nicht blind wiederholen (siehe `Tests/CLAUDE.md`). Handtests und UI-Checkliste: `TESTING.md` (fortlaufend nummeriert, zuletzt #268).
 
 ## Landkarte (`Sources/LatexEditor/`)
 

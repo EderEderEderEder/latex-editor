@@ -14,11 +14,28 @@ final class PDFPreviewStore {
     private(set) var pageCount = 0
     private(set) var zoomPercent = 100
 
+    /// Die Zeilenrechtecke der markierten Textstelle (leer ohne Auswahl): Menüeinträge für Markierungen richten sich danach
+    private(set) var selectionSegments: [MarkResolution.Segment] = []
+    /// Die Liste der Markierungen (Popover der unteren Leiste) ist offen
+    var isMarkListShown = false
+
     @ObservationIgnored weak var pdfView: PDFView?
     /// Stand der PDF-View, die zuletzt verschwunden ist (Wechsel der Ansicht); die nächste View übernimmt ihn
     @ObservationIgnored var savedViewState: PDFViewState?
     /// ⌘-Klick ins PDF: Seite (1-basiert) und Punkt in SyncTeX-Koordinaten (oben links).
     @ObservationIgnored var onCommandClick: ((Int, CGPoint) -> Void)?
+    /// Rechtsklick im PDF: Textstelle markieren, Farbe einer Markierung ändern, Markierung entfernen
+    @ObservationIgnored var onMarkSelection: ((MarkColor?) -> Void)?
+    @ObservationIgnored var onCommentSelection: (() -> Void)?
+    @ObservationIgnored var onAddNote: ((PDFPage, CGPoint) -> Void)?
+    /// Klick auf eine Markierung oder ihr Symbol: Popover mit Kommentar
+    @ObservationIgnored var onClickMark: ((UUID) -> Void)?
+    @ObservationIgnored var onRecolorMark: ((UUID, MarkColor) -> Void)?
+    @ObservationIgnored var onRemoveMark: ((UUID) -> Void)?
+    /// Das PDF ist (neu) in der Ansicht: Markierungen darauflegen
+    @ObservationIgnored var onDocumentLoaded: (() -> Void)?
+    /// Die Markierungen, die gerade im Dokument stehen (nur in der Ansicht, nie in der PDF-Datei)
+    @ObservationIgnored var markAnnotations: [PDFAnnotation] = []
     @ObservationIgnored private var candidateURLs: [URL] = []
 
     private static let zoomStep: CGFloat = 1.25
@@ -58,6 +75,16 @@ final class PDFPreviewStore {
     func zoomToFitWidth() {
         pdfView?.autoScales = true
         syncStatus()
+    }
+
+    func syncSelection() {
+        let segments: [MarkResolution.Segment]
+        if let pdfView, let document = pdfView.document, let selection = pdfView.currentSelection, selection.string?.isEmpty == false {
+            segments = MarkResolution.segments(of: selection, in: document)
+        } else {
+            segments = []
+        }
+        if segments != selectionSegments { selectionSegments = segments }
     }
 
     func syncStatus() {
@@ -105,6 +132,18 @@ final class PDFPreviewStore {
         guard let document = page.document else { return }
         let syncTeXPoint = SyncTeXCoordinates.syncTeXPoint(fromPDF: point, mediaBox: page.bounds(for: .mediaBox))
         onCommandClick?(document.index(for: page) + 1, syncTeXPoint)
+    }
+
+    /// Scrollt zu einem Rechteck (PDFKit-Seitenkoordinaten), z. B. aus der Liste der Markierungen
+    func reveal(_ segment: MarkResolution.Segment) {
+        guard let pdfView, let page = pdfView.document?.page(at: segment.pageIndex) else { return }
+        scroll(pdfView, toCenter: segment.rect, on: page)
+    }
+
+    /// Das Rechteck im Koordinatensystem der Ansicht (für ein Popover an der Stelle)
+    func viewRect(of segment: MarkResolution.Segment) -> (view: PDFView, rect: CGRect)? {
+        guard let pdfView, let page = pdfView.document?.page(at: segment.pageIndex) else { return nil }
+        return (pdfView, pdfView.convert(segment.rect, from: page))
     }
 
     private func scroll(_ pdfView: PDFView, toCenter rect: CGRect, on page: PDFPage) {

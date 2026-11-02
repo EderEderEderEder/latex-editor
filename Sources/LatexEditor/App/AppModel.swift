@@ -40,6 +40,7 @@ final class AppModel {
     let wordCounts = WordCountStore()
     let search = SearchStore()
     let referenceChecks = ReferenceCheckStore()
+    let marks = MarkStore()
 
     private static let lastProjectKey = "lastProjectPath"
     /// Einstellung „Beim Verlassen der App speichern“ (Menü Ablage, Standard aus)
@@ -81,6 +82,10 @@ final class AppModel {
     var confirmRecovery: @MainActor (_ backups: [RecoveryBackup]) -> Bool = AppModel.showRecoveryAlert
     /// Zuletzt gemeldete Cursorposition (für ⌘J „Im PDF zeigen“)
     private var lastCursor: (file: URL, line: Int)?
+    var markResolutionTask: Task<Void, Never>?
+    let markPopover = MarkPopoverPresenter()
+    /// PDF → Quelltext für Markierungen; in Tests ersetzbar (sonst SyncTeX des letzten Builds)
+    var markBackwardLookup: ((Int, CGPoint) -> SyncTeXSourceLocation?)?
 
     init() {
         editor.onDidSave = { [weak self] in self?.didSave() }
@@ -123,6 +128,14 @@ final class AppModel {
         // Während latexmk läuft, wird das PDF mehrfach geschrieben; neu geladen wird einmal danach.
         build.onFinished = { [weak self] in self?.reloadBuildOutputs() }
         pdf.onCommandClick = { [weak self] page, point in self?.showInEditor(page: page, point: point) }
+        pdf.onDocumentLoaded = { [weak self] in self?.scheduleMarkResolution() }
+        pdf.onMarkSelection = { [weak self] color in self?.markSelection(color: color) }
+        pdf.onRecolorMark = { [weak self] id, color in self?.recolorMark(id, to: color) }
+        pdf.onRemoveMark = { [weak self] id in self?.removeMarks([id]) }
+        pdf.onCommentSelection = { [weak self] in self?.commentSelection() }
+        pdf.onAddNote = { [weak self] page, point in self?.addNote(on: page, at: point) }
+        pdf.onClickMark = { [weak self] id in self?.showMarkPopover(id) }
+        marks.onProblem = { [weak self] message in self?.fileActions.errorMessage = message }
     }
 
     /// Zoom (Schriftgröße) für alle offenen Dateien; Speichern beim Wechsel in eine andere App (falls eingestellt).
@@ -274,10 +287,13 @@ final class AppModel {
         search.reset()
         referenceChecks.reset()
         completionProvider.reset()
+        marks.reset()
+        pdf.showMarks([], [:])
         lastCursor = nil
 
         await project.open(root: url)
         guard let root = project.rootURL else { return }
+        marks.load(root: root)
         UserDefaults.standard.set(root.path, forKey: Self.lastProjectKey)
         recentProjects.add(root)
         sidebar.load(project: root)

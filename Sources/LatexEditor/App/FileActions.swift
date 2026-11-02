@@ -189,6 +189,7 @@ extension AppModel {
             }
         }
         let result = try operation()
+        marks.relocate(from: source, to: result)
         editor.relocate(from: source, to: result)
         let mainMoved = project.relocateMainFile(from: source, to: result)
         if shouldUpdate { reportReferenceFailures(await applyReferenceEdits(edits, from: source, to: result), item: result) }

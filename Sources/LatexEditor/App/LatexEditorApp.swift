@@ -50,6 +50,35 @@ struct AppCommands: Commands {
         })
     }
 
+    /// Textmarker im PDF: wirkt auf die ausgewählte Textstelle im PDF
+    @ViewBuilder
+    private var pdfMarkCommands: some View {
+        let hasSelection = !model.pdf.selectionSegments.isEmpty
+        Menu("PDF-Markierung") {
+            Button("Markieren") { model.markSelection() }
+                .keyboardShortcut("h", modifiers: [.control, .command])
+                .disabled(!hasSelection)
+            Menu("Markieren mit") {
+                ForEach(MarkColor.allCases, id: \.self) { color in
+                    Button { model.markSelection(color: color) } label: {
+                        Label { Text(color.title) } icon: { Image(nsImage: color.swatch) }
+                    }
+                }
+            }
+            .disabled(!hasSelection)
+            Button("Kommentieren …") { model.commentSelection() }
+                .keyboardShortcut("k", modifiers: [.control, .command])
+                .disabled(!hasSelection)
+            Button("Markierung entfernen") { model.removeMarksUnderSelection() }
+                .disabled(model.marks.marks(overlapping: model.pdf.selectionSegments).isEmpty)
+            Divider()
+            Button(model.pdf.isMarkListShown ? "Liste der Markierungen ausblenden" : "Liste der Markierungen anzeigen") {
+                model.pdf.isMarkListShown.toggle()
+            }
+            .disabled(model.pdf.pdfURL == nil)
+        }
+    }
+
     var body: some Commands {
         CommandGroup(after: .textEditing) {
             Divider()
@@ -74,6 +103,8 @@ struct AppCommands: Commands {
             editorCommand("Zeilen nach unten", #selector(LatexTextView.moveLinesDown(_:)), key: .downArrow, modifiers: .option)
             editorCommand("Zeilen verdoppeln", #selector(LatexTextView.duplicateLines(_:)), key: .downArrow, modifiers: [.option, .shift])
             editorCommand("Zeilen löschen", #selector(LatexTextView.deleteLines(_:)), key: "k", modifiers: [.command, .shift])
+            Divider()
+            pdfMarkCommands
         }
         CommandMenu("Format") {
             // ⌘B ist „Kompilieren“, deshalb Fett mit ⇧⌘B

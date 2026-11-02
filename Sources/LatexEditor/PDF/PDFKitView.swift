@@ -13,6 +13,7 @@ struct PDFKitView: NSViewRepresentable {
     func makeNSView(context: Context) -> PDFView {
         let view = SyncTeXPDFView()
         view.onCommandClick = { [weak store] page, point in store?.handleCommandClick(on: page, at: point) }
+        view.store = store
         view.autoScales = true
         view.displayMode = .singlePageContinuous
         view.displaysPageBreaks = true
@@ -62,6 +63,9 @@ final class PDFCoordinator {
                 MainActor.assumeIsolated { self?.store.syncStatus() }
             }
         }
+        observers.append(NotificationCenter.default.addObserver(forName: .PDFViewSelectionChanged, object: view, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.store.syncSelection() }
+        })
     }
 
     func reloadIfNeeded(in view: PDFView, url: URL, token: Int) {
@@ -78,7 +82,9 @@ final class PDFCoordinator {
         store.savedViewState = nil
         view.document = document
         if let previous { restore(previous, in: view, document: document) }
+        store.markAnnotations = []
         store.syncStatus()
+        store.onDocumentLoaded?()
     }
 
     /// Neue View in den Store. SwiftUI legt beim Wechsel der Ansicht (Geteilt ↔ Nur PDF) die neue View an, **bevor** es
@@ -130,9 +136,22 @@ final class PDFCoordinator {
     }
 }
 
-/// PDFView mit ⌘-Klick für die Rückwärtssuche (PDF → Quelltext). Normale Klicks bleiben unverändert.
+/// PDFView mit ⌘-Klick für die Rückwärtssuche (PDF → Quelltext), Einträgen für Markierungen im Rechtsklickmenü und
+/// Klick auf eine Markierung. Normale Klicks bleiben unverändert.
 final class SyncTeXPDFView: PDFView {
+    private static let clickTolerance: CGFloat = 4
+
     var onCommandClick: ((PDFPage, CGPoint) -> Void)?
+    weak var store: PDFPreviewStore?
+    /// Die Markierung und die Stelle unter dem Rechtsklick, solange das Menü offen ist
+    private var menuMarkID: UUID?
+    private var menuClick: (page: PDFPage, point: CGPoint)?
+    nonisolated(unsafe) private var mouseMonitor: Any?
+    private var mouseDownPoint: NSPoint?
+
+    deinit {
+        if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
+    }
 
     override func mouseDown(with event: NSEvent) {
         guard event.modifierFlags.contains(.command), let onCommandClick else {
@@ -142,5 +161,121 @@ final class SyncTeXPDFView: PDFView {
         let viewPoint = convert(event.locationInWindow, from: nil)
         guard let page = page(for: viewPoint, nearest: true) else { return }
         onCommandClick(page, convert(viewPoint, to: page))
+    }
+
+    // MARK: Klick auf eine Markierung
+
+    /// Ein Klick (ohne Ziehen, ohne Taste) auf eine Markierung zeigt ihr Popover. Ein Beobachter statt `mouseUp`, weil
+    /// PDFView die Mausverfolgung selbst übernimmt und das Ende des Klicks nicht an die Unterklasse weitergibt.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
+        mouseMonitor = nil
+        guard window != nil else { return }
+        mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp]) { [weak self] event in
+            self?.track(event)
+            return event
+        }
+    }
+
+    func track(_ event: NSEvent) {
+        guard event.window === window else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        switch event.type {
+        case .leftMouseDown:
+            let plain = event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty
+            mouseDownPoint = bounds.contains(point) && event.clickCount == 1 && plain ? point : nil
+        case .leftMouseUp:
+            defer { mouseDownPoint = nil }
+            guard let down = mouseDownPoint, hypot(point.x - down.x, point.y - down.y) < Self.clickTolerance,
+                  currentSelection?.string?.isEmpty != false, let id = markID(atViewPoint: point) else { return }
+            store?.onClickMark?(id)
+        default:
+            break
+        }
+    }
+
+    func markID(atViewPoint viewPoint: CGPoint) -> UUID? {
+        guard let page = page(for: viewPoint, nearest: false) else { return nil }
+        let annotation = page.annotation(at: convert(viewPoint, to: page))
+        return annotation?.userName.flatMap(UUID.init(uuidString:))
+    }
+
+    // MARK: Rechtsklickmenü
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = super.menu(for: event) ?? NSMenu()
+        let viewPoint = convert(event.locationInWindow, from: nil)
+        menuMarkID = markID(atViewPoint: viewPoint)
+        menuClick = page(for: viewPoint, nearest: false).map { ($0, convert(viewPoint, to: $0)) }
+        let hasSelection = currentSelection?.string?.isEmpty == false
+        let items = markMenuItems(hasSelection: hasSelection, markID: menuMarkID, canAddNote: menuClick != nil)
+        guard !items.isEmpty else { return menu }
+        for (offset, item) in (items + [.separator()]).enumerated() { menu.insertItem(item, at: offset) }
+        return menu
+    }
+
+    /// Auswahl: „Markieren“ (zuletzt benutzte Farbe), „Markieren mit“, „Kommentieren …“. Auf einer Markierung: „Kommentar
+    /// bearbeiten …“, „Farbe ändern“, „Markierung entfernen“. Sonst auf dem Papier: „Notiz hier hinzufügen …“.
+    func markMenuItems(hasSelection: Bool, markID: UUID?, canAddNote: Bool = false) -> [NSMenuItem] {
+        var items: [NSMenuItem] = []
+        if hasSelection {
+            items.append(NSMenuItem(title: "Markieren", action: #selector(markSelection(_:)), keyEquivalent: ""))
+            items.append(colorSubmenuItem(title: "Markieren mit", action: #selector(markSelectionWithColor(_:))))
+            items.append(NSMenuItem(title: "Kommentieren …", action: #selector(commentSelection(_:)), keyEquivalent: ""))
+        }
+        if markID != nil {
+            items.append(NSMenuItem(title: "Kommentar bearbeiten …", action: #selector(editComment(_:)), keyEquivalent: ""))
+            items.append(colorSubmenuItem(title: "Farbe ändern", action: #selector(recolorMark(_:))))
+            items.append(NSMenuItem(title: "Markierung entfernen", action: #selector(removeMark(_:)), keyEquivalent: ""))
+        }
+        if !hasSelection, markID == nil, canAddNote {
+            items.append(NSMenuItem(title: "Notiz hier hinzufügen …", action: #selector(addNote(_:)), keyEquivalent: ""))
+        }
+        items.forEach { $0.target = self }
+        return items
+    }
+
+    private func colorSubmenuItem(title: String, action: Selector) -> NSMenuItem {
+        let submenu = NSMenu(title: title)
+        for color in MarkColor.allCases {
+            let item = NSMenuItem(title: color.title, action: action, keyEquivalent: "")
+            item.representedObject = color.rawValue
+            item.image = color.swatch
+            item.target = self
+            submenu.addItem(item)
+        }
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        return item
+    }
+
+    @objc private func markSelection(_ sender: NSMenuItem) { store?.onMarkSelection?(nil) }
+
+    @objc private func commentSelection(_ sender: NSMenuItem) { store?.onCommentSelection?() }
+
+    @objc private func markSelectionWithColor(_ sender: NSMenuItem) {
+        guard let color = (sender.representedObject as? String).flatMap(MarkColor.init(rawValue:)) else { return }
+        store?.onMarkSelection?(color)
+    }
+
+    @objc private func editComment(_ sender: NSMenuItem) {
+        guard let id = menuMarkID else { return }
+        store?.onClickMark?(id)
+    }
+
+    @objc private func recolorMark(_ sender: NSMenuItem) {
+        guard let id = menuMarkID, let color = (sender.representedObject as? String).flatMap(MarkColor.init(rawValue:)) else { return }
+        store?.onRecolorMark?(id, color)
+    }
+
+    @objc private func removeMark(_ sender: NSMenuItem) {
+        guard let id = menuMarkID else { return }
+        store?.onRemoveMark?(id)
+    }
+
+    @objc private func addNote(_ sender: NSMenuItem) {
+        guard let click = menuClick else { return }
+        store?.onAddNote?(click.page, click.point)
     }
 }

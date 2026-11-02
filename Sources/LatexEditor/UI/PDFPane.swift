@@ -1,8 +1,9 @@
 import SwiftUI
 
 struct PDFPane: View {
-    let store: PDFPreviewStore
-    let synctex: SyncTeXStore
+    let model: AppModel
+
+    private var store: PDFPreviewStore { model.pdf }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -17,7 +18,7 @@ struct PDFPane: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             Divider()
-            PDFStatusBar(store: store, synctex: synctex)
+            PDFStatusBar(model: model)
         }
     }
 
@@ -30,9 +31,11 @@ struct PDFPane: View {
 private struct PDFStatusBar: View {
     private static let separatorHeight: CGFloat = 14
 
-    let store: PDFPreviewStore
-    let synctex: SyncTeXStore
+    let model: AppModel
     @Environment(\.interfaceScale) private var scale
+
+    private var store: PDFPreviewStore { model.pdf }
+    private var synctex: SyncTeXStore { model.synctex }
 
     var body: some View {
         HStack(spacing: 4) {
@@ -52,6 +55,8 @@ private struct PDFStatusBar: View {
                 .symbolVariant(synctex.followCursor ? .fill : .none)
                 .foregroundStyle(synctex.followCursor ? Color.accentColor : .secondary)
                 .help("PDF folgt Cursor: Das PDF scrollt zur Stelle, an der du schreibst. ⌘J springt einmalig, ⌘-Klick ins PDF springt in den Text.")
+            Divider().frame(height: Self.separatorHeight * scale)
+            marksButton
             Spacer()
             Text(pageLabel)
                 .monospacedDigit()
@@ -60,6 +65,30 @@ private struct PDFStatusBar: View {
         .buttonStyle(.borderless)
         .bottomBarStyle(scale: scale)
         .disabled(store.pdfURL == nil)
+    }
+
+    /// „Markierungen“ mit Anzahl; ein Warnsymbol, solange Markierungen nicht zugeordnet sind
+    private var marksButton: some View {
+        let unplaced = model.marks.resolutions.values.filter { $0 == .orphaned }.count
+        return Button { store.isMarkListShown.toggle() } label: {
+            Label("Markierungen", systemImage: unplaced > 0 ? "exclamationmark.triangle.fill" : "highlighter")
+            if !model.marks.marks.isEmpty { Text("\(model.marks.marks.count)").monospacedDigit() }
+        }
+        .labelStyle(.titleAndIcon)
+        .foregroundStyle(unplaced > 0 ? Color.orange : .secondary)
+        .help(unplaced > 0 ? "\(unplaced) Markierung(en) lassen sich keiner Stelle im Text mehr zuordnen" : "Markierungen und Notizen im PDF")
+        .popover(isPresented: Binding(get: { store.isMarkListShown }, set: { store.isMarkListShown = $0 }), arrowEdge: .top) {
+            MarkListView(
+                store: model.marks, pdf: store,
+                reveal: { model.revealMark($0) }, edit: { id in
+                    store.isMarkListShown = false
+                    model.revealMark(id)
+                    model.showMarkPopover(id)
+                },
+                remove: { model.removeMarks([$0]) },
+                reassign: { id in Task { await model.reassignMark(id) } }
+            )
+        }
     }
 
     private var followCursor: Binding<Bool> {

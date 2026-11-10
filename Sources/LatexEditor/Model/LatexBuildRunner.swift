@@ -123,6 +123,8 @@ enum LatexBuildRunner {
                 }
                 do {
                     try process.run()
+                    // Abbruch zwischen der Prüfung oben und dem Start: `onCancel` fand noch keinen laufenden Prozess
+                    if Task.isCancelled { interrupt(box) }
                 } catch {
                     process.terminationHandler = nil
                     continuation.resume(throwing: LatexBuildError.launchFailed(error.localizedDescription))

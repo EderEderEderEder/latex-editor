@@ -35,6 +35,32 @@ struct MarkResolver {
     let forward: (URL, Int) -> SyncTeXBox?
     /// Ist die Datei neuer als das PDF? Dann stimmen die SyncTeX-Zeilen nicht mehr mit ihr überein.
     let isNewerThanPDF: (String) -> Bool
+    /// Zeichenlagen und Text der Seiten, einmal je Seite für den ganzen Lauf gelesen
+    private let pages = PageTextCache()
+
+    /// Liegen mehrere Markierungen auf einer Seite, fragte sonst jede Seite der Markierung alle Zeichen der Seite neu ab
+    /// (`characterBounds` für jedes Zeichen, bei jedem Zuordnen nach einem Build, auf dem Main-Thread).
+    private final class PageTextCache {
+        private var centers: [Int: [CGPoint]] = [:]
+        private var texts: [Int: NSString] = [:]
+
+        func characterCenters(of page: PDFPage, index: Int) -> [CGPoint] {
+            if let known = centers[index] { return known }
+            let computed = (0..<page.numberOfCharacters).map { character -> CGPoint in
+                let bounds = page.characterBounds(at: character)
+                return CGPoint(x: bounds.midX, y: bounds.midY)
+            }
+            centers[index] = computed
+            return computed
+        }
+
+        func text(of page: PDFPage, index: Int) -> NSString? {
+            if let known = texts[index] { return known }
+            guard let text = page.string as NSString? else { return nil }
+            texts[index] = text
+            return text
+        }
+    }
 
     func resolve(_ mark: PDFMark) -> MarkResolution {
         if isNewerThanPDF(mark.start.path) || isNewerThanPDF(mark.end.path) { return .pending }
@@ -81,18 +107,16 @@ struct MarkResolver {
     private func side(of anchor: MarkAnchor, isStart: Bool) -> Side? {
         guard let box = lineBox(of: anchor) else { return nil }
         let (page, pageIndex, rect) = (box.page, box.index, box.rect)
-        let characters = charactersInside(rect, on: page)
-        let matched = characters.flatMap { matchWords(anchor, isStart: isStart, in: $0, on: page) }
+        let characters = charactersInside(rect, on: page, pageIndex: pageIndex)
+        let matched = characters.flatMap { matchWords(anchor, isStart: isStart, in: $0, on: page, pageIndex: pageIndex) }
         return Side(page: page, pageIndex: pageIndex, rect: rect, characters: characters, matched: matched)
     }
 
-    private func charactersInside(_ rect: CGRect, on page: PDFPage) -> NSRange? {
+    private func charactersInside(_ rect: CGRect, on page: PDFPage, pageIndex: Int) -> NSRange? {
         let area = rect.insetBy(dx: -Self.rectTolerance, dy: -Self.rectTolerance)
         var first: Int?
         var last = 0
-        for index in 0..<page.numberOfCharacters {
-            let bounds = page.characterBounds(at: index)
-            guard area.contains(CGPoint(x: bounds.midX, y: bounds.midY)) else { continue }
+        for (index, center) in pages.characterCenters(of: page, index: pageIndex).enumerated() where area.contains(center) {
             first = first ?? index
             last = index
         }
@@ -100,8 +124,10 @@ struct MarkResolver {
     }
 
     /// Treffer der ersten (letzten) drei, zwei, ein Wort(e) in den Wörtern der Zeile, in Lesereihenfolge
-    private func wordCandidates(_ words: [String], isStart: Bool, in range: NSRange, on page: PDFPage) -> [(count: Int, ranges: [NSRange])] {
-        guard !words.isEmpty, let text = page.string as NSString?, NSMaxRange(range) <= text.length else { return [] }
+    private func wordCandidates(
+        _ words: [String], isStart: Bool, in range: NSRange, on page: PDFPage, pageIndex: Int
+    ) -> [(count: Int, ranges: [NSRange])] {
+        guard !words.isEmpty, let text = pages.text(of: page, index: pageIndex), NSMaxRange(range) <= text.length else { return [] }
         let tokens = MarkText.tokens(in: text.substring(with: range)).map {
             MarkText.Token(text: $0.text, range: NSRange(location: $0.range.location + range.location, length: $0.range.length))
         }
@@ -118,8 +144,8 @@ struct MarkResolver {
     /// Zuerst die ersten (letzten) drei Wörter hintereinander, dann zwei, dann eins. Hat der Anker sich den Treffer gemerkt
     /// (`occurrence`), gilt er; sonst der erste (letzte), und ein einzelnes Wort nur, wenn es in der Zeile genau einmal
     /// vorkommt: Sonst wäre es geraten.
-    private func matchWords(_ anchor: MarkAnchor, isStart: Bool, in range: NSRange, on page: PDFPage) -> NSRange? {
-        for (count, ranges) in wordCandidates(anchor.words, isStart: isStart, in: range, on: page) where !ranges.isEmpty {
+    private func matchWords(_ anchor: MarkAnchor, isStart: Bool, in range: NSRange, on page: PDFPage, pageIndex: Int) -> NSRange? {
+        for (count, ranges) in wordCandidates(anchor.words, isStart: isStart, in: range, on: page, pageIndex: pageIndex) where !ranges.isEmpty {
             if count == anchor.matchedWords, let occurrence = anchor.occurrence, occurrence < ranges.count {
                 return isStart ? ranges[occurrence] : ranges[ranges.count - 1 - occurrence]
             }
@@ -132,8 +158,8 @@ struct MarkResolver {
     /// Beim Anlegen: der wievielte Treffer der Wortfolge in der Zeile ist die gewählte Stelle? `characterIndex` ist das Zeichen
     /// der Seite am Rand der Auswahl (Anfang bzw. Ende). `nil`, wenn kein Treffer bei dieser Stelle liegt.
     func occurrence(for anchor: MarkAnchor, isStart: Bool, characterIndex: Int) -> (words: Int, occurrence: Int)? {
-        guard let box = lineBox(of: anchor), let characters = charactersInside(box.rect, on: box.page) else { return nil }
-        for (count, ranges) in wordCandidates(anchor.words, isStart: isStart, in: characters, on: box.page) where !ranges.isEmpty {
+        guard let box = lineBox(of: anchor), let characters = charactersInside(box.rect, on: box.page, pageIndex: box.index) else { return nil }
+        for (count, ranges) in wordCandidates(anchor.words, isStart: isStart, in: characters, on: box.page, pageIndex: box.index) where !ranges.isEmpty {
             let distances = ranges.map { isStart ? abs($0.location - characterIndex) : abs(NSMaxRange($0) - 1 - characterIndex) }
             guard let nearest = distances.indices.min(by: { distances[$0] < distances[$1] }),
                   distances[nearest] <= Self.occurrenceTolerance else { return nil }

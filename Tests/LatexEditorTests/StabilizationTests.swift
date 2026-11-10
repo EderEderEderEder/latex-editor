@@ -22,6 +22,20 @@ struct ReplaceTextTests {
         session.replaceText(with: "Anfang \\ref{neu} Ende", actionName: "Nichts")
         #expect(session.undoManager.undoActionName != "Nichts")
     }
+
+    @Test("Zeichen aus zwei UTF-16-Einheiten mit gleicher erster Hälfte (😀 → 😁) werden als Ganzes ersetzt")
+    func surrogatePairsStayWhole() {
+        let session = DocumentSession(url: URL(fileURLWithPath: "/tmp/a.tex"), text: "vor 😀😀 nach")
+        session.replaceText(with: "vor 😁😀 nach", actionName: "Ersetzen")
+        #expect(session.textStorage.string == "vor 😁😀 nach")
+        session.replaceText(with: "vor 😁😃 nach", actionName: "Ersetzen")
+        #expect(session.textStorage.string == "vor 😁😃 nach")
+        #expect(session.textStorage.string.unicodeScalars.allSatisfy { $0 != "\u{FFFD}" })
+
+        session.undoManager.undo()
+        session.undoManager.undo()
+        #expect(session.textStorage.string == "vor 😀😀 nach")
+    }
 }
 
 @Suite("Git erholt sich nach einem fehlgeschlagenen Status")

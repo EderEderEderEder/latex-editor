@@ -25,7 +25,7 @@ scripts/install-app.sh       # baut und installiert nach /Applications
 scripts/demo-projekt.sh      # Testdaten/Arbeitskopie/ zum Ausprobieren neu anlegen
 ```
 
-Es gibt keinen Linter. **Tests immer über `scripts/test-run.sh`**: Es gibt nur eine kurze Zusammenfassung aus (Log: `.build/test-logs/last.log`, nur bei Bedarf lesen), beendet bei Stillstand (60 s ohne Ausgabe) oder nach 300 s den eigenen Prozessbaum, nimmt den Hänger per `sample` auf (`stall-sample.txt`) und wiederholt bekannt unzuverlässige Tests (`lineWrapping`, `statusDuration`) einzeln. Nie in Schleifen auf Tests warten, keine eigenen Hilfsskripte in `/tmp`; nach Änderungen `--fast` oder `--filter`, den vollen Lauf einmal vor Commit/Installation (am besten im Hintergrund starten und auf das Ende warten). Bei einem Hänger nicht blind wiederholen (siehe `Tests/CLAUDE.md`). Handtests und UI-Checkliste: `TESTING.md` (fortlaufend nummeriert, zuletzt #274).
+Es gibt keinen Linter. **Tests immer über `scripts/test-run.sh`**: Es gibt nur eine kurze Zusammenfassung aus (Log: `.build/test-logs/last.log`, nur bei Bedarf lesen), beendet bei Stillstand (60 s ohne Ausgabe) oder nach 300 s den eigenen Prozessbaum, nimmt den Hänger per `sample` auf (`stall-sample.txt`) und wiederholt bekannt unzuverlässige Tests (`lineWrapping`, `statusDuration`) einzeln. Nie in Schleifen auf Tests warten, keine eigenen Hilfsskripte in `/tmp`; nach Änderungen `--fast` oder `--filter`, den vollen Lauf einmal vor Commit/Installation (am besten im Hintergrund starten und auf das Ende warten). Bei einem Hänger nicht blind wiederholen (siehe `Tests/CLAUDE.md`). Handtests und UI-Checkliste: `TESTING.md` (fortlaufend nummeriert, zuletzt #276).
 
 ## Landkarte (`Sources/LatexEditor/`)
 

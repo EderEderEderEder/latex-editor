@@ -51,24 +51,27 @@ struct CompletionIndex: Equatable, Sendable {
         var environments: Set<String> = []
         for file in files.filter({ FileKind(url: $0) == .tex }) + styleFiles {
             guard let text = readText(file) else { continue }
-            commands.formUnion(definedCommands(in: text))
+            let fileCommands = definedCommands(in: text)
+            commands.formUnion(fileCommands)
             environments.formUnion(definedEnvironments(in: text))
             guard FileKind(url: file) == .tex else { continue }
-            index.projectCommands.formUnion(definedCommands(in: text))
+            index.projectCommands.formUnion(fileCommands)
             index.projectEnvironments.formUnion(EnvironmentNames.definedNames(in: text))
             let definitions = Acronyms.definitions(in: text, file: file)
             index.acronymEntries += definitions
             index.acronyms.formUnion(definitions.map(\.key))
-            index.usedAcronyms.formUnion(Acronyms.scan(text).filter { !$0.isDefinition }.map(\.key))
-            if Acronyms.usesAll(text) { index.usesAllAcronyms = true }
-            for occurrence in LatexReferences.scan(text) {
+            // Einmal maskieren (Kommentare, Code) für Abkürzungen, Verweise und Zitate, statt in jeder Abfrage neu
+            let masked = LatexMasking.scannable(text)
+            index.usedAcronyms.formUnion(Acronyms.scan(masked: masked as NSString).filter { !$0.isDefinition }.map(\.key))
+            if masked.contains(Acronyms.useAllCommand) { index.usesAllAcronyms = true }
+            for occurrence in LatexReferences.scan(masked: masked as NSString) {
                 switch occurrence.kind {
                 case .labelUse: index.usedLabels.insert(occurrence.key)
                 case .citation: index.usedCitations.insert(occurrence.key)
                 case .labelDefinition: break
                 }
             }
-            if LatexReferences.citesEverything(text) { index.citesEverything = true }
+            if masked.contains(LatexReferences.citeEverythingCommand) { index.citesEverything = true }
         }
         index.acronymEntries.sort { $0.key.localizedStandardCompare($1.key) == .orderedAscending }
         index.userCommands = commands.sorted()

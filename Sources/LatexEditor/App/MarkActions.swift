@@ -178,6 +178,8 @@ extension AppModel {
         let lookup = markBackwardLookup ?? { [synctex] in synctex.backward(page: $0, point: $1) }
         let probe = MarkCreator(root: root, document: document, linesOf: { _ in nil }, backward: lookup)
         let sources = await Self.readSources(probe.sourcePaths(of: selection), root: root)
+        // Inzwischen neu kompiliert: Die Auswahl gehört zum alten PDF
+        guard document === pdf.pdfView?.document else { return }
         let creator = MarkCreator(root: root, document: document, linesOf: { sources[$0]?.lines }, backward: lookup, forward: markForwardLookup())
         do {
             var moved = try creator.makeMark(from: selection, color: old.color, comment: old.comment)
@@ -221,6 +223,12 @@ extension AppModel {
                 remove: { [weak self] in self?.removeMarks([id]) }
             )
         )
+    }
+
+    /// Beim Beenden: den Kommentar eines noch offenen Popovers übernehmen und die Markierungen sofort schreiben
+    func saveMarksBeforeTermination() {
+        markPopover.close()
+        marks.saveNow()
     }
 
     // MARK: Ändern und Entfernen (mit Rückgängig)

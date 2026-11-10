@@ -93,14 +93,25 @@ enum FileOperations {
         guard FileManager.default.fileExists(atPath: source.path) else { throw FileOperationError.notFound(source.lastPathComponent) }
         let target = try destination(for: name, in: source.deletingLastPathComponent(), replacing: source)
         guard target != source else { return source }
-        if target.path.lowercased() == source.path.lowercased() {
-            let temporary = source.deletingLastPathComponent().appendingPathComponent(".umbenennen-\(UUID().uuidString)")
-            try FileManager.default.moveItem(at: source, to: temporary)
-            try FileManager.default.moveItem(at: temporary, to: target)
-        } else {
-            try FileManager.default.moveItem(at: source, to: target)
-        }
+        try moveItem(from: source, to: target, isCaseOnly: target.path.lowercased() == source.path.lowercased())
         return target
+    }
+
+    /// Reine Groß-/Kleinschreibung läuft über einen (versteckten) Zwischennamen. Scheitert der zweite Schritt, kommt die
+    /// Datei an ihren alten Platz zurück: Sonst bliebe sie unter dem Zwischennamen liegen und wäre im Dateibaum unsichtbar.
+    private static func moveItem(from source: URL, to target: URL, isCaseOnly: Bool) throws {
+        guard isCaseOnly else {
+            try FileManager.default.moveItem(at: source, to: target)
+            return
+        }
+        let temporary = source.deletingLastPathComponent().appendingPathComponent(".umbenennen-\(UUID().uuidString)")
+        try FileManager.default.moveItem(at: source, to: temporary)
+        do {
+            try FileManager.default.moveItem(at: temporary, to: target)
+        } catch {
+            try? FileManager.default.moveItem(at: temporary, to: source)
+            throw error
+        }
     }
 
     /// Verschiebt oder benennt an einen beliebigen Zielpfad um (Rückgängig und Wiederholen); legt fehlende Ordner an.
@@ -114,13 +125,7 @@ enum FileOperations {
         let isCaseOnly = target.path.lowercased() == source.path.lowercased()
         if FileManager.default.fileExists(atPath: target.path), !isCaseOnly { throw FileOperationError.alreadyExists(target.lastPathComponent) }
         try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if isCaseOnly {
-            let temporary = source.deletingLastPathComponent().appendingPathComponent(".umbenennen-\(UUID().uuidString)")
-            try FileManager.default.moveItem(at: source, to: temporary)
-            try FileManager.default.moveItem(at: temporary, to: target)
-        } else {
-            try FileManager.default.moveItem(at: source, to: target)
-        }
+        try moveItem(from: source, to: target, isCaseOnly: isCaseOnly)
         return target
     }
 

@@ -193,7 +193,8 @@ extension SyncTeXIndex {
             chosen = records[candidates[firstAtOrAfter]].line
         }
         let start = lowerBound(in: candidates, line: chosen)
-        let end = lowerBound(in: candidates, line: chosen + 1)
+        // Eine beschädigte Datei kann die größte darstellbare Zeilennummer enthalten: `chosen + 1` liefe dann über
+        let end = chosen == .max ? candidates.count : lowerBound(in: candidates, line: chosen + 1)
         return candidates[start..<end]
     }
 

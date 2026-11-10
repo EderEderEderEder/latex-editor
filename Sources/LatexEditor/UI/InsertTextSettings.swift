@@ -116,7 +116,7 @@ struct ReferenceSettingsView: View {
                 SettingsCard("Ziel") {
                     SettingRow("Label") {
                         Picker("", selection: $store.reference.label) {
-                            ForEach(store.catalog.labels) { entry in
+                            ForEach(store.catalog.labels, id: \.self) { entry in
                                 Text("\(entry.label)  (\(entry.file.lastPathComponent):\(entry.line))").tag(entry.label)
                             }
                         }

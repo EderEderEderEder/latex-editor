@@ -103,7 +103,8 @@ struct IssueListView: View {
             }
             if !filteredLabels.isEmpty {
                 hintGroup("labels", title: "Ungenutzte Labels (\(filteredLabels.count))") {
-                    ForEach(filteredLabels) { entry in
+                    // Nicht über `id` (der Name): Ein doppelt definiertes, ungenutztes Label stünde zweimal mit derselben Identität da
+                    ForEach(filteredLabels, id: \.self) { entry in
                         HintRow(title: entry.label, detail: "\(entry.file.lastPathComponent):\(entry.line)") {
                             Task { await model.editor.open(entry.file, line: entry.line) }
                         }
@@ -121,7 +122,7 @@ struct IssueListView: View {
             }
             if !filteredSources.isEmpty {
                 hintGroup("sources", title: "Nicht zitierte Quellen (\(filteredSources.count))") {
-                    ForEach(filteredSources) { entry in
+                    ForEach(filteredSources, id: \.self) { entry in
                         HintRow(title: entry.key, detail: entry.title) {
                             guard let file = entry.file else { return }
                             Task { await model.editor.open(file, line: entry.line) }

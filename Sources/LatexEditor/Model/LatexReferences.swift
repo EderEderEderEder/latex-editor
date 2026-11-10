@@ -81,8 +81,10 @@ enum LatexReferences {
     }
 
     /// `\nocite{*}`: Alle Quellen der Literaturdatei gelten als benutzt
+    static let citeEverythingCommand = "\\nocite{*}"
+
     static func citesEverything(_ text: String) -> Bool {
-        LatexMasking.scannable(text).contains("\\nocite{*}")
+        LatexMasking.scannable(text).contains(citeEverythingCommand)
     }
 }
 
@@ -106,23 +108,22 @@ enum LatexMasking {
         return result as String
     }
 
+    /// Alle `\begin{…}` in einem Durchlauf über den Ausgangstext: Treffer im Inneren einer schon maskierten Code-Umgebung
+    /// werden übersprungen. (Vorher suchte jeder Schritt im veränderten Text neu und kopierte ihn dafür jedes Mal ganz.)
     static func maskingCode(in text: String) -> String {
+        let source = text as NSString
         let result = NSMutableString(string: text)
-        var searchStart = 0
-        while searchStart < result.length {
-            let remaining = NSRange(location: searchStart, length: result.length - searchStart)
-            guard let match = beginExpression.firstMatch(in: result as String, range: remaining) else { break }
-            let name = result.substring(with: match.range(at: 1))
+        var maskedUntil = 0
+        for match in beginExpression.matches(in: text, range: NSRange(location: 0, length: source.length))
+        where match.range.location >= maskedUntil {
+            let name = source.substring(with: match.range(at: 1))
+            guard LatexEnvironments.isCode(name) else { continue }
             let bodyStart = NSMaxRange(match.range)
-            guard LatexEnvironments.isCode(name) else {
-                searchStart = bodyStart
-                continue
-            }
-            let tail = NSRange(location: bodyStart, length: result.length - bodyStart)
-            let end = result.range(of: "\\end{\(name)}", options: [], range: tail)
-            let bodyEnd = end.location == NSNotFound ? result.length : end.location
+            let tail = NSRange(location: bodyStart, length: source.length - bodyStart)
+            let end = source.range(of: "\\end{\(name)}", options: [], range: tail)
+            let bodyEnd = end.location == NSNotFound ? source.length : end.location
             mask(NSRange(location: bodyStart, length: bodyEnd - bodyStart), in: result)
-            searchStart = bodyEnd
+            maskedUntil = bodyEnd
         }
         return result as String
     }

@@ -43,6 +43,26 @@ struct BuildCancelTests {
         #expect(finished == 1)
     }
 
+    @Test("Ein Auftrag direkt nach dem Abbrechen (latexmk beendet sich noch) geht nicht verloren")
+    func buildRequestedWhileCancelling() async throws {
+        let fake = HangingThenFastLatexmk()
+        let store = BuildStore(defaults: makeDefaults()) { try await fake.run($0) }
+        var finished = 0
+        store.onFinished = { finished += 1 }
+        let request = LatexBuildRequest(mainFile: URL(fileURLWithPath: "/p/main.tex"))
+
+        store.requestBuild(request)
+        try await Task.sleep(for: .milliseconds(30))
+        store.cancelBuild()
+        // Noch im selben Durchlauf: Der abgebrochene Lauf hat sich noch nicht beendet
+        store.requestBuild(request)
+        for _ in 0..<200 where store.isRunning { try await Task.sleep(for: .milliseconds(10)) }
+
+        #expect(await fake.calls == 2, "der neue Auftrag läuft")
+        #expect(store.status == .succeeded)
+        #expect(finished == 1)
+    }
+
     @Test("Abbrechen ohne laufenden Build tut nichts")
     func cancelWhenIdle() {
         let store = BuildStore(defaults: makeDefaults()) { _ in throw CancellationError() }

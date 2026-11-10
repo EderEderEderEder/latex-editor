@@ -129,6 +129,17 @@ final class MarkStore {
         await saveTask?.value
     }
 
+    /// Beim Beenden der App: sofort schreiben, ohne auf das Speichern im Hintergrund zu warten (es würde mit dem
+    /// Prozess enden, die letzte Änderung ginge verloren). Die Datei ist klein.
+    func saveNow() {
+        guard let root, !isReadOnly else { return }
+        do {
+            try MarkStorage.save(marks, root: root, in: directory)
+        } catch {
+            Signposts.logger.error("Markierungen beim Beenden nicht gespeichert: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     private func save() {
         guard let root, !isReadOnly else { return }
         let snapshot = marks

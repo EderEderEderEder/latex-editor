@@ -72,6 +72,21 @@ struct MarkStorageTests {
         #expect(try Data(contentsOf: file) == original)
     }
 
+    @Test("Beim Beenden steht die letzte Änderung sofort auf der Platte, ohne auf das Speichern im Hintergrund zu warten")
+    func saveNowWritesImmediately() throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = MarkStore(directory: directory, defaults: temporaryDefaults())
+        store.load(root: root)
+        let mark = sampleMark("kurz vor dem Beenden")
+        store.add(mark)
+
+        // Ohne `await`: Das Speichern im Hintergrund hat noch nicht begonnen
+        store.saveNow()
+
+        #expect(try MarkStorage.load(root: root, in: directory) == [mark])
+    }
+
     @Test("Hinzufügen, Ändern und Entfernen werden gespeichert und beim nächsten Laden wiedergefunden")
     func storeEdits() async throws {
         let directory = try makeDirectory()

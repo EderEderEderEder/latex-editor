@@ -231,6 +231,10 @@ final class DocumentSession {
         var suffix = 0
         while suffix < shorter - prefix,
               old.character(at: old.length - 1 - suffix) == new.character(at: new.length - 1 - suffix) { suffix += 1 }
+        // Nie mitten in einem Zeichen aus zwei UTF-16-Einheiten trennen (z. B. zwei Emojis mit gleicher erster Hälfte):
+        // Der ersetzte Teil wäre sonst kein gültiger Text.
+        if prefix > 0, UTF16.isLeadSurrogate(new.character(at: prefix - 1)) { prefix -= 1 }
+        if suffix > 0, UTF16.isTrailSurrogate(new.character(at: new.length - suffix)) { suffix -= 1 }
         let range = NSRange(location: prefix, length: old.length - prefix - suffix)
         let replacement = new.substring(with: NSRange(location: prefix, length: new.length - prefix - suffix))
         textStorage.replaceCharacters(in: range, with: NSAttributedString(string: replacement, attributes: EditorAppearance.textAttributes))

@@ -290,8 +290,10 @@ enum Acronyms {
     }
 
     /// Wird in `\glsaddall` jede Abkürzung gedruckt: keine gilt als ungenutzt
+    static let useAllCommand = "\\glsaddall"
+
     static func usesAll(_ text: String) -> Bool {
-        LatexMasking.scannable(text).contains("\\glsaddall")
+        LatexMasking.scannable(text).contains(useAllCommand)
     }
 
     // MARK: Definitionen mit Kurzform und Langform

@@ -30,7 +30,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        AppModel.shared.confirmUnsavedChanges() ? .terminateNow : .terminateCancel
+        guard AppModel.shared.confirmUnsavedChanges() else { return .terminateCancel }
+        AppModel.shared.saveMarksBeforeTermination()
+        return .terminateNow
     }
 }
 

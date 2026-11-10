@@ -144,6 +144,11 @@ final class BuildStore {
         guard queueGeneration == generation else { return }
         isRunning = false
         buildTask = nil
+        // Ein Auftrag, der nach „Abbrechen“ kam, während latexmk noch beendet wurde, ginge sonst verloren
+        if let request = pendingRequest {
+            requestBuild(request)
+            return
+        }
         // Nach einem Abbruch ist das PDF unter Umständen unvollständig: nicht neu laden
         if status != .cancelled { onFinished?() }
     }

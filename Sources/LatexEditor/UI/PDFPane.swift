@@ -60,6 +60,7 @@ private struct PDFStatusBar: View {
             Divider().frame(height: Self.separatorHeight * scale)
             markingControl
             marksButton
+            if let page = store.backTargetPage { backButton(page: page) }
             Spacer()
             Text(pageLabel)
                 .monospacedDigit()
@@ -68,6 +69,26 @@ private struct PDFStatusBar: View {
         .buttonStyle(.borderless)
         .bottomBarStyle(scale: scale)
         .disabled(store.pdfURL == nil)
+    }
+
+    /// Mit Text, wenn Platz ist, sonst nur das Symbol (Seitenzahl und Spacer behalten Vorrang)
+    private func backButton(page: Int) -> some View {
+        ViewThatFits(in: .horizontal) {
+            backButtonContent(page: page, style: .titleAndIcon)
+            backButtonContent(page: page, style: .iconOnly)
+        }
+    }
+
+    private func backButtonContent<Style: LabelStyle>(page: Int, style: Style) -> some View {
+        let title = "Zurück zu Seite \(page)"
+        return HStack(spacing: 4) {
+            Divider().frame(height: Self.separatorHeight * scale)
+            Button(title, systemImage: "arrow.uturn.backward", action: store.goBack)
+                .labelStyle(style)
+                .lineLimit(1)
+                .help("\(title) (⌃⌘←)")
+                .accessibilityLabel(title)
+        }
     }
 
     /// Stift mit kleinem Pfeil: Knopf schaltet den Markierungsmodus, das Menü wählt die Farbe

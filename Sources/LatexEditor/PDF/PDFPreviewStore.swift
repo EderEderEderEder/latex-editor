@@ -20,6 +20,13 @@ final class PDFPreviewStore {
     var isMarkListShown = false
     /// Markierungsmodus: Was im PDF ausgewählt wird, ist sofort markiert (Farbe: `MarkStore.lastColor`)
     var isMarkingMode = false
+    /// Verlauf der Sprünge über interne PDF-Links (\ref, \cite, Inhaltsverzeichnis, Fußnoten)
+    private(set) var jumpHistory = PDFJumpHistory()
+
+    /// Seite für „Zurück zu Seite X“, **1-basiert** wie `currentPage`; nil, wenn es nichts zum Zurückgehen gibt
+    var backTargetPage: Int? { jumpHistory.backPageIndex.map { $0 + 1 } }
+    var canGoBack: Bool { jumpHistory.canGoBack }
+    var canGoForward: Bool { jumpHistory.canGoForward }
 
     @ObservationIgnored weak var pdfView: PDFView?
     /// Stand der PDF-View, die zuletzt verschwunden ist (Wechsel der Ansicht); die nächste View übernimmt ihn
@@ -47,6 +54,7 @@ final class PDFPreviewStore {
     private static let outputDirectoryNames = ["", "build", "out"]
 
     func setMainFile(_ mainFile: URL?) {
+        clearJumpHistory()
         guard let mainFile else {
             expectedURL = nil
             pdfURL = nil
@@ -110,6 +118,43 @@ final class PDFPreviewStore {
         guard let pdfView else { return }
         pdfView.autoScales = false
         pdfView.scaleFactor = min(max(pdfView.scaleFactor * factor, pdfView.minScaleFactor), pdfView.maxScaleFactor)
+        syncStatus()
+    }
+
+    // MARK: Sprungverlauf
+
+    /// Die Stelle vor einem Sprung über einen internen Link (siehe `PDFLinkInteraction`)
+    func recordJumpOrigin(_ state: PDFViewState) {
+        jumpHistory.push(state)
+    }
+
+    func goBack() {
+        guard jumpHistory.canGoBack else { return }
+        navigateHistory { history, current in history.back(from: current) }
+    }
+
+    func goForward() {
+        guard jumpHistory.canGoForward else { return }
+        navigateHistory { history, current in history.forward(from: current) }
+    }
+
+    /// Nach dem Neuladen (Build) kann das PDF weniger Seiten haben
+    func clampJumpHistory(toPageCount pageCount: Int) {
+        var clamped = jumpHistory
+        clamped.clamp(toPageCount: pageCount)
+        if clamped != jumpHistory { jumpHistory = clamped }
+    }
+
+    private func clearJumpHistory() {
+        guard jumpHistory.canGoBack || jumpHistory.canGoForward else { return }
+        jumpHistory.clear()
+    }
+
+    /// Aktuelle Stelle erfassen, im Verlauf einen Schritt gehen und das Ziel in der Ansicht wiederherstellen
+    private func navigateHistory(_ step: (inout PDFJumpHistory, PDFViewState) -> PDFViewState?) {
+        guard let pdfView, let current = pdfView.captureViewState(),
+              let target = step(&jumpHistory, current) else { return }
+        pdfView.restore(target)
         syncStatus()
     }
 

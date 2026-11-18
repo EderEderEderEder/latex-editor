@@ -34,7 +34,7 @@ struct PDFKitView: NSViewRepresentable {
 }
 
 /// Wo man im PDF war: Seite, Punkt auf der Seite, Zoom
-struct PDFViewState {
+struct PDFViewState: Equatable, Sendable {
     let pageIndex: Int
     let point: CGPoint
     let scale: CGFloat
@@ -46,10 +46,12 @@ final class PDFCoordinator {
     private let store: PDFPreviewStore
     private var loadedURL: URL?
     private var loadedToken: Int?
+    private let linkInteraction: PDFLinkInteraction
     nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
 
     init(store: PDFPreviewStore) {
         self.store = store
+        linkInteraction = PDFLinkInteraction(store: store)
     }
 
     deinit {
@@ -78,10 +80,11 @@ final class PDFCoordinator {
         // Unvollständig geschriebene PDFs ergeben nil; dann bleibt die alte Ansicht stehen.
         guard let document = PDFDocument(url: url) else { return }
         // Eine neue View (nach einem Wechsel der Ansicht) hat noch nichts: dann gilt der gemerkte Stand
-        let previous = captureState(of: view) ?? store.savedViewState
+        let previous = view.captureViewState() ?? store.savedViewState
         store.savedViewState = nil
         view.document = document
-        if let previous { restore(previous, in: view, document: document) }
+        if let previous { view.restore(previous) }
+        store.clampJumpHistory(toPageCount: document.pageCount)
         store.markAnnotations = []
         store.syncStatus()
         store.onDocumentLoaded?()
@@ -93,10 +96,11 @@ final class PDFCoordinator {
         if let previous = store.pdfView, previous !== view { saveState(of: previous) }
         store.pdfView = view
         observe(view)
+        linkInteraction.observe(view)
     }
 
     func saveState(of view: PDFView) {
-        guard let state = captureState(of: view) else { return }
+        guard let state = view.captureViewState() else { return }
         store.savedViewState = state
     }
 
@@ -105,44 +109,50 @@ final class PDFCoordinator {
         guard store.pdfView == nil || store.pdfView === view else { return }
         saveState(of: view)
     }
+}
 
-    private func captureState(of view: PDFView) -> PDFViewState? {
-        guard let document = view.document,
-              let destination = view.currentDestination,
+extension PDFView {
+    /// Die aktuell gezeigte Stelle (oberer Rand der Ansicht), nil ohne Dokument
+    func captureViewState() -> PDFViewState? {
+        guard let document,
+              let destination = currentDestination,
               let page = destination.page else { return nil }
         return PDFViewState(
             pageIndex: document.index(for: page),
             point: destination.point,
-            scale: view.scaleFactor,
-            autoScales: view.autoScales
+            scale: scaleFactor,
+            autoScales: autoScales
         )
     }
 
-    private func restore(_ state: PDFViewState, in view: PDFView, document: PDFDocument) {
-        guard document.pageCount > 0 else { return }
-        view.autoScales = state.autoScales
-        if !state.autoScales { view.scaleFactor = state.scale }
-        let index = min(state.pageIndex, document.pageCount - 1)
+    /// Seite, Punkt und Zoom im geladenen Dokument wiederherstellen (Seite auf das Dokument begrenzt)
+    func restore(_ state: PDFViewState) {
+        guard let document, document.pageCount > 0 else { return }
+        autoScales = state.autoScales
+        if !state.autoScales { scaleFactor = state.scale }
+        let index = min(max(state.pageIndex, 0), document.pageCount - 1)
         guard let page = document.page(at: index) else { return }
         let destination = PDFDestination(page: page, at: state.point)
-        view.layoutDocumentView()
-        view.go(to: destination)
+        layoutDocumentView()
+        go(to: destination)
         // Eine frisch angelegte View hat beim ersten Update noch keine Größe; nach dem Layout nochmal
-        guard view.bounds.isEmpty else { return }
-        DispatchQueue.main.async { [weak view] in
-            view?.layoutDocumentView()
-            view?.go(to: destination)
+        guard bounds.isEmpty else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.layoutDocumentView()
+            self?.go(to: destination)
         }
     }
 }
 
 /// PDFView mit ⌘-Klick für die Rückwärtssuche (PDF → Quelltext), Einträgen für Markierungen im Rechtsklickmenü und
-/// Klick auf eine Markierung. Normale Klicks bleiben unverändert.
+/// Klick auf eine Markierung sowie Vorschau des Ziels interner Links (`PDFLinkPreviewTriggers`). Normale Klicks
+/// bleiben unverändert.
 final class SyncTeXPDFView: PDFView {
     private static let clickTolerance: CGFloat = 4
 
     var onCommandClick: ((PDFPage, CGPoint) -> Void)?
     weak var store: PDFPreviewStore?
+    private lazy var linkPreview = PDFLinkPreviewTriggers(view: self)
     /// Die Markierung und die Stelle unter dem Rechtsklick, solange das Menü offen ist
     private var menuMarkID: UUID?
     private var menuClick: (page: PDFPage, point: CGPoint)?
@@ -156,6 +166,8 @@ final class SyncTeXPDFView: PDFView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        // Force Click hat die Vorschau gezeigt: PDFKit soll dem Link nicht folgen (ungetestet, siehe dort)
+        if linkPreview.consumeForceClickPress() { return }
         guard event.modifierFlags.contains(.command), let onCommandClick else {
             super.mouseDown(with: event)
             return
@@ -165,12 +177,24 @@ final class SyncTeXPDFView: PDFView {
         onCommandClick(page, convert(viewPoint, to: page))
     }
 
+    /// PDFView verfolgt die Maus schon selbst (Handcursor über Links); deshalb keine eigene Tracking-Area
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        linkPreview.updateHover(with: event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        linkPreview.updateHover(with: event)
+    }
+
     // MARK: Klick auf eine Markierung
 
     /// Ein Klick (ohne Ziehen, ohne Taste) auf eine Markierung zeigt ihr Popover. Ein Beobachter statt `mouseUp`, weil
     /// PDFView die Mausverfolgung selbst übernimmt und das Ende des Klicks nicht an die Unterklasse weitergibt.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        linkPreview.attach(to: window)
         if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
         mouseMonitor = nil
         guard window != nil else { return }
@@ -222,7 +246,10 @@ final class SyncTeXPDFView: PDFView {
         menuMarkID = markID(atViewPoint: viewPoint)
         menuClick = page(for: viewPoint, nearest: false).map { ($0, convert(viewPoint, to: $0)) }
         let hasSelection = currentSelection?.string?.isEmpty == false
-        let items = markMenuItems(hasSelection: hasSelection, markID: menuMarkID, canAddNote: menuClick != nil)
+        let markItems = markMenuItems(hasSelection: hasSelection, markID: menuMarkID, canAddNote: menuClick != nil)
+        var items = linkPreview.menuItems(atViewPoint: viewPoint)
+        if !items.isEmpty, !markItems.isEmpty { items.append(.separator()) }
+        items += markItems
         guard !items.isEmpty else { return menu }
         for (offset, item) in (items + [.separator()]).enumerated() { menu.insertItem(item, at: offset) }
         return menu

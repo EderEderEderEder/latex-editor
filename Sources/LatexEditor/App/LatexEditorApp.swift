@@ -184,6 +184,13 @@ struct AppCommands: Commands {
                 Button("Vergrößern") { model.pdf.zoomIn() }
                 Button("Verkleinern") { model.pdf.zoomOut() }
                 Button("An Breite anpassen") { model.pdf.zoomToFitWidth() }
+                Divider()
+                Button("Zurück") { model.pdf.goBack() }
+                    .keyboardShortcut(.leftArrow, modifiers: [.control, .command])
+                    .disabled(!model.pdf.canGoBack || viewMode == .editorOnly)
+                Button("Vorwärts") { model.pdf.goForward() }
+                    .keyboardShortcut(.rightArrow, modifiers: [.control, .command])
+                    .disabled(!model.pdf.canGoForward || viewMode == .editorOnly)
             }
             .disabled(model.pdf.pdfURL == nil)
             Divider()

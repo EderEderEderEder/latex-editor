@@ -89,6 +89,21 @@ Bekannte Einschränkungen:
 - **Prozesse beenden**: Ein volles Testlauf-Skript soll nur seinen eigenen Prozessbaum beenden (PID merken, `pgrep -P` rekursiv). Nie nach Namen (`pkill`, `grep` auf `ps`). `timeout` gibt es auf macOS nicht. `rm -rf` blockiert ein Hook, für Worktrees `git worktree remove --force`.
 - **Anzeige-Entscheidungen**: Fehler rot gestrichelt, Warnung orange strichpunktiert, Hinweis blau gepunktet (Muster plus Farbe). Spaltenhilfslinie standardmäßig aus. Der Seitenleisten-Button ist der des Systems, Hover per Tracking-Bereich (`SidebarButtonHover`); ein eigener Button ergab in der App zwei Buttons, weil `.toolbar(removing: .sidebarToggle)` nicht griff.
 
+## PDF-Links: Zurück-Verlauf und Vorschau des Linkziels
+
+Experimente (macOS 26.7.1):
+- Link-Annotationen liefern `destination` plus `PDFActionGoTo`/URL; PDFKit löst benannte hyperref-Ziele selbst auf.
+- Eine Markierung verdeckt den Link in `page.annotation(at:)` → `page.annotations` durchsuchen.
+- PDFKits eigener Verlauf (`go(to:)`) überlebt `view.document =` nicht → eigener Verlauf `PDFJumpHistory`.
+- `PDFViewAnnotationWillHit` kommt ca. 1 ms nach mouseUp, vor dem Sprung (Ansicht noch alt) → dort den Ursprung merken. URL-Links lösen es ebenfalls aus.
+- `quickLook(with:)` wird von PDFView bei Force Click nie aufgerufen → stattdessen `.pressure` Stufe 2 im lokalen Monitor. `mouseDown` erreicht die Unterklasse erst nach Stufe 2 (Annahme; Unterdrückung des Sprungs ungetestet).
+- Rendern des Ausschnitts: 1,8–2,6 ms.
+- Zielpunkte: Abschnitte/Quellen 0,5–6 pt über der Zeile, Abbildungen an der Unterschrift; Kapitel ohne Text im 40-pt-Umkreis → Ausschnitt wenig nach oben, viel nach unten.
+
+Entscheidungen: Verlauf nur für Link-Sprünge (nicht ⌘J/Liste); Kürzel ⌃⌘←/→, weil ⌘[ im Editor „Ausrücken“ ist; Vorschau als Bild fester Größe statt zweitem PDFView.
+
+Zurückgestellt (nicht umgesetzt): Menüeintrag „Vorschau des Ziels“ (Tastaturzugang), eigenes Menü „Gehe zu“, ablösbares Popover, Zeiger-Rückmeldung bei ⌥-Hover, Schließen der Vorschau beim Tastatur-Scrollen. Handtests #277–#284.
+
 ## Roadmap
 
 ### Ideenspeicher (vom Nutzer als „gut“ markiert, noch nicht beauftragt)

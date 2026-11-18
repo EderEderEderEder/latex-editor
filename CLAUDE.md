@@ -10,6 +10,7 @@ Nativer macOS-LaTeX-Editor nach dem Vorbild von Texifier, nur für lokale Nutzun
 - Der Nutzer startet evtl. parallel einen eigenen Xcode-Build: Prozesse nur per **eigener PID** beenden, nie `pkill` oder `grep` auf `ps`. Die installierte App in `/Applications` nie beenden (das Installationsskript bricht dann ab).
 - Destruktive Aktionen: Sicherung (inklusive ungespeichertem Text), Rückgängig in der App und Datei sichtbar lassen.
 - `swift build` ohne Warnungen, alle Tests grün, universal binary (arm64 + x86_64).
+- **Umsetzungen laufen mit Subagents** nach `docs/SUBAGENTS.md` (Agent-Typ, Modell und Effort je nach Schwierigkeit, Ablauf, Pflichtangaben im Prompt). Vor jeder Umsetzung diese Datei lesen; Kleinstes direkt selbst erledigen.
 - Ideenspeicher (`docs/VERLAUF.md`) nicht ungefragt umsetzen. Nicht wieder einbauen: gelbe PDF-Markierung, Find-Indicator-Flash.
 
 ## Befehle
@@ -25,7 +26,7 @@ scripts/install-app.sh       # baut und installiert nach /Applications
 scripts/demo-projekt.sh      # Testdaten/Arbeitskopie/ zum Ausprobieren neu anlegen
 ```
 
-Es gibt keinen Linter. **Tests immer über `scripts/test-run.sh`**: Es gibt nur eine kurze Zusammenfassung aus (Log: `.build/test-logs/last.log`, nur bei Bedarf lesen), beendet bei Stillstand (60 s ohne Ausgabe) oder nach 300 s den eigenen Prozessbaum, nimmt den Hänger per `sample` auf (`stall-sample.txt`) und wiederholt bekannt unzuverlässige Tests (`lineWrapping`, `statusDuration`) einzeln. Nie in Schleifen auf Tests warten, keine eigenen Hilfsskripte in `/tmp`; nach Änderungen `--fast` oder `--filter`, den vollen Lauf einmal vor Commit/Installation (am besten im Hintergrund starten und auf das Ende warten). Bei einem Hänger nicht blind wiederholen (siehe `Tests/CLAUDE.md`). Handtests und UI-Checkliste: `TESTING.md` (fortlaufend nummeriert, zuletzt #276).
+Es gibt keinen Linter. **Tests immer über `scripts/test-run.sh`**: Es gibt nur eine kurze Zusammenfassung aus (Log: `.build/test-logs/last.log`, nur bei Bedarf lesen), beendet bei Stillstand (60 s ohne Ausgabe) oder nach 300 s den eigenen Prozessbaum, nimmt den Hänger per `sample` auf (`stall-sample.txt`) und wiederholt bekannt unzuverlässige Tests (`lineWrapping`, `statusDuration`) einzeln. Nie in Schleifen auf Tests warten, keine eigenen Hilfsskripte in `/tmp`; nach Änderungen `--fast` oder `--filter`, den vollen Lauf einmal vor Commit/Installation (am besten im Hintergrund starten und auf das Ende warten). Bei einem Hänger nicht blind wiederholen (siehe `Tests/CLAUDE.md`). Handtests und UI-Checkliste: `TESTING.md` (fortlaufend nummeriert, zuletzt #284).
 
 ## Landkarte (`Sources/LatexEditor/`)
 

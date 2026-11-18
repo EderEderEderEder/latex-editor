@@ -28,13 +28,24 @@ extension AppModel {
                     return fileDate.timeIntervalSince(pdfDate) > Self.pdfAgeTolerance
                 }
             )
-            var resolutions: [UUID: MarkResolution] = [:]
-            for mark in marks.marks {
-                resolutions[mark.id] = keepingPlacement(of: mark, fresh: resolver.resolve(mark), pdfDate: pdfDate)
-            }
-            marks.setResolutions(resolutions, pdfDate: pdfDate)
-            refreshMarkDisplay()
+            resolveMarks(with: resolver, pdfDate: pdfDate)
         }
+    }
+
+    /// Ordnet alle Markierungen zu und frischt die Anker der zugeordneten auf (`MarkResolver.refreshedAnchors`). Läuft ohne
+    /// Unterbrechung auf dem MainActor direkt nach der Prüfung, dass Dokument und gelesene Dateien zum Lauf passen; die
+    /// Markierungen können sich dazwischen also nicht ändern. Das Auffrischen ordnet nicht erneut zu.
+    func resolveMarks(with resolver: MarkResolver, pdfDate: Date?) {
+        var resolutions: [UUID: MarkResolution] = [:]
+        var refreshed: [(original: PDFMark, refreshed: PDFMark)] = []
+        for mark in marks.marks {
+            let fresh = resolver.resolve(mark)
+            resolutions[mark.id] = keepingPlacement(of: mark, fresh: fresh, pdfDate: pdfDate)
+            if let renewed = resolver.refreshedAnchors(of: mark, after: fresh) { refreshed.append((mark, renewed)) }
+        }
+        marks.setResolutions(resolutions, pdfDate: pdfDate)
+        marks.refreshAnchors(refreshed)
+        refreshMarkDisplay()
     }
 
     /// Ist der Text neuer als das PDF, stimmen seine Zeilen nicht mehr mit dem PDF überein; solange es dasselbe PDF ist wie

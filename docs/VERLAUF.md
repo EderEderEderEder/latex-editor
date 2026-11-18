@@ -104,6 +104,16 @@ Entscheidungen: Verlauf nur für Link-Sprünge (nicht ⌘J/Liste); Kürzel ⌃�
 
 Zurückgestellt (nicht umgesetzt): Menüeintrag „Vorschau des Ziels“ (Tastaturzugang), eigenes Menü „Gehe zu“, ablösbares Popover, Zeiger-Rückmeldung bei ⌥-Hover, Schließen der Vorschau beim Tastatur-Scrollen. Handtests #277–#284.
 
+## Markierungen nach dem Überarbeiten eines Absatzes
+
+Experiment (Marke auf mehrzeiligem Absatz, Quelltext geändert, neu kompiliert):
+- Verwaist wurde die Marke bei anderem Umbruch (3 → 4 oder 2 Zeilen), bei geändertem letztem Wort bzw. hinten angehängtem Satz und bei zweimal Überarbeiten (der Anker blieb der erste Stand: Ähnlichkeit nach der 1. Überarbeitung 0,81, nach der 2. unter 0,7).
+- Gut ging: Wörter in der Mitte ändern, Satz davor einfügen, Kopie neben dem Original, Löschen (korrekt verwaist).
+- Die alte Ähnlichkeitssuche über alle Zeilen kostete bei 5000 Zeilen und 50 Marken hochgerechnet 38 s im Debug-Build (neu 1,6 s).
+- Nicht nachgestellt: „doppelt markiert“.
+
+Lehre: Anker nach der Zuordnung auffrischen; die Suche nicht an Einzelzeilen binden (Rückfall über zusammengezogene Stücke). Handtests #285–#288.
+
 ## Roadmap
 
 ### Ideenspeicher (vom Nutzer als „gut“ markiert, noch nicht beauftragt)

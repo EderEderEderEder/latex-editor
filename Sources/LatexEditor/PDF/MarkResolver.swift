@@ -37,6 +37,37 @@ struct MarkResolver {
     let isNewerThanPDF: (String) -> Bool
     /// Zeichenlagen und Text der Seiten, einmal je Seite für den ganzen Lauf gelesen
     private let pages = PageTextCache()
+    /// Zeilen samt Wörtern je Datei, einmal für den ganzen Lauf (die unscharfe Suche zerlegt sonst je Anker alle Zeilen)
+    private let sources = SourceLinesCache()
+
+    /// Merkt sich auch die gefundene Zeile je Anker: `refreshedAnchors` sucht direkt nach `resolve` dieselben Anker erneut
+    private final class SourceLinesCache {
+        private struct LocateKey: Hashable {
+            let anchor: MarkAnchor
+            let isStart: Bool
+        }
+
+        private var known: [String: MarkSourceLines] = [:]
+        private var located: [LocateKey: Int?] = [:]
+
+        func lines(of path: String, reading linesOf: (String) -> [String]?) -> MarkSourceLines? {
+            if let cached = known[path] { return cached }
+            guard let lines = linesOf(path) else { return nil }
+            let source = MarkSourceLines(lines)
+            known[path] = source
+            return source
+        }
+
+        /// `MarkAnchorLocator.locate` in den gemerkten Zeilen der Datei; `nil`, wenn die Datei fehlt oder der Anker verwaist ist
+        func locate(_ anchor: MarkAnchor, isStart: Bool, reading linesOf: (String) -> [String]?) -> (source: MarkSourceLines, line: Int)? {
+            guard let source = lines(of: anchor.path, reading: linesOf) else { return nil }
+            let key = LocateKey(anchor: anchor, isStart: isStart)
+            if let known = located[key] { return known.map { (source, $0) } }
+            let found = MarkAnchorLocator.locate(anchor, in: source, isStart: isStart)
+            located[key] = .some(found)
+            return found.map { (source, $0) }
+        }
+    }
 
     /// Liegen mehrere Markierungen auf einer Seite, fragte sonst jede Seite der Markierung alle Zeichen der Seite neu ab
     /// (`characterBounds` für jedes Zeichen, bei jedem Zuordnen nach einem Build, auf dem Main-Thread).
@@ -69,6 +100,44 @@ struct MarkResolver {
         return placement(from: start, to: end)
     }
 
+    // MARK: Anker auffrischen
+
+    /// Nach einer Zuordnung (`fresh` aus `resolve`): die Markierung mit Ankern auf dem jetzigen Stand der gefundenen Zeilen.
+    /// Sonst sucht jede weitere Überarbeitung des Absatzes mit dem Text von damals und die Markierung verwaist irgendwann.
+    /// `nil` bei „verwaist“, „wartet“ oder unsicherer Zuordnung (`isInSourceOrder`) und wenn sich nichts geändert hat.
+    /// Die Wörter bleiben, wie sie sind: Sie stammen aus dem PDF, nicht aus der Zeile, und gelten so weiter (sonst kippte
+    /// der Treffer). Der gemerkte Treffer bleibt auch, außer die Zeile kam aus dem Rückfall (`refreshed`).
+    func refreshedAnchors(of mark: PDFMark, after fresh: MarkResolution) -> PDFMark? {
+        guard case .placed = fresh, let start = refreshed(mark.start, isStart: true) else { return nil }
+        let end = mark.kind == .note ? start : refreshed(mark.end, isStart: false)
+        guard let end, isInSourceOrder(start, end) else { return nil }
+        var renewed = mark
+        renewed.start = start
+        renewed.end = end
+        return renewed == mark ? nil : renewed
+    }
+
+    /// Liegt das Ende vor dem Anfang, ist mindestens ein Anker an einer fremden Stelle gelandet (die Lage ist dann nur der
+    /// Notbehelf mit den Zeilenrechtecken): Ein Auffrischen überschriebe den Anker mit der fremden Zeile, und die
+    /// Markierung verwaiste nie. Geprüft an den gefundenen Quelltextzeilen, nicht an der Präzision: `.lines` heißt meist
+    /// nur, dass ein Wort im PDF fehlte. In verschiedenen Dateien ist die Reihenfolge nicht bekannt und gilt als richtig.
+    private func isInSourceOrder(_ start: MarkAnchor, _ end: MarkAnchor) -> Bool {
+        start.path != end.path || start.line <= end.line
+    }
+
+    /// Der gemerkte Treffer (`occurrence`) zählt die Wörter in der alten Zeile. Kam die neue aus dem Rückfall (neu
+    /// umbrochen, hinten verändert), zeigt ein späterer Treffer dort womöglich ins Leere oder auf ein anderes Wort: Dann
+    /// fällt er weg, und die Suche im PDF nimmt wie bei einem Anker ohne Treffer den ersten (Ende: letzten).
+    private func refreshed(_ anchor: MarkAnchor, isStart: Bool) -> MarkAnchor? {
+        guard let found = sources.locate(anchor, isStart: isStart, reading: linesOf) else { return nil }
+        var renewed = MarkAnchorLocator.anchor(path: anchor.path, line: found.line, in: found.source.lines, words: anchor.words)
+        let isStale = (anchor.occurrence ?? 0) != 0 && MarkAnchorLocator.isRewrapMatch(anchor, line: renewed.text)
+        guard !isStale else { return renewed }
+        renewed.matchedWords = anchor.matchedWords
+        renewed.occurrence = anchor.occurrence
+        return renewed
+    }
+
     // MARK: Eine Seite der Markierung
 
     private struct Side {
@@ -83,8 +152,8 @@ struct MarkResolver {
     }
 
     /// Seite und Rechteck der Quellzeile des Ankers im PDF
-    private func lineBox(of anchor: MarkAnchor) -> (page: PDFPage, index: Int, rect: CGRect)? {
-        guard let lines = linesOf(anchor.path), let line = MarkAnchorLocator.locate(anchor, in: lines),
+    private func lineBox(of anchor: MarkAnchor, isStart: Bool) -> (page: PDFPage, index: Int, rect: CGRect)? {
+        guard let line = sources.locate(anchor, isStart: isStart, reading: linesOf)?.line,
               let box = forward(MarkPaths.absolute(anchor.path, in: root), line),
               let page = document.page(at: box.page - 1) else { return nil }
         var rect = SyncTeXCoordinates.pdfRect(from: box.rect, mediaBox: page.bounds(for: .mediaBox))
@@ -96,7 +165,7 @@ struct MarkResolver {
 
     /// Eine Notiz sitzt am linken Rand, auf der Höhe der ersten Zeile ihres Absatzes (die Stelle in der Zeile ist nicht bekannt)
     private func resolveNote(_ mark: PDFMark) -> MarkResolution {
-        guard let box = lineBox(of: mark.start) else { return .orphaned }
+        guard let box = lineBox(of: mark.start, isStart: true) else { return .orphaned }
         let mediaBox = box.page.bounds(for: .mediaBox)
         let size = Self.noteIconSize
         let x = max(box.rect.minX - size - Self.noteIconGap, mediaBox.minX + Self.pageEdgeInset)
@@ -105,7 +174,7 @@ struct MarkResolver {
     }
 
     private func side(of anchor: MarkAnchor, isStart: Bool) -> Side? {
-        guard let box = lineBox(of: anchor) else { return nil }
+        guard let box = lineBox(of: anchor, isStart: isStart) else { return nil }
         let (page, pageIndex, rect) = (box.page, box.index, box.rect)
         let characters = charactersInside(rect, on: page, pageIndex: pageIndex)
         let matched = characters.flatMap { matchWords(anchor, isStart: isStart, in: $0, on: page, pageIndex: pageIndex) }
@@ -158,7 +227,7 @@ struct MarkResolver {
     /// Beim Anlegen: der wievielte Treffer der Wortfolge in der Zeile ist die gewählte Stelle? `characterIndex` ist das Zeichen
     /// der Seite am Rand der Auswahl (Anfang bzw. Ende). `nil`, wenn kein Treffer bei dieser Stelle liegt.
     func occurrence(for anchor: MarkAnchor, isStart: Bool, characterIndex: Int) -> (words: Int, occurrence: Int)? {
-        guard let box = lineBox(of: anchor), let characters = charactersInside(box.rect, on: box.page, pageIndex: box.index) else { return nil }
+        guard let box = lineBox(of: anchor, isStart: isStart), let characters = charactersInside(box.rect, on: box.page, pageIndex: box.index) else { return nil }
         for (count, ranges) in wordCandidates(anchor.words, isStart: isStart, in: characters, on: box.page, pageIndex: box.index) where !ranges.isEmpty {
             let distances = ranges.map { isStart ? abs($0.location - characterIndex) : abs(NSMaxRange($0) - 1 - characterIndex) }
             guard let nearest = distances.indices.min(by: { distances[$0] < distances[$1] }),

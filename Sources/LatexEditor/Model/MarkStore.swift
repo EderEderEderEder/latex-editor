@@ -114,6 +114,20 @@ final class MarkStore {
         save()
     }
 
+    /// Nach dem Zuordnen: die Anker auf den jetzigen Stand der Zeilen setzen, ein Speichern für alle. Eine Markierung, die
+    /// seit dem Lauf entfernt oder geändert wurde (`original` stimmt nicht mehr), bleibt unberührt; ohne Änderung kein Speichern.
+    func refreshAnchors(_ changes: [(original: PDFMark, refreshed: PDFMark)]) {
+        var changed = false
+        for change in changes where change.refreshed.id == change.original.id {
+            guard let index = marks.firstIndex(where: { $0.id == change.original.id }), marks[index] == change.original,
+                  change.refreshed.start != change.original.start || change.refreshed.end != change.original.end else { continue }
+            marks[index].start = change.refreshed.start
+            marks[index].end = change.refreshed.end
+            changed = true
+        }
+        if changed { save() }
+    }
+
     func setResolution(_ resolution: MarkResolution?, for id: UUID) {
         guard marks.contains(where: { $0.id == id }) else { return }
         resolutions[id] = resolution

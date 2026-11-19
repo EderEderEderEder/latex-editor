@@ -2,7 +2,9 @@ import PDFKit
 
 /// Vorschau des Ziels interner Links (\ref, \cite, Inhaltsverzeichnis, Fußnote) als Popover am Linkrechteck.
 /// Drei Auslöser: Rechtsklickmenü „Vorschau des Ziels“, ⌥ gedrückt halten über dem Link, Force Click.
-/// Geschlossen wird bei Klick, Tastendruck, Scrollen, Zoom, neuem Dokument, Fensterwechsel und beim Schließen des Fensters.
+/// Eine offene Vorschau bleibt offen (Maus darf hineinwandern und darin scrollen), auch wenn ⌥ losgelassen wird oder die Maus
+/// den Link verlässt. Geschlossen wird bei Klick außerhalb und Esc (NSPopover), Tastendruck, Scrollen und Zoom im PDF,
+/// neuem Dokument, Fensterwechsel und beim Schließen des Fensters. Eine neue ⌥-Vorschau ersetzt die offene.
 /// Eine verborgene PDF-View (Modus „Nur Editor“) zeigt nie eine Vorschau.
 @MainActor
 final class PDFLinkPreviewTriggers: NSObject {
@@ -21,7 +23,6 @@ final class PDFLinkPreviewTriggers: NSObject {
     private let presenter: LinkPreviewPresenter
     /// Der Link unter der Maus, solange ⌥ gedrückt ist (wartet auf die Vorschau oder zeigt sie)
     private var hoveredLink: PDFAnnotation?
-    private var isShownByHover = false
     /// Vorschau per Force Click gezeigt: PDFKit soll dem Link beim Loslassen nicht folgen (siehe `consumeForceClickPress`)
     private var didShowPreviewForCurrentPress = false
     nonisolated(unsafe) private var hoverTask: Task<Void, Never>?
@@ -131,17 +132,15 @@ final class PDFLinkPreviewTriggers: NSObject {
         hoverTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: Self.hoverDelay)
             guard !Task.isCancelled, let self, self.hoveredLink === link else { return }
-            self.isShownByHover = self.showPreview(for: link)
+            self.showPreview(for: link)
         }
     }
 
-    /// Wartezeit abbrechen; eine per ⌥ gezeigte Vorschau schließen (die anderen bleiben bis Klick oder Scrollen)
+    /// Wartezeit abbrechen; eine bereits offene Vorschau bleibt stehen
     private func endHover() {
         hoverTask?.cancel()
         hoverTask = nil
         hoveredLink = nil
-        guard isShownByHover else { return }
-        closePreview()
     }
 
     private static func isOptionOnly(_ modifiers: NSEvent.ModifierFlags) -> Bool {
@@ -213,7 +212,6 @@ final class PDFLinkPreviewTriggers: NSObject {
     /// Immer `close()`, auch wenn sich das transiente Popover schon selbst geschlossen hat: Der Presenter gibt so seine
     /// Referenzen frei
     private func closePreview() {
-        isShownByHover = false
         presenter.close()
     }
 
@@ -233,7 +231,6 @@ final class PDFLinkPreviewTriggers: NSObject {
               let destination = PDFLinks.internalTarget(of: link) else { return false }
         let scale = view.window?.backingScaleFactor ?? Self.fallbackBackingScale
         guard let preview = LinkPreviewRenderer.preview(for: destination, backingScale: scale) else { return false }
-        isShownByHover = false
         presenter.show(preview, relativeTo: view.convert(link.bounds, from: page), of: view)
         return true
     }

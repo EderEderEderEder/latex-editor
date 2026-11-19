@@ -13,7 +13,6 @@ final class PDFLinkPreviewTriggers: NSObject {
     private static let forceClickStage = 2
     /// Stufe 0 von `NSEvent.stage`: kein Druck mehr auf dem Trackpad
     private static let releasedStage = 0
-    private static let fallbackBackingScale: CGFloat = 2
     private static let relevantModifiers: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
     private static let monitoredEvents: NSEvent.EventTypeMask = [
         .pressure, .flagsChanged, .keyDown, .leftMouseDown, .leftMouseUp, .rightMouseDown, .otherMouseDown, .scrollWheel,
@@ -229,9 +228,6 @@ final class PDFLinkPreviewTriggers: NSObject {
         // Auch hier prüfen: Die ⌥-Wartezeit kann ablaufen, nachdem die View verborgen wurde
         guard let view, !view.isHiddenOrHasHiddenAncestor, let page = link.page,
               let destination = PDFLinks.internalTarget(of: link) else { return false }
-        let scale = view.window?.backingScaleFactor ?? Self.fallbackBackingScale
-        guard let preview = LinkPreviewRenderer.preview(for: destination, backingScale: scale) else { return false }
-        presenter.show(preview, relativeTo: view.convert(link.bounds, from: page), of: view)
-        return true
+        return presenter.show(destination, from: view, relativeTo: view.convert(link.bounds, from: page))
     }
 }

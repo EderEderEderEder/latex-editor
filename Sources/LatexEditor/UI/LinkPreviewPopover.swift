@@ -1,8 +1,12 @@
 import AppKit
+import PDFKit
 import SwiftUI
 
 struct LinkPreviewView: View {
-    let preview: LinkPreviewRenderer.LinkPreview
+    let pdfView: PDFView
+    /// Zielseite des Links, 1-basiert
+    let pageNumber: Int
+    let viewportSize: CGSize
 
     private static let padding: CGFloat = 10
     private static let captionSpacing: CGFloat = 6
@@ -11,83 +15,130 @@ struct LinkPreviewView: View {
 
     var body: some View {
         VStack(spacing: Self.captionSpacing) {
-            LinkPreviewScrollView(preview: preview)
-                .frame(
-                    width: LinkPreviewRenderer.imageWidth + LinkPreviewRenderer.scrollerWidth,
-                    height: preview.viewportHeight
-                )
+            LinkPreviewPDFRepresentable(pdfView: pdfView)
+                .frame(width: viewportSize.width, height: viewportSize.height)
                 .clipShape(RoundedRectangle(cornerRadius: Self.borderCornerRadius))
                 .overlay {
                     RoundedRectangle(cornerRadius: Self.borderCornerRadius)
                         .strokeBorder(Color(nsColor: .separatorColor), lineWidth: Self.borderWidth)
+                        .allowsHitTesting(false)
                 }
-                .accessibilityLabel("Vorschau von Seite \(preview.pageNumber)")
-            Text("Seite \(preview.pageNumber)")
+                .accessibilityLabel("Vorschau ab Seite \(pageNumber)")
+            Text("Seite \(pageNumber)")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
         .padding(Self.padding)
-        .accessibilityElement(children: .combine)
     }
 }
 
-/// Bildlaufansicht mit sichtbarem Scrollbalken, die beim Öffnen das Linkziel zeigt. Eigene `NSScrollView` statt SwiftUI,
-/// weil nur sie den Startversatz sofort und den Balken immer sichtbar (Legacy-Stil) liefert.
-private struct LinkPreviewScrollView: NSViewRepresentable {
-    let preview: LinkPreviewRenderer.LinkPreview
+/// Die fertig eingerichtete Vorschau-View (`LinkPreviewPDFView.make`) unverändert in SwiftUI einsetzen
+private struct LinkPreviewPDFRepresentable: NSViewRepresentable {
+    let pdfView: PDFView
 
-    func makeNSView(context: Context) -> NSScrollView {
-        let imageSize = preview.image.size
-        let viewportSize = CGSize(
-            width: imageSize.width + LinkPreviewRenderer.scrollerWidth, height: preview.viewportHeight
-        )
-        let imageView = NSImageView(frame: CGRect(origin: .zero, size: imageSize))
-        imageView.image = preview.image
-        imageView.imageScaling = .scaleAxesIndependently
-        let scrollView = NSScrollView(frame: CGRect(origin: .zero, size: viewportSize))
-        scrollView.scrollerStyle = .legacy
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.autohidesScrollers = false
-        scrollView.drawsBackground = false
-        scrollView.documentView = imageView
-        // Das Dokument ist nicht gespiegelt: y zählt von unten
-        let originY = imageSize.height - preview.initialScrollOffset - preview.viewportHeight
-        scrollView.contentView.scroll(to: CGPoint(x: 0, y: max(originY, 0)))
-        scrollView.reflectScrolledClipView(scrollView.contentView)
-        return scrollView
+    func makeNSView(context: Context) -> PDFView { pdfView }
+
+    func updateNSView(_ view: PDFView, context: Context) {}
+}
+
+/// Eingebettete PDF-Ansicht der Vorschau: zeigt dasselbe `PDFDocument` wie die Hauptansicht, durchgehend scrollbar.
+/// Eine einfache `PDFView` (keine `SyncTeXPDFView`): Ohne Store, Verlauf und Beobachter ändert sie den Zustand der
+/// Hauptansicht nicht; ein Klick auf einen Link darin lässt nur die Vorschau springen.
+@MainActor
+enum LinkPreviewPDFView {
+    static func make(showing start: PDFDestination, size: CGSize, scale: CGFloat) -> PDFView? {
+        guard let document = start.page?.document else { return nil }
+        let view = PDFView(frame: CGRect(origin: .zero, size: size))
+        view.displayMode = .singlePageContinuous
+        view.displaysPageBreaks = true
+        view.autoScales = false
+        view.document = document
+        view.scaleFactor = scale
+        showVerticalScroller(in: view)
+        moveToStart(view, start)
+        return view
     }
 
-    func updateNSView(_ scrollView: NSScrollView, context: Context) {}
+    /// `go(to:)` braucht das Layout der endgültigen Größe
+    static func moveToStart(_ view: PDFView, _ start: PDFDestination) {
+        guard view.document != nil else { return }
+        view.layoutDocumentView()
+        view.go(to: start)
+    }
+
+    /// Immer sichtbarer Balken (Legacy-Stil): Er zeigt, dass und wie weit die Vorschau scrollt. PDFKit bietet dafür
+    /// keine Eigenschaft, deshalb an der eigenen `NSScrollView` in der Unterhierarchie der PDFView.
+    static func showVerticalScroller(in view: PDFView) {
+        guard let scrollView = enclosedScrollView(in: view) else { return }
+        scrollView.scrollerStyle = .legacy
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = false
+    }
+
+    static func enclosedScrollView(in view: NSView) -> NSScrollView? {
+        for subview in view.subviews {
+            if let scrollView = subview as? NSScrollView { return scrollView }
+            if let scrollView = enclosedScrollView(in: subview) { return scrollView }
+        }
+        return nil
+    }
 }
 
 @MainActor
 final class LinkPreviewPresenter: NSObject, NSPopoverDelegate {
     private var popover: NSPopover?
+    private var previewView: PDFView?
 
     var isShown: Bool { popover?.isShown ?? false }
 
-    func show(_ preview: LinkPreviewRenderer.LinkPreview, relativeTo rect: NSRect, of view: NSView) {
+    /// Vorschau des Linkziels am Rechteck `rect` (Koordinaten der Hauptansicht); Größe und Zoom nach der Hauptansicht
+    @discardableResult
+    func show(_ destination: PDFDestination, from mainView: PDFView, relativeTo rect: NSRect) -> Bool {
         close()
-        let host = NSHostingController(rootView: LinkPreviewView(preview: preview))
+        let size = LinkPreviewLayout.viewportSize(forMainViewSize: mainView.bounds.size)
+        let scale = LinkPreviewLayout.scale(forMainScale: mainView.scaleFactor)
+        guard let page = destination.page, let document = page.document,
+              let start = LinkPreviewLayout.startDestination(for: destination),
+              let pdfView = LinkPreviewPDFView.make(showing: start, size: size, scale: scale) else { return false }
+        let content = LinkPreviewView(pdfView: pdfView, pageNumber: document.index(for: page) + 1, viewportSize: size)
+        let popover = makePopover(showing: content)
+        popover.show(relativeTo: rect, of: mainView, preferredEdge: .maxY)
+        self.popover = popover
+        previewView = pdfView
+        // Im Popover-Fenster kann SwiftUI die View noch einmal einsetzen: einen Durchlauf später erneut ans Ziel
+        DispatchQueue.main.async { [weak pdfView] in
+            guard let pdfView else { return }
+            LinkPreviewPDFView.moveToStart(pdfView, start)
+        }
+        return true
+    }
+
+    private func makePopover(showing content: LinkPreviewView) -> NSPopover {
+        let host = NSHostingController(rootView: content)
         let popover = NSPopover()
         popover.behavior = .transient
         popover.animates = false
         popover.delegate = self
         popover.contentViewController = host
         popover.contentSize = host.view.fittingSize
-        popover.show(relativeTo: rect, of: view, preferredEdge: .maxY)
-        self.popover = popover
+        return popover
     }
 
     func close() {
         popover?.close()
-        popover = nil
+        release()
     }
 
-    /// Auch wenn sich das transiente Popover selbst schließt: Bild und Controller freigeben
+    /// Auch wenn sich das transiente Popover selbst schließt: View und Controller freigeben
     func popoverDidClose(_ notification: Notification) {
         guard let closed = notification.object as? NSPopover, closed === popover else { return }
+        release()
+    }
+
+    /// Ohne Dokument hält die Vorschau das mit der Hauptansicht geteilte `PDFDocument` nicht fest
+    private func release() {
+        previewView?.document = nil
+        previewView = nil
         popover = nil
     }
 }

@@ -1,0 +1,435 @@
+{
+  "suite": "bib-tokenizer",
+  "version": 1,
+  "source": "swift/Tests/LatexEditorTests/BibTokenizerTests.swift",
+  "notes": "Zeilenindizes in endStates und endStatesPartial sind 0-basiert. Die Fälle percentComments und multilineValue enthalten Nicht-ASCII (Umlaute), Erwartungen enthalten aber keine Offsets. Eingabetext heißt hier source (nicht text) und steckt im Fall unter input.source.",
+  "skipped": [
+    {
+      "name": "Zufällige Bearbeitungen: inkrementell gleich komplett neu berechnet",
+      "reason": "Zufall (SeededGenerator, Int.random), Vergleich gegen Neuaufbau statt Literal",
+      "sourceLine": 128
+    },
+    {
+      "name": "Eine .bib-Sitzung färbt Feldnamen; nach Umbenennen in .tex gelten die LaTeX-Farben",
+      "reason": "AppKit (DocumentSession, NSColor, Textattribute), keine reine Tokenizer-Logik",
+      "sourceLine": 164
+    }
+  ],
+  "cases": [
+    {
+      "id": "typicalEntry",
+      "name": "Typischer Eintrag: Typ, Schlüssel, Feldnamen, Klammern, Befehl im Wert; Werte und Zahlen bleiben Text",
+      "sourceLine": 32,
+      "input": {
+        "op": "highlightAll",
+        "language": "bibtex",
+        "source": "@book{knuth1984,\n\tauthor = {Knuth, Donald},\n\ttitle = {The {\\TeX}book},\n\tyear = 1984,\n}",
+        "visibleOnly": true
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "command",
+            "text": "@book"
+          },
+          {
+            "kind": "delimiter",
+            "text": "{"
+          },
+          {
+            "kind": "keyArgument",
+            "text": "knuth1984"
+          },
+          {
+            "kind": "optionalArgument",
+            "text": "author"
+          },
+          {
+            "kind": "delimiter",
+            "text": "="
+          },
+          {
+            "kind": "delimiter",
+            "text": "{"
+          },
+          {
+            "kind": "delimiter",
+            "text": "}"
+          },
+          {
+            "kind": "optionalArgument",
+            "text": "title"
+          },
+          {
+            "kind": "delimiter",
+            "text": "="
+          },
+          {
+            "kind": "delimiter",
+            "text": "{"
+          },
+          {
+            "kind": "delimiter",
+            "text": "{"
+          },
+          {
+            "kind": "command",
+            "text": "\\TeX"
+          },
+          {
+            "kind": "delimiter",
+            "text": "}"
+          },
+          {
+            "kind": "delimiter",
+            "text": "}"
+          },
+          {
+            "kind": "optionalArgument",
+            "text": "year"
+          },
+          {
+            "kind": "delimiter",
+            "text": "="
+          },
+          {
+            "kind": "delimiter",
+            "text": "}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quotesAndMacros",
+      "name": "Anführungszeichen, Verkettung mit #, @string-Makro und runde Eintragsklammern",
+      "sourceLine": 51,
+      "input": {
+        "op": "highlightAll",
+        "language": "bibtex",
+        "source": "@string{jan = \"Januar\"}\n@misc(x1, month = jan # \" 2024\", note = \"a {b} c\")",
+        "visibleOnly": true
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "command",
+            "text": "@string"
+          },
+          {
+            "kind": "delimiter",
+            "text": "{"
+          },
+          {
+            "kind": "optionalArgument",
+            "text": "jan"
+          },
+          {
+            "kind": "delimiter",
+            "text": "="
+          },
+          {
+            "kind": "delimiter",
+            "text": "\""
+          },
+          {
+            "kind": "delimiter",
+            "text": "\""
+          },
+          {
+            "kind": "delimiter",
+            "text": "}"
+          },
+          {
+            "kind": "command",
+            "text": "@misc"
+          },
+          {
+            "kind": "delimiter",
+            "text": "("
+          },
+          {
+            "kind": "keyArgument",
+            "text": "x1"
+          },
+          {
+            "kind": "optionalArgument",
+            "text": "month"
+          },
+          {
+            "kind": "delimiter",
+            "text": "="
+          },
+          {
+            "kind": "keyArgument",
+            "text": "jan"
+          },
+          {
+            "kind": "delimiter",
+            "text": "#"
+          },
+          {
+            "kind": "delimiter",
+            "text": "\""
+          },
+          {
+            "kind": "delimiter",
+            "text": "\""
+          },
+          {
+            "kind": "optionalArgument",
+            "text": "note"
+          },
+          {
+            "kind": "delimiter",
+            "text": "="
+          },
+          {
+            "kind": "delimiter",
+            "text": "\""
+          },
+          {
+            "kind": "delimiter",
+            "text": "{"
+          },
+          {
+            "kind": "delimiter",
+            "text": "}"
+          },
+          {
+            "kind": "delimiter",
+            "text": "\""
+          },
+          {
+            "kind": "delimiter",
+            "text": ")"
+          }
+        ]
+      }
+    },
+    {
+      "id": "commentsOutsideEntries",
+      "name": "Text außerhalb von Einträgen und @comment sind Kommentar, auch mit verschachtelten Klammern",
+      "sourceLine": 68,
+      "input": {
+        "op": "highlightAll",
+        "language": "bibtex",
+        "source": "% Literatur\nFreier Text\n@comment{ein {Kommentar} hier}\n@book{a,}",
+        "visibleOnly": true
+      },
+      "expect": {
+        "tokensPrefix": [
+          {
+            "kind": "comment",
+            "text": "% Literatur"
+          },
+          {
+            "kind": "comment",
+            "text": "Freier Text"
+          },
+          {
+            "kind": "command",
+            "text": "@comment"
+          },
+          {
+            "kind": "delimiter",
+            "text": "{"
+          },
+          {
+            "kind": "comment",
+            "text": "ein {Kommentar} hier"
+          }
+        ],
+        "tokensSuffix": [
+          {
+            "kind": "command",
+            "text": "@book"
+          },
+          {
+            "kind": "delimiter",
+            "text": "{"
+          },
+          {
+            "kind": "keyArgument",
+            "text": "a"
+          },
+          {
+            "kind": "delimiter",
+            "text": "}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "percentComments",
+      "name": "% bis zum Zeilenende ist Kommentar: auskommentierte Einträge und Felder; im Wert bleibt es Text",
+      "sourceLine": 81,
+      "input": {
+        "op": "highlightAll",
+        "language": "bibtex",
+        "source": "% @book{alt,\n%   title = {Alt},\n% }\n@book{neu, % Schlüssel\n\t% note = {weg},\n\ttitle = {50 % und \\% hier},\n}",
+        "visibleOnly": true
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "comment",
+            "text": "% @book{alt,"
+          },
+          {
+            "kind": "comment",
+            "text": "%   title = {Alt},"
+          },
+          {
+            "kind": "comment",
+            "text": "% }"
+          },
+          {
+            "kind": "command",
+            "text": "@book"
+          },
+          {
+            "kind": "delimiter",
+            "text": "{"
+          },
+          {
+            "kind": "keyArgument",
+            "text": "neu"
+          },
+          {
+            "kind": "comment",
+            "text": "% Schlüssel"
+          },
+          {
+            "kind": "comment",
+            "text": "% note = {weg},"
+          },
+          {
+            "kind": "optionalArgument",
+            "text": "title"
+          },
+          {
+            "kind": "delimiter",
+            "text": "="
+          },
+          {
+            "kind": "delimiter",
+            "text": "{"
+          },
+          {
+            "kind": "command",
+            "text": "\\%"
+          },
+          {
+            "kind": "delimiter",
+            "text": "}"
+          },
+          {
+            "kind": "delimiter",
+            "text": "}"
+          }
+        ]
+      }
+    },
+    {
+      "id": "multilineValue",
+      "name": "Mehrzeilige Werte: Der Zustand trägt Klammertiefe und Phase in die nächste Zeile",
+      "sourceLine": 102,
+      "input": {
+        "op": "highlightAll",
+        "language": "bibtex",
+        "source": "@article{k,\n  title = {Ein langer\n  Titel mit {Klammer}\n  über drei Zeilen},\n  year = {2024}\n}",
+        "visibleOnly": true
+      },
+      "expect": {
+        "endStatesPartial": {
+          "1": {
+            "bibtex": {
+              "phase": "value",
+              "depth": 2
+            }
+          }
+        },
+        "endStates": {
+          "5": {
+            "bibtex": {
+              "phase": "outside",
+              "kind": "regular",
+              "depth": 0,
+              "inQuotes": false,
+              "closesWithParenthesis": false
+            }
+          }
+        },
+        "tokensNoneContainText": [
+          "Titel",
+          "Zeilen"
+        ],
+        "tokensContain": [
+          {
+            "kind": "optionalArgument",
+            "text": "year"
+          }
+        ]
+      }
+    },
+    {
+      "id": "brokenEntryRecovers",
+      "name": "Kaputter Eintrag (offenes Anführungszeichen) endet an der Eintragsklammer, der nächste wird erkannt",
+      "sourceLine": 120,
+      "input": {
+        "op": "highlightAll",
+        "language": "bibtex",
+        "source": "@book{a, title = \"offen}\n@book{b, year = 1}",
+        "visibleOnly": true
+      },
+      "expect": {
+        "tokensContain": [
+          {
+            "kind": "keyArgument",
+            "text": "b"
+          },
+          {
+            "kind": "optionalArgument",
+            "text": "year"
+          }
+        ]
+      }
+    },
+    {
+      "id": "languageFromExtension-bib",
+      "name": "Sprache nach Endung; .tex bleibt LaTeX",
+      "sourceLine": 153,
+      "input": {
+        "op": "languageFromPath",
+        "path": "/p/hgbreferences.bib"
+      },
+      "expect": {
+        "language": "bibtex"
+      }
+    },
+    {
+      "id": "languageFromExtension-upperBib",
+      "name": "Sprache nach Endung; .tex bleibt LaTeX",
+      "sourceLine": 153,
+      "input": {
+        "op": "languageFromPath",
+        "path": "/p/Literatur.BIB"
+      },
+      "expect": {
+        "language": "bibtex"
+      }
+    },
+    {
+      "id": "languageFromExtension-tex",
+      "name": "Sprache nach Endung; .tex bleibt LaTeX",
+      "sourceLine": 153,
+      "input": {
+        "op": "languageFromPath",
+        "path": "/p/main.tex"
+      },
+      "expect": {
+        "language": "latex"
+      }
+    }
+  ]
+}

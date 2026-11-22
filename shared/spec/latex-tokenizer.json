@@ -1,0 +1,942 @@
+{
+  "suite": "latex-tokenizer",
+  "version": 1,
+  "source": [
+    "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift",
+    "swift/Tests/LatexEditorTests/SyntaxHighlighterTests.swift"
+  ],
+  "notes": "Zeilenindizes in endStates und endStatesAfterEdit sind 0-basiert (Index im Zeilenarray des Highlighters). Fall absoluteUTF16Offsets enthält Nicht-ASCII (Umlaut, Emoji): location und length sind UTF-16-Einheiten. Fälle mit Präfix highlighter- stammen aus SyntaxHighlighterTests.swift, alle anderen aus LatexTokenizerTests.swift (cases[].source, sonst skipped[].source).",
+  "skipped": [
+    {
+      "name": "Normales Tippen färbt genau eine Zeile neu",
+      "reason": "update.range wird gegen LineIndex.fullRange(ofLine:) verglichen, kein Literal",
+      "sourceLine": 53,
+      "source": "swift/Tests/LatexEditorTests/SyntaxHighlighterTests.swift"
+    },
+    {
+      "name": "Offene Verbatim-Umgebung wirkt bis zum Dateiende und wird beim Schließen zurückgenommen",
+      "reason": "Erwartungen hängen von lineCount und Zeilenindex-Ausdrücken ab (lastLine + 1, < lineCount), keine Literale; mehrstufige Bearbeitung",
+      "sourceLine": 78,
+      "source": "swift/Tests/LatexEditorTests/SyntaxHighlighterTests.swift"
+    },
+    {
+      "name": "Inkrementelle Zustände entsprechen nach zufälligen Bearbeitungen einem Neuaufbau",
+      "reason": "Zufall (SeededGenerator), Vergleich inkrementell gegen Neuaufbau statt Literal",
+      "sourceLine": 93,
+      "source": "swift/Tests/LatexEditorTests/SyntaxHighlighterTests.swift"
+    },
+    {
+      "name": "Tokens für einen Teilbereich nutzen den gespeicherten Zustand der Vorzeile",
+      "reason": "Erwartung nutzt LineIndex.contentRange(ofLine:) statt Literal",
+      "sourceLine": 110,
+      "source": "swift/Tests/LatexEditorTests/SyntaxHighlighterTests.swift"
+    }
+  ],
+  "cases": [
+    {
+      "id": "proseArgument",
+      "name": "Prosa-Argumente bleiben ungefärbt, nur Klammern werden markiert",
+      "sourceLine": 33,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "\\section{Ein Titel}",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "command",
+            "text": "\\section"
+          },
+          {
+            "kind": "delimiter",
+            "text": "{"
+          },
+          {
+            "kind": "delimiter",
+            "text": "}"
+          }
+        ],
+        "state": "normal"
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "keyArgument-label",
+      "name": "Schlüssel-Argumente werden vollständig markiert, auch mit verschachtelten Klammern",
+      "sourceLine": 40,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "\\label{sec:x}",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "command",
+            "text": "\\label"
+          },
+          {
+            "kind": "delimiter",
+            "text": "{"
+          },
+          {
+            "kind": "keyArgument",
+            "text": "sec:x"
+          },
+          {
+            "kind": "delimiter",
+            "text": "}"
+          }
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "keyArgument-nested",
+      "name": "Schlüssel-Argumente werden vollständig markiert, auch mit verschachtelten Klammern",
+      "sourceLine": 40,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "\\cite{a{b}c}",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "command",
+            "text": "\\cite"
+          },
+          {
+            "kind": "delimiter",
+            "text": "{"
+          },
+          {
+            "kind": "keyArgument",
+            "text": "a{b}c"
+          },
+          {
+            "kind": "delimiter",
+            "text": "}"
+          }
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "optionalArgument",
+      "name": "Optionales Argument vor Schlüssel-Argument",
+      "sourceLine": 46,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "\\includegraphics[width=0.8\\textwidth]{bild.pdf}",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "command",
+            "text": "\\includegraphics"
+          },
+          {
+            "kind": "delimiter",
+            "text": "["
+          },
+          {
+            "kind": "optionalArgument",
+            "text": "width=0.8\\textwidth"
+          },
+          {
+            "kind": "delimiter",
+            "text": "]"
+          },
+          {
+            "kind": "delimiter",
+            "text": "{"
+          },
+          {
+            "kind": "keyArgument",
+            "text": "bild.pdf"
+          },
+          {
+            "kind": "delimiter",
+            "text": "}"
+          }
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "escapedCharacters",
+      "name": "Escapte Zeichen beginnen weder Kommentar noch Mathe",
+      "sourceLine": 56,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "50\\% und 5\\$ sind \\{ok\\}",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "command",
+            "text": "\\%"
+          },
+          {
+            "kind": "command",
+            "text": "\\$"
+          },
+          {
+            "kind": "command",
+            "text": "\\{"
+          },
+          {
+            "kind": "command",
+            "text": "\\}"
+          }
+        ],
+        "state": "normal"
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "commentWithDollar",
+      "name": "Kommentar läuft bis zum Zeilenende, $ darin öffnet keine Mathe",
+      "sourceLine": 65,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "Text % Kosten $5 und \\section{x}",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "comment",
+            "text": "% Kosten $5 und \\section{x}"
+          }
+        ],
+        "state": "normal"
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "singleLineMath-inline",
+      "name": "Inline- und Display-Mathe in einer Zeile",
+      "sourceLine": 72,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "a $x^2$ b",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "math",
+            "text": "$x^2$"
+          }
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "singleLineMath-display",
+      "name": "Inline- und Display-Mathe in einer Zeile",
+      "sourceLine": 72,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "$$x$$",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "math",
+            "text": "$$x$$"
+          }
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "singleLineMath-parenBracket",
+      "name": "Inline- und Display-Mathe in einer Zeile",
+      "sourceLine": 72,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "\\(x\\) und \\[y\\]",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "math",
+            "text": "\\(x\\)"
+          },
+          {
+            "kind": "math",
+            "text": "\\[y\\]"
+          }
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "singleLineMath-escapedDollar",
+      "name": "Inline- und Display-Mathe in einer Zeile",
+      "sourceLine": 72,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "$a \\$ b$ c",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "math",
+            "text": "$a \\$ b$"
+          }
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "lineBreakWithSpacing",
+      "name": "Zeilenumbruch \\\\[2mm] ist keine Display-Mathe",
+      "sourceLine": 80,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "Ende\\\\[2mm]",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "command",
+            "text": "\\\\"
+          },
+          {
+            "kind": "delimiter",
+            "text": "["
+          },
+          {
+            "kind": "optionalArgument",
+            "text": "2mm"
+          },
+          {
+            "kind": "delimiter",
+            "text": "]"
+          }
+        ],
+        "state": "normal"
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "verb-pipe",
+      "name": "\\verb schützt seinen Inhalt vor Kommentar und Mathe",
+      "sourceLine": 89,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "x \\verb|$x$ % kein| y",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "verbatim",
+            "text": "\\verb|$x$ % kein|"
+          }
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "verb-star",
+      "name": "\\verb schützt seinen Inhalt vor Kommentar und Mathe",
+      "sourceLine": 89,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "\\verb*+a b+",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "verbatim",
+            "text": "\\verb*+a b+"
+          }
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "mathEnvironment",
+      "name": "Mehrzeilige Mathe-Umgebung mit \\end in der Folgezeile",
+      "sourceLine": 95,
+      "input": {
+        "op": "tokenizeChain",
+        "lines": [
+          "\\begin{align*}",
+          "  a &= \\frac{1}{2} \\\\",
+          "x \\end{align*} Text"
+        ],
+        "state": "normal"
+      },
+      "expect": {
+        "steps": [
+          {
+            "tokens": [
+              {
+                "kind": "command",
+                "text": "\\begin"
+              },
+              {
+                "kind": "delimiter",
+                "text": "{"
+              },
+              {
+                "kind": "keyArgument",
+                "text": "align*"
+              },
+              {
+                "kind": "delimiter",
+                "text": "}"
+              }
+            ],
+            "state": {
+              "mathEnvironment": "align*"
+            }
+          },
+          {
+            "tokens": [
+              {
+                "kind": "math",
+                "text": "  a &= \\frac{1}{2} \\\\"
+              }
+            ],
+            "state": {
+              "mathEnvironment": "align*"
+            }
+          },
+          {
+            "tokens": [
+              {
+                "kind": "math",
+                "text": "x "
+              },
+              {
+                "kind": "command",
+                "text": "\\end"
+              },
+              {
+                "kind": "delimiter",
+                "text": "{"
+              },
+              {
+                "kind": "keyArgument",
+                "text": "align*"
+              },
+              {
+                "kind": "delimiter",
+                "text": "}"
+              }
+            ],
+            "state": "normal"
+          }
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "nestedEnvironmentEnd",
+      "name": "Ein anderes \\end beendet die Mathe-Umgebung nicht",
+      "sourceLine": 110,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "\\end{split}",
+        "state": {
+          "mathEnvironment": "equation"
+        }
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "math",
+            "text": "\\end{split}"
+          }
+        ],
+        "state": {
+          "mathEnvironment": "equation"
+        }
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "verbatimEnvironment",
+      "name": "Verbatim-Umgebung ignoriert Kommentare und Mathe",
+      "sourceLine": 117,
+      "input": {
+        "op": "tokenizeChain",
+        "lines": [
+          "\\begin{lstlisting}[language=Swift]",
+          "let x = $y % z",
+          "\\end{lstlisting}"
+        ],
+        "state": "normal"
+      },
+      "expect": {
+        "steps": [
+          {
+            "state": {
+              "verbatimEnvironment": "lstlisting"
+            },
+            "lastToken": {
+              "kind": "delimiter",
+              "text": "]"
+            }
+          },
+          {
+            "tokens": [
+              {
+                "kind": "verbatim",
+                "text": "let x = $y % z"
+              }
+            ]
+          },
+          {
+            "tokens": [
+              {
+                "kind": "command",
+                "text": "\\end"
+              },
+              {
+                "kind": "delimiter",
+                "text": "{"
+              },
+              {
+                "kind": "keyArgument",
+                "text": "lstlisting"
+              },
+              {
+                "kind": "delimiter",
+                "text": "}"
+              }
+            ],
+            "state": "normal"
+          }
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "languageCodeEnvironment",
+      "name": "Sprachumgebungen der HgbThesis (PythonCode …) sind Code wie lstlisting",
+      "sourceLine": 131,
+      "input": {
+        "op": "tokenizeChain",
+        "lines": [
+          "\\begin{PythonCode}[numbers=none]",
+          "def f(x): return x  # \\ref{a} $",
+          "\\end{PythonCode}"
+        ],
+        "state": "normal"
+      },
+      "expect": {
+        "steps": [
+          {
+            "state": {
+              "verbatimEnvironment": "PythonCode"
+            }
+          },
+          {
+            "tokens": [
+              {
+                "kind": "verbatim",
+                "text": "def f(x): return x  # \\ref{a} $"
+              }
+            ]
+          },
+          {
+            "state": "normal"
+          }
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "languageCodeEnvironment-codeOnly",
+      "name": "Sprachumgebungen der HgbThesis (PythonCode …) sind Code wie lstlisting",
+      "sourceLine": 131,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "\\begin{Code}",
+        "state": "normal"
+      },
+      "expect": {
+        "state": "normal"
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "commentInsideMath",
+      "name": "Kommentar in Mathe beendet die Mathe nicht",
+      "sourceLine": 144,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "$a % b",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "math",
+            "text": "$a "
+          },
+          {
+            "kind": "comment",
+            "text": "% b"
+          }
+        ],
+        "state": {
+          "math": "dollar"
+        }
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "blankLineResetsMath-dollar",
+      "name": "Leerzeile beendet offene Mathe, aber keine Verbatim-Umgebung",
+      "sourceLine": 151,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "",
+        "state": {
+          "math": "dollar"
+        }
+      },
+      "expect": {
+        "state": "normal"
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "blankLineResetsMath-whitespaceEnvironment",
+      "name": "Leerzeile beendet offene Mathe, aber keine Verbatim-Umgebung",
+      "sourceLine": 151,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "  \t",
+        "state": {
+          "mathEnvironment": "equation"
+        }
+      },
+      "expect": {
+        "state": "normal"
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "blankLineResetsMath-verbatimStays",
+      "name": "Leerzeile beendet offene Mathe, aber keine Verbatim-Umgebung",
+      "sourceLine": 151,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "",
+        "state": {
+          "verbatimEnvironment": "verbatim"
+        }
+      },
+      "expect": {
+        "state": {
+          "verbatimEnvironment": "verbatim"
+        }
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "incompleteConstructs-command",
+      "name": "Unvollständige Konstrukte beim Tippen",
+      "sourceLine": 158,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "\\sec",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "command",
+            "text": "\\sec"
+          }
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "incompleteConstructs-label",
+      "name": "Unvollständige Konstrukte beim Tippen",
+      "sourceLine": 158,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "\\label{sec:",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "command",
+            "text": "\\label"
+          },
+          {
+            "kind": "delimiter",
+            "text": "{"
+          },
+          {
+            "kind": "keyArgument",
+            "text": "sec:"
+          }
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "incompleteConstructs-optional",
+      "name": "Unvollständige Konstrukte beim Tippen",
+      "sourceLine": 158,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "\\includegraphics[wid",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "command",
+            "text": "\\includegraphics"
+          },
+          {
+            "kind": "delimiter",
+            "text": "["
+          },
+          {
+            "kind": "optionalArgument",
+            "text": "wid"
+          }
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "incompleteConstructs-verbPipe",
+      "name": "Unvollständige Konstrukte beim Tippen",
+      "sourceLine": 158,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "\\verb|abc",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "verbatim",
+            "text": "\\verb|abc"
+          }
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "incompleteConstructs-verb",
+      "name": "Unvollständige Konstrukte beim Tippen",
+      "sourceLine": 158,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "\\verb",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "verbatim",
+            "text": "\\verb"
+          }
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "incompleteConstructs-trailingBackslash",
+      "name": "Unvollständige Konstrukte beim Tippen",
+      "sourceLine": 158,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "Text\\",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "command",
+            "text": "\\"
+          }
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "incompleteConstructs-openMath",
+      "name": "Unvollständige Konstrukte beim Tippen",
+      "sourceLine": 158,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "Text $x + ",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "math",
+            "text": "$x + "
+          }
+        ],
+        "state": {
+          "math": "dollar"
+        }
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "incompleteConstructs-partialEnvironment",
+      "name": "Unvollständige Konstrukte beim Tippen",
+      "sourceLine": 158,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "\\begin{equ",
+        "state": "normal"
+      },
+      "expect": {
+        "state": "normal"
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "commentInsideArgument",
+      "name": "Kommentar innerhalb eines Schlüssel-Arguments wird erkannt",
+      "sourceLine": 177,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "\\label{a%b}",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "command",
+            "text": "\\label"
+          },
+          {
+            "kind": "delimiter",
+            "text": "{"
+          },
+          {
+            "kind": "keyArgument",
+            "text": "a"
+          },
+          {
+            "kind": "comment",
+            "text": "%b}"
+          }
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "atInCommandName",
+      "name": "@ gehört zu Befehlsnamen (Paketcode)",
+      "sourceLine": 183,
+      "input": {
+        "op": "tokenizeLine",
+        "line": "\\@ifnextchar",
+        "state": "normal"
+      },
+      "expect": {
+        "tokens": [
+          {
+            "kind": "command",
+            "text": "\\@ifnextchar"
+          }
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "absoluteUTF16Offsets",
+      "name": "Positionen sind absolut und nutzen UTF-16 (Umlaute, Emoji)",
+      "sourceLine": 188,
+      "input": {
+        "op": "tokenizeLineWithOffset",
+        "line": "Größe 😀 $x$",
+        "lineOffset": 100,
+        "state": "normal"
+      },
+      "expect": {
+        "tokensByRange": [
+          {
+            "kind": "math",
+            "location": 109,
+            "length": 3
+          }
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift"
+    },
+    {
+      "id": "highlighter-fullHighlightStates",
+      "name": "Komplettes Einfärben speichert einen Endzustand pro Zeile",
+      "sourceLine": 45,
+      "input": {
+        "op": "highlightAll",
+        "text": "a\n\\begin{equation}\nx\n\\end{equation}\nb"
+      },
+      "expect": {
+        "endStates": [
+          "normal",
+          {
+            "mathEnvironment": "equation"
+          },
+          {
+            "mathEnvironment": "equation"
+          },
+          "normal",
+          "normal"
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/SyntaxHighlighterTests.swift"
+    },
+    {
+      "id": "highlighter-openDollarStopsAtParagraph",
+      "name": "Ein offenes $ färbt nur bis zum Absatzende neu",
+      "sourceLine": 64,
+      "input": {
+        "op": "highlightEdit",
+        "text": "Erster Absatz mit Text.\nNoch eine Zeile.\n\nZweiter Absatz.\nMit zwei Zeilen.\n\nDritter Absatz am Ende.",
+        "edit": {
+          "locationOfSubstring": "Zweiter",
+          "offset": 0,
+          "length": 0,
+          "replacement": "$"
+        }
+      },
+      "expect": {
+        "tokenizedLineCount": 3,
+        "allTokenKinds": "math",
+        "endStatesAfterEdit": {
+          "4": {
+            "math": "dollar"
+          },
+          "5": "normal"
+        }
+      },
+      "source": "swift/Tests/LatexEditorTests/SyntaxHighlighterTests.swift"
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "latexeditor-spec-vectors",
+  "title": "Testvektordatei",
+  "type": "object",
+  "required": ["suite", "version", "source", "cases"],
+  "definitions": {
+    "sourceRef": {
+      "description": "Swift-Testdatei(en), z. B. swift/Tests/LatexEditorTests/LatexTokenizerTests.swift; mehrere als Array (je Pfad ein Eintrag)",
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+      ]
+    }
+  },
+  "properties": {
+    "suite": { "type": "string", "minLength": 1 },
+    "version": { "type": "integer", "minimum": 1 },
+    "source": { "$ref": "#/definitions/sourceRef" },
+    "notes": {
+      "description": "Freitext für Verbraucher (Markierungsnotation, Indexbasis, Nicht-ASCII-Fälle); enthält nur Text, keine prüfbaren Werte",
+      "type": "string",
+      "minLength": 1
+    },
+    "skipped": {
+      "description": "Bewusst nicht übernommene Tests mit Grund",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "reason"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 },
+          "source": { "description": "Swift-Testdatei, wenn die Suite mehrere Quellen hat (sonst gilt das Suite-Feld)", "$ref": "#/definitions/sourceRef" },
+          "sourceLine": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "description": "Eindeutig innerhalb der Datei (Eindeutigkeit prüft README, nicht das Schema)", "type": "string", "minLength": 1 },
+          "name": { "description": "Text aus @Test(\"…\")", "type": "string", "minLength": 1 },
+          "source": { "description": "Swift-Testdatei dieses Falls, wenn die Suite mehrere Quellen hat; sourceLine bezieht sich dann auf diese Datei", "$ref": "#/definitions/sourceRef" },
+          "input": {},
+          "expect": {},
+          "sourceLine": { "description": "1-basierte Zeile des @Test in der Swift-Datei", "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

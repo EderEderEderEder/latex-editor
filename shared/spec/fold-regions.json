@@ -1,0 +1,439 @@
+{
+  "suite": "fold-regions",
+  "version": 1,
+  "source": "swift/Tests/LatexEditorTests/FoldingTests.swift",
+  "notes": "startLine und endLine sind 0-basierte, einschließlich gezählte Zeilenindizes (Zeile 0 ist die erste Zeile). Nur reine Regionenlogik (FoldScanner); die FoldState-Zustandsmaschine und alles mit AppKit steht in skipped.",
+  "skipped": [
+    {
+      "name": "Zuklappen blendet vom Ende der Kopfzeile bis vor den letzten Zeilenumbruch aus",
+      "reason": "FoldState-Zustandsmaschine (Closures/Callbacks, Mutation), keine reine Regionenlogik; nicht eindeutig als Eingabe/Erwartung abbildbar",
+      "sourceLine": 119
+    },
+    {
+      "name": "Verschachtelte Bereiche ergeben ein Ausgeblendetes; Aufklappen des äußeren lässt den inneren zu",
+      "reason": "FoldState-Zustandsmaschine (Closures/Callbacks, Mutation), keine reine Regionenlogik; nicht eindeutig als Eingabe/Erwartung abbildbar",
+      "sourceLine": 133
+    },
+    {
+      "name": "Alles zuklappen lässt \\begin{document} offen; Alles aufklappen räumt auf",
+      "reason": "FoldState-Zustandsmaschine (Closures/Callbacks, Mutation), keine reine Regionenlogik; nicht eindeutig als Eingabe/Erwartung abbildbar",
+      "sourceLine": 146
+    },
+    {
+      "name": "Der innerste offene Bereich unter dem Cursor; ein zugeklappter wird übersprungen",
+      "reason": "FoldState-Zustandsmaschine (Closures/Callbacks, Mutation), keine reine Regionenlogik; nicht eindeutig als Eingabe/Erwartung abbildbar",
+      "sourceLine": 157
+    },
+    {
+      "name": "Eine Änderung davor verschiebt die zugeklappte Stelle, eine dahinter lässt sie",
+      "reason": "FoldState-Zustandsmaschine (Closures/Callbacks, Mutation), keine reine Regionenlogik; nicht eindeutig als Eingabe/Erwartung abbildbar",
+      "sourceLine": 180
+    },
+    {
+      "name": "Eine Änderung im Ausgeblendeten klappt auf und meldet den betroffenen Bereich",
+      "reason": "FoldState-Zustandsmaschine (Closures/Callbacks, Mutation), keine reine Regionenlogik; nicht eindeutig als Eingabe/Erwartung abbildbar",
+      "sourceLine": 193
+    },
+    {
+      "name": "Neue Zeilen verschieben die Bereiche, bis die nächste Prüfung sie bestätigt",
+      "reason": "FoldState-Zustandsmaschine (Closures/Callbacks, Mutation), keine reine Regionenlogik; nicht eindeutig als Eingabe/Erwartung abbildbar",
+      "sourceLine": 204
+    },
+    {
+      "name": "Eine neue Zeile hinter der Kopfzeile lässt die Kopfzeile stehen",
+      "reason": "FoldState-Zustandsmaschine (Closures/Callbacks, Mutation), keine reine Regionenlogik; nicht eindeutig als Eingabe/Erwartung abbildbar",
+      "sourceLine": 212
+    },
+    {
+      "name": "Nach einer Prüfung klappt auf, wozu es keinen Bereich mehr gibt",
+      "reason": "FoldState-Zustandsmaschine (Closures/Callbacks, Mutation), keine reine Regionenlogik; nicht eindeutig als Eingabe/Erwartung abbildbar",
+      "sourceLine": 219
+    },
+    {
+      "name": "Cursor am Ende des Ausgeblendeten rückt an das Ende der Kopfzeile",
+      "reason": "FoldState-Zustandsmaschine (Closures/Callbacks, Mutation), keine reine Regionenlogik; nicht eindeutig als Eingabe/Erwartung abbildbar",
+      "sourceLine": 230
+    },
+    {
+      "name": "Ein Schritt nach rechts vom Ende der Kopfzeile springt hinter den Bereich",
+      "reason": "FoldState-Zustandsmaschine (Closures/Callbacks, Mutation), keine reine Regionenlogik; nicht eindeutig als Eingabe/Erwartung abbildbar",
+      "sourceLine": 240
+    },
+    {
+      "name": "Mitten ins Ausgeblendete (Suche, Gehe zu Zeile) klappt auf",
+      "reason": "FoldState-Zustandsmaschine (Closures/Callbacks, Mutation), keine reine Regionenlogik; nicht eindeutig als Eingabe/Erwartung abbildbar",
+      "sourceLine": 250
+    },
+    {
+      "name": "Eine Auswahl über den ganzen Bereich lässt ihn zu, ein Rand mittendrin klappt auf",
+      "reason": "FoldState-Zustandsmaschine (Closures/Callbacks, Mutation), keine reine Regionenlogik; nicht eindeutig als Eingabe/Erwartung abbildbar",
+      "sourceLine": 259
+    },
+    {
+      "name": "Zugeklappt rückt die nächste Überschrift direkt unter die Kopfzeile; aufgeklappt ist alles wie vorher",
+      "reason": "Braucht NSWindow/AppKit (Layout, Ruler, Platzhalter)",
+      "sourceLine": 301
+    },
+    {
+      "name": "Die Zeilennummern überspringen ausgeblendete Zeilen",
+      "reason": "Braucht NSWindow/AppKit (Layout, Ruler, Platzhalter)",
+      "sourceLine": 316
+    },
+    {
+      "name": "Ein Platzhalter steht hinter der Kopfzeile; ein Klick darauf klappt auf",
+      "reason": "Braucht NSWindow/AppKit (Layout, Ruler, Platzhalter)",
+      "sourceLine": 324
+    },
+    {
+      "name": "Tippen am Ende der Kopfzeile lässt den Bereich zu, Tippen im Ausgeblendeten (Ersetzen) klappt auf",
+      "reason": "Braucht NSWindow/AppKit (Layout, Ruler, Platzhalter)",
+      "sourceLine": 340
+    },
+    {
+      "name": "Ersetzen des ganzen Texts von außen (Umbenennen, Neu laden) lässt keinen verwaisten Bereich zurück",
+      "reason": "Braucht NSWindow/AppKit (Layout, Ruler, Platzhalter)",
+      "sourceLine": 353
+    },
+    {
+      "name": "Befehle: Zuklappen am Cursor nimmt den innersten Bereich und setzt den Cursor an die Kopfzeile",
+      "reason": "Braucht NSWindow/AppKit (Layout, Ruler, Platzhalter)",
+      "sourceLine": 362
+    },
+    {
+      "name": "Dreieck anklicken: nur in der Dreiecksspalte und nur bei Zeilen mit Bereich",
+      "reason": "Braucht NSWindow/AppKit (Layout, Ruler, Platzhalter)",
+      "sourceLine": 381
+    },
+    {
+      "name": "Der Prüflauf nach dem Öffnen findet die Bereiche von selbst",
+      "reason": "Braucht EditorCoordinator, NSWindow/AppKit und sleep",
+      "sourceLine": 433
+    },
+    {
+      "name": "Zugeklappt bleibt beim Dateiwechsel erhalten",
+      "reason": "Braucht EditorCoordinator, NSWindow/AppKit und sleep",
+      "sourceLine": 441
+    },
+    {
+      "name": "Cursor: Ende der Zeile bleibt an der Kopfzeile",
+      "reason": "Braucht EditorCoordinator, NSWindow/AppKit und sleep",
+      "sourceLine": 456
+    },
+    {
+      "name": "Pfeil rechts und Wortsprung von der Kopfzeile gehen hinter den Bereich, links wieder zurück",
+      "reason": "Braucht EditorCoordinator, NSWindow/AppKit und sleep",
+      "sourceLine": 467
+    },
+    {
+      "name": "Mit Umschalt wird der zugeklappte Bereich in einem Schritt markiert",
+      "reason": "Braucht EditorCoordinator, NSWindow/AppKit und sleep",
+      "sourceLine": 485
+    },
+    {
+      "name": "Rückschritt am Zeilenanfang hinter dem Bereich klappt vorher auf",
+      "reason": "Braucht EditorCoordinator, NSWindow/AppKit und sleep",
+      "sourceLine": 499
+    },
+    {
+      "name": "Gehe zu Zeile in den zugeklappten Teil klappt auf, und die Zeile ist sichtbar",
+      "reason": "Braucht EditorCoordinator, NSWindow/AppKit und sleep",
+      "sourceLine": 510
+    },
+    {
+      "name": "Zuklappen ändert den Text nicht und macht die Datei nicht „geändert“",
+      "reason": "Braucht EditorCoordinator, NSWindow/AppKit und sleep",
+      "sourceLine": 520
+    }
+  ],
+  "cases": [
+    {
+      "id": "nestedSections",
+      "name": "Kapitel, Abschnitte und Umgebungen verschachtelt; Leerzeilen am Ende gehören nicht dazu",
+      "sourceLine": 22,
+      "input": {
+        "op": "regions",
+        "text": "\\chapter{Eins}\nText a\n\\section{A}\nText b\n\\begin{itemize}\n\\item x\n\\end{itemize}\n\n\\section{B}\nText c\n\\chapter{Zwei}\nText d"
+      },
+      "expect": {
+        "regions": [
+          {
+            "kind": "section",
+            "startLine": 0,
+            "endLine": 9
+          },
+          {
+            "kind": "section",
+            "startLine": 2,
+            "endLine": 6
+          },
+          {
+            "kind": {
+              "environment": "itemize"
+            },
+            "startLine": 4,
+            "endLine": 6
+          },
+          {
+            "kind": "section",
+            "startLine": 8,
+            "endLine": 9
+          },
+          {
+            "kind": "section",
+            "startLine": 10,
+            "endLine": 11
+          }
+        ]
+      }
+    },
+    {
+      "id": "barriers-document",
+      "name": "Ein Abschnitt endet vor \\end{document}, \\appendix und \\backmatter",
+      "sourceLine": 43,
+      "input": {
+        "op": "regions",
+        "text": "\\begin{document}\n\\section{A}\ntext\n\\end{document}\n"
+      },
+      "expect": {
+        "regions": [
+          {
+            "kind": {
+              "environment": "document"
+            },
+            "startLine": 0,
+            "endLine": 3
+          },
+          {
+            "kind": "section",
+            "startLine": 1,
+            "endLine": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "barriers-appendix",
+      "name": "Ein Abschnitt endet vor \\end{document}, \\appendix und \\backmatter",
+      "sourceLine": 43,
+      "input": {
+        "op": "regions",
+        "text": "\\chapter{A}\nx\n\\appendix\n\\chapter{B}\ny\n"
+      },
+      "expect": {
+        "regions": [
+          {
+            "kind": "section",
+            "startLine": 0,
+            "endLine": 1
+          },
+          {
+            "kind": "section",
+            "startLine": 3,
+            "endLine": 4
+          }
+        ]
+      }
+    },
+    {
+      "id": "degenerateEnvironments-1",
+      "name": "Einzeilige und nie geschlossene Umgebungen sind nicht zuklappbar",
+      "sourceLine": 51,
+      "input": {
+        "op": "regions",
+        "text": "\\begin{a}x\\end{a}\n"
+      },
+      "expect": {
+        "regions": []
+      }
+    },
+    {
+      "id": "degenerateEnvironments-2",
+      "name": "Einzeilige und nie geschlossene Umgebungen sind nicht zuklappbar",
+      "sourceLine": 51,
+      "input": {
+        "op": "regions",
+        "text": "\\begin{a}\nx\n"
+      },
+      "expect": {
+        "regions": []
+      }
+    },
+    {
+      "id": "degenerateEnvironments-3",
+      "name": "Einzeilige und nie geschlossene Umgebungen sind nicht zuklappbar",
+      "sourceLine": 51,
+      "input": {
+        "op": "regions",
+        "text": "x\n\\end{a}\n"
+      },
+      "expect": {
+        "regions": []
+      }
+    },
+    {
+      "id": "mismatchedEnvironments",
+      "name": "Ungleich verschachtelte Umgebungen: \\end schließt die passende, auch über eine offene hinweg",
+      "sourceLine": 58,
+      "input": {
+        "op": "regions",
+        "text": "\\begin{a}\n\\begin{b}\nx\n\\end{a}\n"
+      },
+      "expect": {
+        "regions": [
+          {
+            "kind": {
+              "environment": "a"
+            },
+            "startLine": 0,
+            "endLine": 3
+          }
+        ]
+      }
+    },
+    {
+      "id": "commentedCommands",
+      "name": "Auskommentierte Befehle zählen nicht, ein Abschnitt reicht aber über Kommentarzeilen",
+      "sourceLine": 64,
+      "input": {
+        "op": "regions",
+        "text": "% \\section{X}\n\\section{Y}\na\n% \\begin{foo}\nb\n"
+      },
+      "expect": {
+        "regions": [
+          {
+            "kind": "section",
+            "startLine": 1,
+            "endLine": 4
+          }
+        ]
+      }
+    },
+    {
+      "id": "codeEnvironment-lstlisting",
+      "name": "Code-Umgebung ist selbst zuklappbar, ihr Inhalt zählt nicht (weder Überschriften noch Kommentare)",
+      "sourceLine": 70,
+      "input": {
+        "op": "regions",
+        "text": "\\begin{lstlisting}\n\\section{X}\n% foo\n% bar\n\\end{lstlisting}\n"
+      },
+      "expect": {
+        "regions": [
+          {
+            "kind": {
+              "environment": "lstlisting"
+            },
+            "startLine": 0,
+            "endLine": 4
+          }
+        ]
+      }
+    },
+    {
+      "id": "codeEnvironment-PythonCode",
+      "name": "Code-Umgebung ist selbst zuklappbar, ihr Inhalt zählt nicht (weder Überschriften noch Kommentare)",
+      "sourceLine": 70,
+      "input": {
+        "op": "regions",
+        "text": "\\begin{PythonCode}\n\\section{X}\n\\begin{y}\n\\end{PythonCode}\n"
+      },
+      "expect": {
+        "regions": [
+          {
+            "kind": {
+              "environment": "PythonCode"
+            },
+            "startLine": 0,
+            "endLine": 3
+          }
+        ]
+      }
+    },
+    {
+      "id": "commentBlocks",
+      "name": "Kommentarblöcke ab zwei Zeilen am Stück",
+      "sourceLine": 78,
+      "input": {
+        "op": "regions",
+        "text": "% a\n  % b\ntext\n% allein\ntext\n%c\n%d\n%e\n"
+      },
+      "expect": {
+        "regions": [
+          {
+            "kind": "comments",
+            "startLine": 0,
+            "endLine": 1
+          },
+          {
+            "kind": "comments",
+            "startLine": 5,
+            "endLine": 7
+          }
+        ]
+      }
+    },
+    {
+      "id": "oneRegionPerHeader",
+      "name": "Eine Kopfzeile bekommt nur ihren größten Bereich",
+      "sourceLine": 84,
+      "input": {
+        "op": "regions",
+        "text": "\\begin{a}\\begin{b}\nx\n\\end{b}\ny\n\\end{a}\n"
+      },
+      "expect": {
+        "regions": [
+          {
+            "kind": {
+              "environment": "a"
+            },
+            "startLine": 0,
+            "endLine": 4
+          }
+        ]
+      }
+    },
+    {
+      "id": "hiddenRange",
+      "name": "Ausgeblendet wird vom Ende der Kopfzeile bis vor den Zeilenumbruch der letzten Zeile",
+      "sourceLine": 90,
+      "input": {
+        "op": "hiddenRange",
+        "text": "ab\ncd\nef\ngh\n",
+        "region": {
+          "kind": "section",
+          "startLine": 0,
+          "endLine": 2
+        }
+      },
+      "expect": {
+        "hiddenRange": {
+          "location": 2,
+          "length": 6
+        },
+        "hiddenText": "\ncd\nef"
+      }
+    },
+    {
+      "id": "windowsLineEndings",
+      "name": "Auch Dateien mit \\r\\n-Zeilenenden",
+      "sourceLine": 99,
+      "input": {
+        "op": "regions",
+        "text": "\\section{A}\r\nx\r\n\\section{B}\r\ny\r\n"
+      },
+      "expect": {
+        "regions": [
+          {
+            "kind": "section",
+            "startLine": 0,
+            "endLine": 1
+          },
+          {
+            "kind": "section",
+            "startLine": 2,
+            "endLine": 3
+          }
+        ]
+      }
+    }
+  ]
+}

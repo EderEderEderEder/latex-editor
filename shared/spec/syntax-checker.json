@@ -1,0 +1,192 @@
+{
+  "suite": "syntax-checker",
+  "version": 1,
+  "source": "swift/Tests/LatexEditorTests/SyntaxCheckerTests.swift",
+  "notes": "Fälle ohne op bedeuten: Text maskieren (LatexMasking.scannable) und SyntaxChecker.marks darauf anwenden; expect beschreibt die erzeugten Markierungen. Offsets (firstLocation) sind UTF-16, die Vektoren enthalten nur ASCII.",
+  "skipped": [
+    {
+      "name": "Doppelte Labels: beide Stellen warnen, Meldung nennt die andere",
+      "reason": "Hängt an LabelEntry/URL/DuplicateLabelChecker bzw. ReferenceCheckStore/CompletionIndex (@MainActor, Dateien, async); gehört in eine eigene Suite",
+      "sourceLine": 89
+    },
+    {
+      "name": "Zwei Labels derselben Datei verweisen aufeinander",
+      "reason": "Hängt an LabelEntry/URL/DuplicateLabelChecker bzw. ReferenceCheckStore/CompletionIndex (@MainActor, Dateien, async); gehört in eine eigene Suite",
+      "sourceLine": 104
+    },
+    {
+      "name": "Store: Syntaxfehler und doppelte Labels pro Datei, auch ohne gelesenen Index",
+      "reason": "Hängt an LabelEntry/URL/DuplicateLabelChecker bzw. ReferenceCheckStore/CompletionIndex (@MainActor, Dateien, async); gehört in eine eigene Suite; DocumentSession, async",
+      "sourceLine": 112
+    },
+    {
+      "name": "Sidebar-Liste: mehrfach definierte Labels aus dem Index",
+      "reason": "Hängt an LabelEntry/URL/DuplicateLabelChecker bzw. ReferenceCheckStore/CompletionIndex (@MainActor, Dateien, async); gehört in eine eigene Suite",
+      "sourceLine": 131
+    }
+  ],
+  "cases": [
+    {
+      "id": "cleanText",
+      "name": "Korrekter Text hat keine Markierung",
+      "sourceLine": 15,
+      "input": {
+        "text": "\\begin{document}\n\\section{Titel}\nEin $x^2$ und \\(y\\) sowie \\[ z \\] und $$a$$.\n\\begin{itemize}\\item \\{ok\\}\\end{itemize}\n\\end{document}\n"
+      },
+      "expect": {
+        "count": 0
+      }
+    },
+    {
+      "id": "braces",
+      "name": "Überzählige und fehlende Klammern",
+      "sourceLine": 21,
+      "input": {
+        "text": "\\textbf{a}}\n\\emph{b\n"
+      },
+      "expect": {
+        "count": 2,
+        "allSeverity": "error",
+        "firstLocation": 10,
+        "foundTexts": [
+          "{b"
+        ]
+      }
+    },
+    {
+      "id": "ignoredBraces",
+      "name": "Maskierte Klammern, Kommentare und Code zählen nicht",
+      "sourceLine": 31,
+      "input": {
+        "text": "\\{ \\} % { offen\n\\begin{verbatim}\n{ } }\n\\end{verbatim}\n\\verb|{|\n"
+      },
+      "expect": {
+        "count": 0
+      }
+    },
+    {
+      "id": "environments-unclosed",
+      "name": "Umgebung ohne Ende, Ende ohne Anfang, falsch verschachtelt",
+      "sourceLine": 37,
+      "input": {
+        "text": "\\begin{figure}\nx\n"
+      },
+      "expect": {
+        "foundTexts": [
+          "\\begin{figure}"
+        ]
+      }
+    },
+    {
+      "id": "environments-orphanEnd",
+      "name": "Umgebung ohne Ende, Ende ohne Anfang, falsch verschachtelt",
+      "sourceLine": 37,
+      "input": {
+        "text": "x\\end{table}"
+      },
+      "expect": {
+        "foundTexts": [
+          "\\end{table}"
+        ]
+      }
+    },
+    {
+      "id": "environments-nested",
+      "name": "Umgebung ohne Ende, Ende ohne Anfang, falsch verschachtelt",
+      "sourceLine": 37,
+      "input": {
+        "text": "\\begin{a}\\begin{b}\\end{a}"
+      },
+      "expect": {
+        "count": 1,
+        "foundTexts": [
+          "\\begin{b}"
+        ],
+        "firstMessageContains": "Zeile 1"
+      }
+    },
+    {
+      "id": "definitions",
+      "name": "Definitionen dürfen ein einzelnes \\begin oder \\end enthalten",
+      "sourceLine": 48,
+      "input": {
+        "text": "\\newenvironment{box}{\\begin{center}}{\\end{center}}\n\\newcommand{\\bi}{\\begin{itemize}}\n\\def\\x{\\end{x}}\n"
+      },
+      "expect": {
+        "count": 0
+      }
+    },
+    {
+      "id": "mathDollar-paragraph",
+      "name": "Formeln: offenes $ am Absatzende und am Dateiende",
+      "sourceLine": 54,
+      "input": {
+        "text": "Ein $x ist\n\nNeuer Absatz $y$.\n"
+      },
+      "expect": {
+        "count": 1,
+        "foundTexts": [
+          "$x"
+        ],
+        "firstLocation": 4
+      }
+    },
+    {
+      "id": "mathDollar-fileEnd",
+      "name": "Formeln: offenes $ am Absatzende und am Dateiende",
+      "sourceLine": 54,
+      "input": {
+        "text": "Ende $x"
+      },
+      "expect": {
+        "count": 1
+      }
+    },
+    {
+      "id": "escapedDollar-dollar",
+      "name": "Maskiertes $ und \\) ohne \\(",
+      "sourceLine": 64,
+      "input": {
+        "text": "Preis 5\\$ und 6\\$."
+      },
+      "expect": {
+        "count": 0
+      }
+    },
+    {
+      "id": "escapedDollar-closeParen",
+      "name": "Maskiertes $ und \\) ohne \\(",
+      "sourceLine": 64,
+      "input": {
+        "text": "a \\) b"
+      },
+      "expect": {
+        "foundTexts": [
+          "\\)"
+        ]
+      }
+    },
+    {
+      "id": "lineBreakWithOption",
+      "name": "\\\\[2mm] ist kein Formelanfang",
+      "sourceLine": 71,
+      "input": {
+        "text": "a\\\\[2mm]\nb\n\nc"
+      },
+      "expect": {
+        "count": 0
+      }
+    },
+    {
+      "id": "capped",
+      "name": "Höchstens 200 Markierungen",
+      "sourceLine": 76,
+      "input": {
+        "text": "}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}"
+      },
+      "expect": {
+        "count": 200
+      }
+    }
+  ]
+}

@@ -1,0 +1,211 @@
+{
+  "suite": "latex-source",
+  "version": 1,
+  "source": [
+    "swift/Tests/LatexEditorTests/RobustnessTests.swift",
+    "swift/Tests/LatexEditorTests/WritingHintsTests.swift"
+  ],
+  "notes": "Quelle: Suite LatexSourceTests in RobustnessTests.swift; aus WritingHintsTests.swift nur der Test insideCode (Fälle mit Präfix WritingHintsTests.). commentStart: Swift liefert Character-Offsets, die Vektoren enthalten dafür nur ASCII; Verbraucher rechnen in UTF-16. Fall masking enthält Nicht-ASCII (Emoji) und prüft nur Längen und Teilstrings, keine Offsets.",
+  "skipped": [
+    {
+      "name": "Die Byte-Variante der Gliederung folgt derselben Regel",
+      "reason": "Erwartung ist kein Literal, sondern der Vergleich zweier Implementierungen (OutlineParser gegen LatexComments); Byte-Offsets gehören zur Gliederung",
+      "sourceLine": 39,
+      "source": "swift/Tests/LatexEditorTests/RobustnessTests.swift"
+    },
+    {
+      "name": "Dateien: UTF-8, sonst Latin-1 (mit Kodierung zum Zurückschreiben)",
+      "reason": "ProjectText und Foundation-Kodierungen (Data, String.Encoding), keine LaTeX-Quelllogik",
+      "sourceLine": 54,
+      "source": "swift/Tests/LatexEditorTests/RobustnessTests.swift"
+    }
+  ],
+  "cases": [
+    {
+      "id": "commentStart-1",
+      "name": "Kommentarbeginn: % ja, \\% nein, \\\\% ja (Zeilenumbruch + Kommentar)",
+      "sourceLine": 10,
+      "input": {
+        "op": "commentStart",
+        "line": "Text % Kommentar"
+      },
+      "expect": {
+        "offset": 5
+      },
+      "source": "swift/Tests/LatexEditorTests/RobustnessTests.swift"
+    },
+    {
+      "id": "commentStart-2",
+      "name": "Kommentarbeginn: % ja, \\% nein, \\\\% ja (Zeilenumbruch + Kommentar)",
+      "sourceLine": 10,
+      "input": {
+        "op": "commentStart",
+        "line": "50\\,\\% Rabatt"
+      },
+      "expect": {
+        "offset": null
+      },
+      "source": "swift/Tests/LatexEditorTests/RobustnessTests.swift"
+    },
+    {
+      "id": "commentStart-3",
+      "name": "Kommentarbeginn: % ja, \\% nein, \\\\% ja (Zeilenumbruch + Kommentar)",
+      "sourceLine": 10,
+      "input": {
+        "op": "commentStart",
+        "line": "Ende\\\\% Kommentar"
+      },
+      "expect": {
+        "offset": 6
+      },
+      "source": "swift/Tests/LatexEditorTests/RobustnessTests.swift"
+    },
+    {
+      "id": "commentStart-4",
+      "name": "Kommentarbeginn: % ja, \\% nein, \\\\% ja (Zeilenumbruch + Kommentar)",
+      "sourceLine": 10,
+      "input": {
+        "op": "commentStart",
+        "line": "\\\\\\% kein Kommentar"
+      },
+      "expect": {
+        "offset": null
+      },
+      "source": "swift/Tests/LatexEditorTests/RobustnessTests.swift"
+    },
+    {
+      "id": "commentStart-5",
+      "name": "Kommentarbeginn: % ja, \\% nein, \\\\% ja (Zeilenumbruch + Kommentar)",
+      "sourceLine": 10,
+      "input": {
+        "op": "commentStart",
+        "line": "ohne"
+      },
+      "expect": {
+        "offset": null
+      },
+      "source": "swift/Tests/LatexEditorTests/RobustnessTests.swift"
+    },
+    {
+      "id": "masking",
+      "name": "Maskieren: gleiche UTF-16-Länge, Kommentar endet auch bei \\r\\n",
+      "sourceLine": 22,
+      "input": {
+        "op": "masking",
+        "text": "😀 a % weg 😀\r\nbleibt % weg\n\\% bleibt"
+      },
+      "expect": {
+        "sameUtf16Length": true,
+        "contains": [
+          "bleibt",
+          "\r\nbleibt"
+        ],
+        "notContains": [
+          "weg"
+        ],
+        "hasSuffix": "\\% bleibt"
+      },
+      "source": "swift/Tests/LatexEditorTests/RobustnessTests.swift"
+    },
+    {
+      "id": "positionCheck-5",
+      "name": "Schnelle Prüfung an einer Position stimmt mit dem Kommentarbeginn überein",
+      "sourceLine": 32,
+      "input": {
+        "op": "isInComment",
+        "line": "a \\% b % c",
+        "lineStart": 0,
+        "location": 5
+      },
+      "expect": {
+        "isInComment": false
+      },
+      "source": "swift/Tests/LatexEditorTests/RobustnessTests.swift"
+    },
+    {
+      "id": "positionCheck-9",
+      "name": "Schnelle Prüfung an einer Position stimmt mit dem Kommentarbeginn überein",
+      "sourceLine": 32,
+      "input": {
+        "op": "isInComment",
+        "line": "a \\% b % c",
+        "lineStart": 0,
+        "location": 9
+      },
+      "expect": {
+        "isInComment": true
+      },
+      "source": "swift/Tests/LatexEditorTests/RobustnessTests.swift"
+    },
+    {
+      "id": "verbBeforeComments-verb",
+      "name": "\\verb mit % versteckt nicht mehr den Rest der Zeile",
+      "sourceLine": 47,
+      "input": {
+        "op": "referenceKeys",
+        "text": "Mit \\verb|%| siehe \\ref{fig:a}."
+      },
+      "expect": {
+        "keys": [
+          "fig:a"
+        ]
+      },
+      "source": "swift/Tests/LatexEditorTests/RobustnessTests.swift"
+    },
+    {
+      "id": "verbBeforeComments-comment",
+      "name": "\\verb mit % versteckt nicht mehr den Rest der Zeile",
+      "sourceLine": 47,
+      "input": {
+        "op": "referenceKeys",
+        "text": "% \\verb|x| \\ref{weg}"
+      },
+      "expect": {
+        "keys": []
+      },
+      "source": "swift/Tests/LatexEditorTests/RobustnessTests.swift"
+    },
+    {
+      "id": "WritingHintsTests.insideCode-open",
+      "name": "Code-Umgebungen werden erkannt, auch mit LaTeX-Befehlen im Code",
+      "sourceLine": 72,
+      "input": {
+        "op": "isInsideCode",
+        "text": "Text\n\\begin{PythonCode}\nx = 1\n\\begin{itemize}\ny\n",
+        "at": "end"
+      },
+      "expect": {
+        "isInsideCode": true
+      },
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift"
+    },
+    {
+      "id": "WritingHintsTests.insideCode-closed",
+      "name": "Code-Umgebungen werden erkannt, auch mit LaTeX-Befehlen im Code",
+      "sourceLine": 72,
+      "input": {
+        "op": "isInsideCode",
+        "text": "\\begin{PythonCode}\nx\n\\end{PythonCode}\nText",
+        "at": "end"
+      },
+      "expect": {
+        "isInsideCode": false
+      },
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift"
+    },
+    {
+      "id": "WritingHintsTests.insideCode-prose",
+      "name": "Code-Umgebungen werden erkannt, auch mit LaTeX-Befehlen im Code",
+      "sourceLine": 72,
+      "input": {
+        "op": "isInsideCode",
+        "text": "\\begin{itemize}\n\\item Text",
+        "at": "end"
+      },
+      "expect": {
+        "isInsideCode": false
+      },
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift"
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "suite": "example",
+  "version": 1,
+  "source": "swift/Tests/LatexEditorTests/LatexTokenizerTests.swift",
+  "cases": [
+    {
+      "id": "proseArgument",
+      "name": "Prosa-Argumente bleiben ungefärbt, nur Klammern werden markiert",
+      "sourceLine": 33,
+      "input": { "line": "\\section{Ein Titel}", "state": "normal" },
+      "expect": {
+        "tokens": [
+          { "kind": "command", "text": "\\section" },
+          { "kind": "delimiter", "text": "{" },
+          { "kind": "delimiter", "text": "}" }
+        ],
+        "state": "normal"
+      }
+    },
+    {
+      "id": "keyArgument-label",
+      "name": "Schlüssel-Argumente werden vollständig markiert, auch mit verschachtelten Klammern",
+      "sourceLine": 40,
+      "input": { "line": "\\label{sec:x}", "state": "normal" },
+      "expect": {
+        "tokens": [
+          { "kind": "command", "text": "\\label" },
+          { "kind": "delimiter", "text": "{" },
+          { "kind": "keyArgument", "text": "sec:x" },
+          { "kind": "delimiter", "text": "}" }
+        ]
+      }
+    },
+    {
+      "id": "escapedCharacters",
+      "name": "Escapte Zeichen beginnen weder Kommentar noch Mathe",
+      "sourceLine": 56,
+      "input": { "line": "50\\% und 5\\$ sind \\{ok\\}", "state": "normal" },
+      "expect": {
+        "tokens": [
+          { "kind": "command", "text": "\\%" },
+          { "kind": "command", "text": "\\$" },
+          { "kind": "command", "text": "\\{" },
+          { "kind": "command", "text": "\\}" }
+        ],
+        "state": "normal"
+      }
+    }
+  ]
+}

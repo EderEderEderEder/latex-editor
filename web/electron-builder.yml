@@ -1,0 +1,21 @@
+appId: com.example.latexeditor.web
+productName: LatexEditor Web
+directories:
+  output: dist
+files:
+  - out/**
+  - package.json
+win:
+  target: nsis
+  requestedExecutionLevel: asInvoker
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: true
+mac:
+  target: dmg
+  category: public.app-category.productivity
+linux:
+  target: AppImage
+  category: Office

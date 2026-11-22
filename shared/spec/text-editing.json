@@ -1,0 +1,634 @@
+{
+  "suite": "text-editing",
+  "version": 1,
+  "source": [
+    "swift/Tests/LatexEditorTests/TextEditingTests.swift",
+    "swift/Tests/LatexEditorTests/TypingTests.swift"
+  ],
+  "notes": "Alle Fälle stammen aus TextEditingTests.swift; aus TypingTests.swift ist nur skipped. marked-Texte: | ist der Cursor, «…» eine Auswahl. Die Markierungszeichen « und » sind Nicht-ASCII, Offsets kommen in dieser Datei nicht vor; Ergebnis ist null, wenn Swift keine Bearbeitung liefert.",
+  "skipped": [
+    {
+      "name": "Klammern schließen, überspringen und paarweise löschen; mit der Vervollständigung zusammen",
+      "reason": "Echter Editor (CompletionHarness, NSWindow, NSEvent-Tastaturereignisse), kein reiner Text-Aktionstest; Vervollständigungsliste",
+      "sourceLine": 46,
+      "source": "swift/Tests/LatexEditorTests/TypingTests.swift"
+    },
+    {
+      "name": "Enter rückt ein und ergänzt \\end; Tab mit Auswahl rückt ein, ⇧Tab aus",
+      "reason": "Echter Editor (CompletionHarness, NSWindow, NSEvent-Tastaturereignisse), kein reiner Text-Aktionstest",
+      "sourceLine": 64,
+      "source": "swift/Tests/LatexEditorTests/TypingTests.swift"
+    },
+    {
+      "name": "Menübefehle: Kommentar, Zeilen verschieben, Fett; jeder Befehl ein Undo-Schritt",
+      "reason": "Echter Editor (CompletionHarness, NSWindow, NSEvent-Tastaturereignisse), kein reiner Text-Aktionstest; sleep, UndoManager",
+      "sourceLine": 83,
+      "source": "swift/Tests/LatexEditorTests/TypingTests.swift"
+    },
+    {
+      "name": "Abschaltbar: ohne „Klammern automatisch schließen“ wird normal getippt",
+      "reason": "Echter Editor (CompletionHarness, NSWindow, NSEvent-Tastaturereignisse), kein reiner Text-Aktionstest; UserDefaults",
+      "sourceLine": 106,
+      "source": "swift/Tests/LatexEditorTests/TypingTests.swift"
+    },
+    {
+      "name": "Satzanfang und ZWei Großbuchstaben werden beim Weitertippen korrigiert; ⌘Z nimmt nur die Korrektur zurück",
+      "reason": "Echter Editor (CompletionHarness, NSWindow, NSEvent-Tastaturereignisse), kein reiner Text-Aktionstest; sleep, UndoManager",
+      "sourceLine": 125,
+      "source": "swift/Tests/LatexEditorTests/TypingTests.swift"
+    },
+    {
+      "name": "Nicht in Befehlen, Schlüsseln, Mathe, Kommentaren, Code und nach Abkürzungen; abschaltbar",
+      "reason": "Echter Editor (CompletionHarness, NSWindow, NSEvent-Tastaturereignisse), kein reiner Text-Aktionstest; sleep, UserDefaults",
+      "sourceLine": 149,
+      "source": "swift/Tests/LatexEditorTests/TypingTests.swift"
+    },
+    {
+      "name": "Mit „2 Leerzeichen“: Tab-Taste, Enter nach \\begin, ⌘] und ⌘[ nutzen Leerzeichen",
+      "reason": "Echter Editor (CompletionHarness, NSWindow, NSEvent-Tastaturereignisse), kein reiner Text-Aktionstest",
+      "sourceLine": 179,
+      "source": "swift/Tests/LatexEditorTests/TypingTests.swift"
+    },
+    {
+      "name": "Standard: Tabulator wie in der HgbThesis",
+      "reason": "Echter Editor (CompletionHarness, NSWindow, NSEvent-Tastaturereignisse), kein reiner Text-Aktionstest",
+      "sourceLine": 202,
+      "source": "swift/Tests/LatexEditorTests/TypingTests.swift"
+    }
+  ],
+  "cases": [
+    {
+      "id": "pairs-1",
+      "name": "Paar einfügen vor Leerraum, Zeilenende und schließenden Zeichen, nicht vor Wörtern",
+      "sourceLine": 43,
+      "input": {
+        "op": "typed",
+        "character": "{",
+        "marked": "\\section|"
+      },
+      "expect": "\\section{|}",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "pairs-2",
+      "name": "Paar einfügen vor Leerraum, Zeilenende und schließenden Zeichen, nicht vor Wörtern",
+      "sourceLine": 43,
+      "input": {
+        "op": "typed",
+        "character": "[",
+        "marked": "a| b"
+      },
+      "expect": "a[|] b",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "pairs-3",
+      "name": "Paar einfügen vor Leerraum, Zeilenende und schließenden Zeichen, nicht vor Wörtern",
+      "sourceLine": 43,
+      "input": {
+        "op": "typed",
+        "character": "(",
+        "marked": "(a|)"
+      },
+      "expect": "(a(|))",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "pairs-4",
+      "name": "Paar einfügen vor Leerraum, Zeilenende und schließenden Zeichen, nicht vor Wörtern",
+      "sourceLine": 43,
+      "input": {
+        "op": "typed",
+        "character": "{",
+        "marked": "a|wort"
+      },
+      "expect": null,
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "pairs-5",
+      "name": "Paar einfügen vor Leerraum, Zeilenende und schließenden Zeichen, nicht vor Wörtern",
+      "sourceLine": 43,
+      "input": {
+        "op": "typed",
+        "character": "{",
+        "marked": "\\|"
+      },
+      "expect": null,
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "overtypeAndDollar-1",
+      "name": "Schließende Klammer überspringen; $ öffnet nur, wenn die Formel noch nicht offen ist",
+      "sourceLine": 52,
+      "input": {
+        "op": "typed",
+        "character": "}",
+        "marked": "\\emph{x|}"
+      },
+      "expect": "\\emph{x}|",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "overtypeAndDollar-2",
+      "name": "Schließende Klammer überspringen; $ öffnet nur, wenn die Formel noch nicht offen ist",
+      "sourceLine": 52,
+      "input": {
+        "op": "typed",
+        "character": "$",
+        "marked": "Text |"
+      },
+      "expect": "Text $|$",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "overtypeAndDollar-3",
+      "name": "Schließende Klammer überspringen; $ öffnet nur, wenn die Formel noch nicht offen ist",
+      "sourceLine": 52,
+      "input": {
+        "op": "typed",
+        "character": "$",
+        "marked": "$x|$"
+      },
+      "expect": "$x$|",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "overtypeAndDollar-4",
+      "name": "Schließende Klammer überspringen; $ öffnet nur, wenn die Formel noch nicht offen ist",
+      "sourceLine": 52,
+      "input": {
+        "op": "typed",
+        "character": "$",
+        "marked": "$x |"
+      },
+      "expect": null,
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "overtypeAndDollar-5",
+      "name": "Schließende Klammer überspringen; $ öffnet nur, wenn die Formel noch nicht offen ist",
+      "sourceLine": 52,
+      "input": {
+        "op": "typed",
+        "character": "$",
+        "marked": "50\\$ und |"
+      },
+      "expect": "50\\$ und $|$",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "wrapSelection-1",
+      "name": "Auswahl wird umschlossen und bleibt ausgewählt",
+      "sourceLine": 61,
+      "input": {
+        "op": "typed",
+        "character": "{",
+        "marked": "a «wort» b"
+      },
+      "expect": "a {«wort»} b",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "wrapSelection-2",
+      "name": "Auswahl wird umschlossen und bleibt ausgewählt",
+      "sourceLine": 61,
+      "input": {
+        "op": "typed",
+        "character": "$",
+        "marked": "«x^2»"
+      },
+      "expect": "$«x^2»$",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "wrapSelection-3",
+      "name": "Auswahl wird umschlossen und bleibt ausgewählt",
+      "sourceLine": 61,
+      "input": {
+        "op": "typed",
+        "character": "a",
+        "marked": "«x»"
+      },
+      "expect": null,
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "deletePair-1",
+      "name": "Rückschritt in einem leeren Paar löscht beide Zeichen",
+      "sourceLine": 68,
+      "input": {
+        "op": "deleteBackward",
+        "marked": "\\emph{|}"
+      },
+      "expect": "\\emph|",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "deletePair-2",
+      "name": "Rückschritt in einem leeren Paar löscht beide Zeichen",
+      "sourceLine": 68,
+      "input": {
+        "op": "deleteBackward",
+        "marked": "{a|}"
+      },
+      "expect": null,
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "deletePair-3",
+      "name": "Rückschritt in einem leeren Paar löscht beide Zeichen",
+      "sourceLine": 68,
+      "input": {
+        "op": "deleteBackward",
+        "marked": "\\{|}"
+      },
+      "expect": null,
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "keepsIndent-1",
+      "name": "Einrückung bleibt erhalten",
+      "sourceLine": 82,
+      "input": {
+        "op": "newline",
+        "marked": "\t\tText|"
+      },
+      "expect": "\t\tText\n\t\t|",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "keepsIndent-2",
+      "name": "Einrückung bleibt erhalten",
+      "sourceLine": 82,
+      "input": {
+        "op": "newline",
+        "marked": "Text|danach"
+      },
+      "expect": "Text\n|danach",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "environments-1",
+      "name": "Nach \\begin{x} kommt \\end{x} dazu, Listen mit \\item; nicht, wenn schon geschlossen",
+      "sourceLine": 88,
+      "input": {
+        "op": "newline",
+        "marked": "\t\\begin{figure}[H]|"
+      },
+      "expect": "\t\\begin{figure}[H]\n\t\t|\n\t\\end{figure}",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "environments-2",
+      "name": "Nach \\begin{x} kommt \\end{x} dazu, Listen mit \\item; nicht, wenn schon geschlossen",
+      "sourceLine": 88,
+      "input": {
+        "op": "newline",
+        "marked": "\\begin{itemize}|"
+      },
+      "expect": "\\begin{itemize}\n\t\\item |\n\\end{itemize}",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "environments-3",
+      "name": "Nach \\begin{x} kommt \\end{x} dazu, Listen mit \\item; nicht, wenn schon geschlossen",
+      "sourceLine": 88,
+      "input": {
+        "op": "newline",
+        "marked": "\\begin{tabular}{lr}|"
+      },
+      "expect": "\\begin{tabular}{lr}\n\t|\n\\end{tabular}",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "environments-4",
+      "name": "Nach \\begin{x} kommt \\end{x} dazu, Listen mit \\item; nicht, wenn schon geschlossen",
+      "sourceLine": 88,
+      "input": {
+        "op": "newline",
+        "marked": "\\begin{itemize}|\n\t\\item a\n\\end{itemize}"
+      },
+      "expect": "\\begin{itemize}\n|\n\t\\item a\n\\end{itemize}",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "environments-5",
+      "name": "Nach \\begin{x} kommt \\end{x} dazu, Listen mit \\item; nicht, wenn schon geschlossen",
+      "sourceLine": 88,
+      "input": {
+        "op": "newline",
+        "marked": "\\begin{x}|\\begin{x}\\end{x}"
+      },
+      "expect": "\\begin{x}\n|\\begin{x}\\end{x}",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "listItems-1",
+      "name": "Listen: neuer Punkt nach \\item mit Text, leerer Punkt beendet die Liste",
+      "sourceLine": 97,
+      "input": {
+        "op": "newline",
+        "marked": "\t\\item Erster|"
+      },
+      "expect": "\t\\item Erster\n\t\\item |",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "listItems-2",
+      "name": "Listen: neuer Punkt nach \\item mit Text, leerer Punkt beendet die Liste",
+      "sourceLine": 97,
+      "input": {
+        "op": "newline",
+        "marked": "\t\\item |"
+      },
+      "expect": "\t|",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "listItems-3",
+      "name": "Listen: neuer Punkt nach \\item mit Text, leerer Punkt beendet die Liste",
+      "sourceLine": 97,
+      "input": {
+        "op": "newline",
+        "marked": "\t\\itemize|"
+      },
+      "expect": "\t\\itemize\n\t|",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "comments-1",
+      "name": "Kommentar ein und aus, bei der kleinsten Einrückung; Cursor bleibt in der Zeile",
+      "sourceLine": 107,
+      "input": {
+        "op": "toggleComment",
+        "marked": "\tTe|xt"
+      },
+      "expect": "\t% Te|xt",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "comments-2",
+      "name": "Kommentar ein und aus, bei der kleinsten Einrückung; Cursor bleibt in der Zeile",
+      "sourceLine": 107,
+      "input": {
+        "op": "toggleComment",
+        "marked": "\t% Te|xt"
+      },
+      "expect": "\tTe|xt",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "comments-3",
+      "name": "Kommentar ein und aus, bei der kleinsten Einrückung; Cursor bleibt in der Zeile",
+      "sourceLine": 107,
+      "input": {
+        "op": "toggleComment",
+        "marked": "«\ta\n\t\tb\n\n\tc»\nd"
+      },
+      "expect": "«\t% a\n\t% \tb\n\n\t% c»\nd",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "comments-4",
+      "name": "Kommentar ein und aus, bei der kleinsten Einrückung; Cursor bleibt in der Zeile",
+      "sourceLine": 107,
+      "input": {
+        "op": "toggleComment",
+        "marked": "«% a\n%b»"
+      },
+      "expect": "«a\nb»",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "comments-5",
+      "name": "Kommentar ein und aus, bei der kleinsten Einrückung; Cursor bleibt in der Zeile",
+      "sourceLine": 107,
+      "input": {
+        "op": "toggleComment",
+        "marked": "«% a\nb»"
+      },
+      "expect": "«% % a\n% b»",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "indentation-1",
+      "name": "Einrücken und Ausrücken; leere Zeilen bleiben leer; vier Leerzeichen zählen wie ein Tab",
+      "sourceLine": 117,
+      "input": {
+        "op": "indent",
+        "marked": "«a\n\nb»"
+      },
+      "expect": "«\ta\n\n\tb»",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "indentation-2",
+      "name": "Einrücken und Ausrücken; leere Zeilen bleiben leer; vier Leerzeichen zählen wie ein Tab",
+      "sourceLine": 117,
+      "input": {
+        "op": "indent",
+        "marked": "a|b"
+      },
+      "expect": "\ta|b",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "indentation-3",
+      "name": "Einrücken und Ausrücken; leere Zeilen bleiben leer; vier Leerzeichen zählen wie ein Tab",
+      "sourceLine": 117,
+      "input": {
+        "op": "outdent",
+        "marked": "«\ta\n    b\n  c»"
+      },
+      "expect": "«a\nb\nc»",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "indentation-4",
+      "name": "Einrücken und Ausrücken; leere Zeilen bleiben leer; vier Leerzeichen zählen wie ein Tab",
+      "sourceLine": 117,
+      "input": {
+        "op": "outdent",
+        "marked": "\tab|"
+      },
+      "expect": "ab|",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "blockEndsAtLineStart",
+      "name": "Auswahl bis genau an einen Zeilenanfang nimmt die nächste Zeile nicht mit",
+      "sourceLine": 125,
+      "input": {
+        "op": "indent",
+        "marked": "«a\n»b"
+      },
+      "expect": "«\ta»\nb",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "moveLines-1",
+      "name": "Zeilen verschieben, auch am Dateiende ohne Umbruch; am Rand nichts",
+      "sourceLine": 130,
+      "input": {
+        "op": "moveLines",
+        "up": true,
+        "marked": "a\nb|b\nc\n"
+      },
+      "expect": "b|b\na\nc\n",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "moveLines-2",
+      "name": "Zeilen verschieben, auch am Dateiende ohne Umbruch; am Rand nichts",
+      "sourceLine": 130,
+      "input": {
+        "op": "moveLines",
+        "up": false,
+        "marked": "a|a\nb\nc"
+      },
+      "expect": "b\na|a\nc",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "moveLines-3",
+      "name": "Zeilen verschieben, auch am Dateiende ohne Umbruch; am Rand nichts",
+      "sourceLine": 130,
+      "input": {
+        "op": "moveLines",
+        "up": false,
+        "marked": "a\nb|b\nc"
+      },
+      "expect": "a\nc\nb|b",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "moveLines-4",
+      "name": "Zeilen verschieben, auch am Dateiende ohne Umbruch; am Rand nichts",
+      "sourceLine": 130,
+      "input": {
+        "op": "moveLines",
+        "up": true,
+        "marked": "a\nc|"
+      },
+      "expect": "c|\na",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "moveLines-5",
+      "name": "Zeilen verschieben, auch am Dateiende ohne Umbruch; am Rand nichts",
+      "sourceLine": 130,
+      "input": {
+        "op": "moveLines",
+        "up": true,
+        "marked": "a|\nb"
+      },
+      "expect": null,
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "moveLines-6",
+      "name": "Zeilen verschieben, auch am Dateiende ohne Umbruch; am Rand nichts",
+      "sourceLine": 130,
+      "input": {
+        "op": "moveLines",
+        "up": false,
+        "marked": "a\nb|"
+      },
+      "expect": null,
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "moveLines-7",
+      "name": "Zeilen verschieben, auch am Dateiende ohne Umbruch; am Rand nichts",
+      "sourceLine": 130,
+      "input": {
+        "op": "moveLines",
+        "up": false,
+        "marked": "«a\nb»\nc\n"
+      },
+      "expect": "c\n«a\nb»\n",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "duplicateAndDelete-1",
+      "name": "Zeile verdoppeln und löschen",
+      "sourceLine": 143,
+      "input": {
+        "op": "duplicateLines",
+        "marked": "a|b\nc"
+      },
+      "expect": "ab\na|b\nc",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "duplicateAndDelete-2",
+      "name": "Zeile verdoppeln und löschen",
+      "sourceLine": 143,
+      "input": {
+        "op": "duplicateLines",
+        "marked": "a\nb|"
+      },
+      "expect": "a\nb\nb|",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "duplicateAndDelete-3",
+      "name": "Zeile verdoppeln und löschen",
+      "sourceLine": 143,
+      "input": {
+        "op": "deleteLines",
+        "marked": "a\nb|\nc"
+      },
+      "expect": "a\n|c",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "duplicateAndDelete-4",
+      "name": "Zeile verdoppeln und löschen",
+      "sourceLine": 143,
+      "input": {
+        "op": "deleteLines",
+        "marked": "a\nb|"
+      },
+      "expect": "a|",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "formatting-1",
+      "name": "Formatierung: umschließen, ohne Auswahl leere Klammern, nochmal entfernt sie wieder",
+      "sourceLine": 151,
+      "input": {
+        "op": "wrap",
+        "command": "textbf",
+        "marked": "ein «wichtiges» Wort"
+      },
+      "expect": "ein \\textbf{«wichtiges»} Wort",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "formatting-2",
+      "name": "Formatierung: umschließen, ohne Auswahl leere Klammern, nochmal entfernt sie wieder",
+      "sourceLine": 151,
+      "input": {
+        "op": "wrap",
+        "command": "textbf",
+        "marked": "ein \\textbf{«wichtiges»} Wort"
+      },
+      "expect": "ein «wichtiges» Wort",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    },
+    {
+      "id": "formatting-3",
+      "name": "Formatierung: umschließen, ohne Auswahl leere Klammern, nochmal entfernt sie wieder",
+      "sourceLine": 151,
+      "input": {
+        "op": "wrap",
+        "command": "textbf",
+        "marked": "a | b"
+      },
+      "expect": "a \\textbf{|} b",
+      "source": "swift/Tests/LatexEditorTests/TextEditingTests.swift"
+    }
+  ]
+}

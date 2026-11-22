@@ -10,19 +10,22 @@ Regeln (Thesis, Prozesse, Subagents, Code-Stil): `../CLAUDE.md`, nicht doppelt h
 |---|---|
 | Entwickeln (öffnet ein Fenster, Hot Reload) | `npm run dev` |
 | Typprüfung (Main/Preload/Tests und Renderer) | `npm run typecheck` |
-| Unit-Tests (Vitest, Node) | `npm test` |
-| E2E-Tests (Playwright, Electron; noch keine Tests, kein Browserdownload) | `npm run test:e2e` |
+| Tests mit Zusammenfassung, Hänger-Wächter, Log `.test-logs/last.log` (immer so, nicht direkt `vitest`) | `npm test` (= `node scripts/test-run.mjs`) |
+| Nur schnelle Tests / einzelne Tests / mit E2E | `npm run test:fast`, `node scripts/test-run.mjs --filter <Dateimuster>` oder `--name <Testname>`, `--e2e` |
+| Roher Vitest-Lauf (nur zum Debuggen) | `npm run test:raw` |
 | Bauen nach `out/` | `npm run build` |
 | Installer nach `dist/` (NSIS, dmg, AppImage) | `npm run package` |
 
-Ein Wrapper `scripts/test-run.mjs` kommt mit W0-5; bis dahin laufen Tests direkt über `npm test`.
+`scripts/test-run.mjs` beendet bei Stillstand (60 s ohne Ausgabe) oder nach 300 s nur den eigenen Prozessbaum (Exit 2); E2E (`--e2e`, Playwright mit Electron, kein Browserdownload) wird ohne `tests/e2e/*.spec.ts` übersprungen. Nie in Schleifen auf Tests warten.
 
 ## Landkarte
 
-- `src/main/index.ts`: Fenster und Sicherheit (`contextIsolation`, `sandbox`, keine `nodeIntegration`, Navigationssperre, `webRequest`-Filter, Berechtigungen abgelehnt).
-- `src/preload/index.ts`: `contextBridge`, bisher nur `ping()`; Typ in `src/shared/api.ts`, globale Deklaration `src/renderer/global.d.ts`.
-- `src/renderer/`: `index.html` (strikte CSP), `main.tsx`, `App.tsx`.
-- `tests/`: Vitest (`*.test.ts`), später `tests/e2e/*.spec.ts`.
+- `src/shared/contract.ts`: IPC-Vertrag (`IpcRequests`, `IpcEvents`, Allow-Listen); `apiBuilder.ts` baut daraus `window.api.<bereich>.<methode>` (Preload und Test-Stub gleich), `ipcResult.ts` (`{ok, value}` / `IpcError`, `GitError`).
+- `src/main/`: `index.ts` (Fenster; nur hier und im Preload wird `electron` zur Laufzeit importiert), `ipc.ts` + `ipcHandlers.ts` + `ipcValidation.ts` (Handler-Register, Absenderprüfung, Eingabeprüfung; Fachhandler sind noch Platzhalter „nicht implementiert“), `security.ts` (Navigation, `webRequest`-Filter, Berechtigungen, CSP-Header), `paths.ts` (Pfadnormalisierung, „liegt im Projekt“, Projekt-Hash).
+- `src/preload/index.ts`: `contextBridge` mit `window.api` und `webUtils.getPathForFile` (`dragDrop`).
+- `src/renderer/`: `index.html` (strikte CSP), `main.tsx`, `App.tsx`, `ipc/` (dünner Zugriff auf `window.api`), `global.d.ts`.
+- `tests/unit/` Vitest (`*.test.ts`), `tests/support/preloadStub.ts` (Stub für `window.api`), später `tests/e2e/*.spec.ts`, langsame Tests in `tests/slow/` oder `*.slow.*`.
+- `spikes/`: Wegwerfcode und Messungen der Spikes S1–S10 (Ergebnisse in `docs/ARCHITEKTUR.md`, Abschnitt „Entscheidungen aus den Spikes“).
 - Abhängigkeiten und Lizenzen: `docs/ABHAENGIGKEITEN.md`.
 
 ## Stolpersteine

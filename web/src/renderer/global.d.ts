@@ -1,7 +1,7 @@
-import type { RendererApi } from '../shared/api';
+import type { RendererApi } from '../shared/contract';
 
 declare global {
     interface Window {
-        api: RendererApi;
+        readonly api: RendererApi;
     }
 }

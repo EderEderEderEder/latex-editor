@@ -1,0 +1,65 @@
+import {
+    type ApiArea,
+    type EventChannel,
+    type IpcEvents,
+    type IpcResult,
+    type RendererApi,
+    type RequestChannel,
+    type Unsubscribe,
+    isEventChannel,
+    REQUEST_CHANNELS,
+    splitChannel,
+} from './contract';
+
+// Baut `window.api` aus der Allow-Liste des Vertrags. Preload und Test-Stub nutzen dieselbe
+// Funktion, damit beide genau dieselbe Form haben. Kein Electron-Import: die Verbindung zum
+// Main-Prozess kommt als `ApiTransport` herein.
+
+export interface ApiTransport {
+    invoke(channel: RequestChannel, args: readonly unknown[]): Promise<IpcResult<unknown>>;
+    subscribe(event: EventChannel, listener: (payload: unknown) => void): Unsubscribe;
+    getPathForFile(file: File): string;
+}
+
+// Die Bereiche `events` und `dragDrop` dürfen nicht mit einem Kanalbereich zusammenfallen.
+type ReservedAreaClash = Extract<ApiArea, 'events' | 'dragDrop'>;
+const RESERVED_AREAS_FREE: [ReservedAreaClash] extends [never] ? true : never = true;
+
+type MutableArea = Record<string, (...args: readonly unknown[]) => Promise<IpcResult<unknown>>>;
+
+function buildRequestAreas(transport: ApiTransport): Record<string, MutableArea> {
+    const areas: Record<string, MutableArea> = {};
+    for (const channel of REQUEST_CHANNELS) {
+        const { area, method } = splitChannel(channel);
+        const target = (areas[area] ??= {});
+        target[method] = (...args) => transport.invoke(channel, args);
+    }
+    return areas;
+}
+
+function subscribeChecked<E extends EventChannel>(
+    transport: ApiTransport,
+    event: E,
+    listener: (payload: IpcEvents[E]) => void,
+): Unsubscribe {
+    if (!isEventChannel(event)) throw new Error(`Unbekanntes Ereignis: ${String(event)}`);
+    if (typeof listener !== 'function') throw new Error('Abonnement braucht eine Funktion');
+    return transport.subscribe(event, (payload) => listener(payload as IpcEvents[E]));
+}
+
+export function buildRendererApi(transport: ApiTransport): RendererApi {
+    const api = {
+        ...buildRequestAreas(transport),
+        events: {
+            on: <E extends EventChannel>(event: E, listener: (payload: IpcEvents[E]) => void) =>
+                subscribeChecked(transport, event, listener),
+        },
+        dragDrop: {
+            getPathForFile: (file: File) => transport.getPathForFile(file),
+        },
+    };
+    void RESERVED_AREAS_FREE;
+    // Die Form ist durch die Schleife über REQUEST_CHANNELS vollständig; der Compiler kann das
+    // aus einer Schleife nicht ableiten, deshalb die Umwandlung.
+    return api as unknown as RendererApi;
+}

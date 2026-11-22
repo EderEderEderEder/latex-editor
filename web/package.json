@@ -8,8 +8,10 @@
         "dev": "electron-vite dev",
         "build": "electron-vite build",
         "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-        "test": "vitest run",
-        "test:e2e": "playwright test",
+        "test": "node scripts/test-run.mjs",
+        "test:fast": "node scripts/test-run.mjs --fast",
+        "test:e2e": "node scripts/test-run.mjs --e2e",
+        "test:raw": "vitest run",
         "package": "electron-vite build && electron-builder"
     },
     "dependencies": {

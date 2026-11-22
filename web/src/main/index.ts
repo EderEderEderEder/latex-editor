@@ -1,41 +1,33 @@
-import { app, BrowserWindow, session } from 'electron';
+import { app, BrowserWindow, ipcMain, session } from 'electron';
 import { join } from 'node:path';
+import { registerIpcHandlers } from './ipc';
+import { createHandlerRegistry } from './ipcHandlers';
+import { currentPathPlatform, pathToFileUrl } from './paths';
+import { applySessionSecurity, lockNavigation, type RendererLocation } from './security';
 
-const APP_PROTOCOL = 'latexeditor:';
 const WINDOW_WIDTH = 1200;
 const WINDOW_HEIGHT = 800;
-const ALLOWED_PROTOCOLS: readonly string[] = ['file:', APP_PROTOCOL];
+const RENDERER_INDEX_PATH = join(__dirname, '../renderer/index.html');
+const DEV_SERVER_ENV = 'ELECTRON_RENDERER_URL';
 
-function getDevServerUrl(): URL | null {
-    const raw = app.isPackaged ? undefined : process.env['ELECTRON_RENDERER_URL'];
-    return raw ? new URL(raw) : null;
+let mainWindow: BrowserWindow | null = null;
+
+function logSecurity(message: string): void {
+    console.warn(`[Sicherheit] ${message}`);
 }
 
-function isRequestAllowed(rawUrl: string, devServer: URL | null): boolean {
-    const url = new URL(rawUrl);
-    if (ALLOWED_PROTOCOLS.includes(url.protocol)) return true;
-    return devServer !== null && url.host === devServer.host;
+function getRendererLocation(): RendererLocation {
+    const devServerUrl = app.isPackaged ? undefined : process.env[DEV_SERVER_ENV];
+    if (devServerUrl) return { kind: 'development', devServerUrl };
+    return { kind: 'packaged', indexFileUrl: pathToFileUrl(RENDERER_INDEX_PATH, currentPathPlatform()) };
 }
 
-function installRequestFilter(devServer: URL | null): void {
-    session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
-        callback({ cancel: !isRequestAllowed(details.url, devServer) });
-    });
+function trustedWebContentsId(): number | null {
+    if (mainWindow === null || mainWindow.isDestroyed()) return null;
+    return mainWindow.webContents.id;
 }
 
-function denyAllPermissions(): void {
-    session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
-        callback(false);
-    });
-    session.defaultSession.setPermissionCheckHandler(() => false);
-}
-
-function blockNavigation(window: BrowserWindow): void {
-    window.webContents.on('will-navigate', (event) => event.preventDefault());
-    window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-}
-
-function createWindow(devServer: URL | null): BrowserWindow {
+function createWindow(location: RendererLocation): BrowserWindow {
     const window = new BrowserWindow({
         width: WINDOW_WIDTH,
         height: WINDOW_HEIGHT,
@@ -49,22 +41,30 @@ function createWindow(devServer: URL | null): BrowserWindow {
             spellcheck: false,
         },
     });
-    blockNavigation(window);
-    if (devServer) {
-        void window.loadURL(devServer.href);
+    window.on('closed', () => {
+        mainWindow = null;
+    });
+    if (location.kind === 'development') {
+        void window.loadURL(location.devServerUrl);
     } else {
-        void window.loadFile(join(__dirname, '../renderer/index.html'));
+        void window.loadFile(RENDERER_INDEX_PATH);
     }
     return window;
 }
 
 async function start(): Promise<void> {
     await app.whenReady();
-    const devServer = getDevServerUrl();
-    installRequestFilter(devServer);
-    denyAllPermissions();
-    createWindow(devServer);
+    const location = getRendererLocation();
+    applySessionSecurity(session.defaultSession, location, logSecurity);
+    registerIpcHandlers(ipcMain, {
+        handlers: createHandlerRegistry(),
+        policy: { getTrustedWebContentsId: trustedWebContentsId, location, platform: currentPathPlatform() },
+        log: logSecurity,
+    });
+    mainWindow = createWindow(location);
 }
 
+// Jedes webContents (auch künftige Fenster und die DevTools) bekommt die Navigationssperre.
+app.on('web-contents-created', (_event, contents) => lockNavigation(contents, logSecurity));
 app.on('window-all-closed', () => app.quit());
 void start();

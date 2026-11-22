@@ -1,8 +1,12 @@
+# Build-Ordner (swift/ und web/)
 .build/
 .build-*/
 build/
-.DS_Store
 .swiftpm/
+.DS_Store
+node_modules/
+web/dist/
+web/src-tauri/target/
 # Demo-Projekte für Tests und Handtests liegen nur lokal; Tests überspringen sich, wenn sie fehlen
 Testdaten/
 # Lokale Fehlersammlung beim Arbeiten mit der App

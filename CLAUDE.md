@@ -1,63 +1,28 @@
-# LatexEditor
+# LaTeX-Editor (Repo-Wurzel)
 
-Nativer macOS-LaTeX-Editor nach dem Vorbild von Texifier, nur für lokale Nutzung (Swift 6, SwiftPM, SwiftUI + AppKit/TextKit 1, PDFKit). Keine externen Abhängigkeiten, keine Netzwerk-Features, Ziel macOS 15+, nur Command Line Tools (kein Xcode). Identifier Englisch, UI-Texte und Kommentare Deutsch.
+Lokaler LaTeX-Editor in zwei Versionen: `swift/` (nativ macOS, fertig und im Einsatz) und `web/` (Electron + TypeScript, für Windows und andere Plattformen; **noch nicht begonnen**, Plan: `shared/PLAN-WEBUI.md`). Gemeinsames liegt in `shared/`.
 
-## Harte Regeln
+## Ordner
 
-- **`../Thesis` ist die echte Bachelorarbeit: nie öffnen, lesen, kompilieren, kein `git` dort, auch nicht lesend.** Entwickeln und Testen nur mit `Testdaten/HgbDemo` (gitignored, nur lokal; Aufbau und Pflege: `docs/ARCHITEKTUR.md`).
+| Ordner | Inhalt |
+|---|---|
+| `swift/` | Swift-App: `Package.swift`, `Sources/`, `Tests/`, `scripts/`, `TESTING.md` (Handtests), `docs/ARCHITEKTUR.md`; eigene `CLAUDE.md` mit Befehlen und Konventionen. Alle Swift-Befehle von hier aus starten (`cd swift`). |
+| `web/` | Web-UI-Version (Electron, nur TypeScript: Node im Main-Prozess, React, CodeMirror 6, pdf.js); eigene `CLAUDE.md`, sobald das Gerüst steht. |
+| `shared/` | Für beide Plattformen: `SUBAGENTS.md` (Arbeiten mit Subagents), `PLAN-WEBUI.md` (Plan und Aufgabenliste der Web-Version), `FEATURES.md` (Feature-Parität), `VERLAUF.md` (Verlauf, Ideenspeicher, Lehren), `Testdaten/` (Demo-Projekt `HgbDemo`, gitignored, nur lokal), später `spec/` (sprachunabhängige Testvektoren). |
+
+## Harte Regeln (beide Versionen)
+
+- **`Thesis` (Nachbarordner des Repo-Ordners `LatexEditor`) ist die echte Bachelorarbeit: nie öffnen, lesen, kompilieren, kein `git` dort, auch nicht lesend.** Entwickeln und Testen nur mit Kopien von `shared/Testdaten/HgbDemo`.
 - Antworten kompakt auf Deutsch (3–6 Zeilen Abschluss). Bei größeren Änderungen erst kurz den Plan zeigen und OK abwarten.
-- Commit und Push nur auf ausdrücklichen Wunsch (Git nur `/usr/local/bin/git`). `FEHLER.md` und `Testdaten/` bleiben lokal.
-- Der Nutzer startet evtl. parallel einen eigenen Xcode-Build: Prozesse nur per **eigener PID** beenden, nie `pkill` oder `grep` auf `ps`. Die installierte App in `/Applications` nie beenden (das Installationsskript bricht dann ab).
+- Commit, Push und Installation nur auf ausdrücklichen Wunsch (Git nur `/usr/local/bin/git`). `FEHLER.md` und `Testdaten/` bleiben lokal.
+- Prozesse nur per **eigener PID** beenden, nie `pkill` oder `grep` auf `ps`. Die installierte App nie beenden.
 - Destruktive Aktionen: Sicherung (inklusive ungespeichertem Text), Rückgängig in der App und Datei sichtbar lassen.
-- `swift build` ohne Warnungen, alle Tests grün, universal binary (arm64 + x86_64).
-- **Umsetzungen laufen mit Subagents** nach `docs/SUBAGENTS.md` (Agent-Typ, Modell und Effort je nach Schwierigkeit, Ablauf, Pflichtangaben im Prompt). Vor jeder Umsetzung diese Datei lesen; Kleinstes direkt selbst erledigen.
-- Ideenspeicher (`docs/VERLAUF.md`) nicht ungefragt umsetzen. Nicht wieder einbauen: gelbe PDF-Markierung, Find-Indicator-Flash.
+- **Umsetzungen laufen mit Subagents** nach `shared/SUBAGENTS.md` (Agent-Typ, Modell, Effort, Ablauf, Pflichtangaben). Vor jeder Umsetzung lesen; Kleinstes direkt selbst. Kein `fable`, kein Effort über `high`. Build und Tests nie parallel.
+- Ideenspeicher (`shared/VERLAUF.md`) nicht ungefragt umsetzen. Nicht wieder einbauen: gelbe PDF-Markierung, Find-Indicator-Flash.
+- Keine Netzwerk-Features, keine unnötigen Abhängigkeiten. Identifier Englisch, UI-Texte und Kommentare Deutsch, 4 Spaces, Funktionen höchstens 30 Zeilen, benannte Konstanten, Early Returns.
 
-## Befehle
+## Weiterarbeiten
 
-```bash
-swift build                  # Debug, ohne Warnungen
-scripts/test-run.sh --fast   # Logik-Tests in ca. 20 s; kurze Zusammenfassung, Hänger-Überwachung (zum Entwickeln)
-scripts/test-run.sh          # voller Lauf (ca. 100 s) mit Überwachung; einmal vor Commit/Installation
-scripts/test-run.sh --filter MarkActionsTests   # einzelne Suiten/Tests (Argumente gehen an `swift test`)
-scripts/test.sh              # roher Lauf ohne Überwachung (nie nacktes `swift test`)
-scripts/build-app.sh         # Universal-App nach build/LatexEditor.app (ad-hoc signiert)
-scripts/install-app.sh       # baut und installiert nach /Applications
-scripts/demo-projekt.sh      # Testdaten/Arbeitskopie/ zum Ausprobieren neu anlegen
-```
-
-Es gibt keinen Linter. **Tests immer über `scripts/test-run.sh`**: Es gibt nur eine kurze Zusammenfassung aus (Log: `.build/test-logs/last.log`, nur bei Bedarf lesen), beendet bei Stillstand (60 s ohne Ausgabe) oder nach 300 s den eigenen Prozessbaum, nimmt den Hänger per `sample` auf (`stall-sample.txt`) und wiederholt bekannt unzuverlässige Tests (`lineWrapping`, `statusDuration`) einzeln. Nie in Schleifen auf Tests warten, keine eigenen Hilfsskripte in `/tmp`; nach Änderungen `--fast` oder `--filter`, den vollen Lauf einmal vor Commit/Installation (am besten im Hintergrund starten und auf das Ende warten). Bei einem Hänger nicht blind wiederholen (siehe `Tests/CLAUDE.md`). Handtests und UI-Checkliste: `TESTING.md` (fortlaufend nummeriert, zuletzt #294).
-
-## Landkarte (`Sources/LatexEditor/`)
-
-- `App/` – `LatexEditorApp` (Fenster, Menüs), `AppModel` (verdrahtet die Stores), Aktionen als Erweiterungen (Dateien, Suchen, Umbenennen, ⌘-Klick, Git, Einfügen, Rückgängig für Dateien in `FileUndo`).
-- `Model/` – Projekt, Dateibaum, Gliederung, Kompilieren (latexmk), SyncTeX, Git, Verweise/Labels/Abkürzungen, Suche.
-- `Editor/` – `DocumentSession` (Text = NSTextStorage), `EditorTextView` (+ Coordinator), `LatexTextView`, Zeilenleiste, Einklappen, Einstellungen/Farbschemata.
-- `Syntax/` – Tokenizer, `LineIndex`, Kommentar-Regel (`LatexSource`), `SyntaxChecker`, Fachvokabular.
-- `Completion/`, `Insertion/` – Autovervollständigung bzw. Einfügen-Fenster (Generator, Vorschau, Bildimport).
-- `PDF/` – PDFKit-Ansicht und Vorschau-Store. `UI/` – SwiftUI-Ansichten (Seitenleiste, Dateibaum, Einstellungen, Sheets, Popover).
-- `Tests/LatexEditorTests/` – Swift Testing, `Support/` mit Fixtures und Demo-Projekt. `scripts/`, `Resources/` (Icon), `docs/`.
-
-Einstiegspunkte: `App/LatexEditorApp.swift` → `App/AppModel.swift` (alle Stores) → `UI/RootView.swift` (Fensteraufbau) → `Editor/EditorTextView.swift` (Editor) → `Editor/DocumentSession.swift` (Text und Undo je Datei).
-
-## Konventionen
-
-- 4 Spaces, Methoden höchstens 30 Zeilen, benannte Konstanten statt Zahlen, Early Returns, Kommentare nur für Nicht-Offensichtliches.
-- Stores sind `@MainActor @Observable` und getrennt. Eigenschaften nur setzen, wenn sich der Wert ändert (jede Zuweisung zeichnet sonst neu).
-- Nie den Text pro Tastendruck in SwiftUI-State spiegeln; Dateisystem nie auf dem Main-Thread; kein Polling (FSEvents).
-- Alles pro Tastendruck proportional zur Änderung, nicht zur Dateigröße. Performance-Budgets stehen in `PerformanceTests`; ein überschrittenes Budget ist ein Fehler.
-- Testbare Logik ohne AppKit in `Syntax/` und `Model/`. Text ändern ohne Text-View: über `DocumentSession.replaceText`, nie direkt im `textStorage`.
-- UserDefaults in Tests nur über `temporaryDefaults()`, Tests mit `AppModel.shared` unter `AppModelSuite`.
-
-## Stolpersteine (Details in den `CLAUDE.md` der Unterordner)
-
-- Anzeige-Rückkopplung: Eine Zusatzzeile oder Breitenänderung am Editor kann den vollen Testlauf hängen lassen (`Editor/CLAUDE.md`).
-- Ansichtswechsel Editor ↔ PDF: SwiftUI baut zuerst neu, dann ab. Deshalb liegen beide immer im Baum (`UI/CLAUDE.md`).
-- `NSApp` ist in Tests `nil`; Offscreen-Fenster früherer Tests bleiben am gemeinsamen Modell hängen.
-- Rechtschreibung: eine Sprache für alle Dateien (Einstellungen); ob der Syntax-Filter in der echten App greift, ist nur manuell prüfbar.
-
-## Weiterlesen
-
-- `docs/ARCHITEKTUR.md` – Architektur pro Feature, Stil-/Performance-Regeln, Demo-Projekt (ausführlich).
-- `docs/VERLAUF.md` – Sitzungsverlauf, Einschränkungen, Ideenspeicher, Lehren und Sackgassen.
-- `TESTING.md` – Handtests.
+1. Swift-Version: `swift/CLAUDE.md` (Befehle, Landkarte, Stolpersteine).
+2. Web-Version: `shared/PLAN-WEBUI.md` (Meilensteine, Aufgaben mit Subagent-Zuweisung), danach `web/CLAUDE.md`.
+3. Verhalten, das beide Versionen gleich haben müssen: `shared/FEATURES.md` und (später) `shared/spec/`.

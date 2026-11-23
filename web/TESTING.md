@@ -21,5 +21,17 @@ Nummerierung W-H1 ff. Prüfseite für W-H3 bis W-H8: `node spikes/electron-check
 | W-H6 | Zwischenablage: Zellbereich aus Excel kopieren, in Feld (d) und Editor einfügen (Strg/Cmd+V); Text aus Editor kopieren und in anderer App einfügen | ☐ | ☐ | Tabulatoren und Zeilenumbrüche bleiben erhalten; Kopieren/Ausschneiden/Einfügen im Editor gehen |
 | W-H7 | Sandbox/Preload: Schaltfläche „Sandbox“ | ☐ | ☐ | alle Zeilen OK |
 | W-H8 | PDF-Laden 10 MB: Schaltfläche „PDF-Transport (5 Läufe)“ | ☐ | ☐ | alle Varianten unter 100 ms (schnellster Lauf notieren) |
-| W-H9 | CSP-Konsole: DevTools öffnen (Strg+Umschalt+I / Cmd+Opt+I) und in der echten App ein PDF laden, tippen, scrollen | ☐ | ☐ | keine Meldungen „Refused to …“ außer den bewussten Tests der Prüfseite (Inline, eval, blob-fetch, wasm) |
+| W-H9 | CSP-Konsole: gebauter, unverpackter Start (Abschnitt unten), in der echten App ein PDF laden, tippen, scrollen, DevTools-Konsole prüfen | ☐ | ☐ | keine Meldungen „Refused to …“ (CSP) außer den bewussten Tests der Prüfseite (Inline, eval, blob-fetch, wasm); im verpackten Build lassen sich DevTools nicht öffnen (gewollt) |
 | W-H10 | Wasm-Bedarf: PDF mit JPEG2000-/CMYK-Bildern in der App öffnen | ☐ | ☐ | Bilder sichtbar; bei Verstoß `wasm-eval` in der Konsole: `script-src` um `'wasm-unsafe-eval'` ergänzen (Entscheidung melden) |
+| W-H11 | Single-Instance: App starten, dann ein zweites Mal starten (Startmenü/Doppelklick) | ☐ | ☐ | keine zweite Instanz; das erste Fenster kommt nach vorn (aus dem Minimierten wiederhergestellt) |
+| W-H12 | Beenden während eines Builds: langes Dokument (40 s) kompilieren, App schließen | ☐ | ☐ | App beendet sich; im Task-Manager/Aktivitätsanzeige bleiben kein `latexmk`, `perl`, `pdflatex` zurück (Windows: Spalte PID; nichts nach Namen beenden) |
+| W-H13 | UNC-Pfad als Projekt (nur Windows): `\\server\freigabe\projekt` bzw. `\\localhost\c$\…` über „Projekt öffnen“ und aus „Zuletzt geöffnet“ | – | ☐ | wird als Projekt abgelehnt (Fehlermeldung), keine Netzwerkverbindung/kein NTLM-Anmeldeversuch; macOS: `/net/…` (autofs) löst kein Mounten aus |
+
+## Unverpackter Start für W-H9 (DevTools, CSP-Konsole)
+
+Das Standardmenü mit „Toggle Developer Tools“ entfällt (Review M3): `devTools` ist nur unverpackt an, bis W2-16 hat die App kein Menü. Für W-H9 deshalb gebaut, aber unverpackt starten, im Ordner `web/`:
+
+1. `npm run build` (strikte CSP aus `index.html`, nicht der Dev-Modus mit gelockerter CSP).
+2. `npx electron .` (Windows: `npx electron .` in PowerShell). Die App läuft aus `out/`, `app.isPackaged` ist `false`, also sind DevTools erlaubt.
+3. DevTools öffnen: Strg+Umschalt+I / Cmd+Opt+I wirkt nur, wenn die App ein Menü oder Kürzel dafür hat. Bis zum eigenen Menü (W2-16) ist das Standardmenü abgeschaltet; ein unverpackter Öffnungsweg (z. B. Startschalter) legt der Code-Agent fest und trägt ihn hier ein. Reiter Konsole: PDF laden, tippen, scrollen, nach „Refused to …“ suchen.
+4. Im Installer-Build (`npm run package`) darf kein DevTools-Fenster aufgehen: Strg+Umschalt+I bleibt wirkungslos.

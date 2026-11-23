@@ -7,3 +7,11 @@ dist
 spikes/*/out/
 spikes/pdf-text/build/
 !spikes/build/
+
+# Playwright-Ausgaben
+test-results/
+playwright-report/
+
+# Die Wurzel-.gitignore ignoriert jeden Ordner build/; web/build/ enthält die Installer-Ressourcen
+# (Icons, electron-builder buildResources, W7-6) und gehört ins Repository.
+!/build/

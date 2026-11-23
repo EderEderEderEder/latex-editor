@@ -35,6 +35,9 @@ const GONE_CHECK_STEP_MS = 20;
 const REAL_TEX_TIMEOUT_MS = 240_000;
 const GRANDCHILD_PREFIX = 'GRANDCHILD ';
 const REAL_TEX_WARMUP_MS = 1_500;
+const SHORT_DEADLINE_MS = 30;
+// Unter Windows gibt es keine Prozessgruppen: `process.kill(-pid, 0)` meldet dort immer „weg“.
+const HAS_PROCESS_GROUPS = process.platform !== 'win32';
 // Wie in swift/Tests/…/BuildCancelTests.swift: rechnet rund 40 s, wenn niemand abbricht.
 const SLOW_DOCUMENT = [
     '\\documentclass{article}',
@@ -56,6 +59,12 @@ describe('Argumente, Umgebung, Startprüfung', () => {
         ]);
         expect(buildArguments('C:\\p\\main.tex', { engine: 'lualatex' }, 'win32')[0]).toBe('-lualatex');
         expect(buildArguments('C:\\p\\main.tex', { engine: 'xelatex' }, 'win32').at(-1)).toBe('main.tex');
+    });
+
+    it('Hauptdatei mit „-“ am Anfang bekommt „./“, damit latexmk sie nicht als Option liest', () => {
+        expect(buildArguments('/p/-shell-escape.tex', PDFLATEX, 'linux').at(-1)).toBe('./-shell-escape.tex');
+        expect(buildArguments('C:\\p\\-x.tex', PDFLATEX, 'win32').at(-1)).toBe('./-x.tex');
+        expect(buildArguments('/p/a-b.tex', PDFLATEX, 'linux').at(-1)).toBe('a-b.tex');
     });
 
     it('PATH beginnt mit dem Ordner von latexmk, unter Windows bleibt der Schlüssel „Path“', () => {
@@ -131,8 +140,30 @@ describe('Abbruch unter Windows (simuliert)', () => {
         expect(calls[1]).toEqual({ command: 'C:\\Windows\\System32\\taskkill.exe', args: ['/PID', '777', '/T', '/F'], shell: false });
         child.emit('close', 1, null);
         await cancelled;
-        expect(await outcome).toMatchObject({ kind: 'finished', cancelled: true, ok: false });
+        expect(await outcome).toMatchObject({ kind: 'finished', cancelled: true, ok: false, problem: null });
         expect(runner.currentState).toBe('idle');
+    });
+
+    it.each([
+        ['exit ohne close (Enkel hält die Pipe)', true, BUILD_MESSAGES.outputHeldOpen, 1],
+        ['weder exit noch close (taskkill wirkungslos)', false, BUILD_MESSAGES.cancelUnconfirmed, null],
+    ] as const)('Frist nach dem Abbruch: %s', async (_name, emitExit, problem, exitCode) => {
+        const child = new FakeChild(777);
+        const spawn: SpawnFunction = () => child;
+        const dependencies: BuildDependencies = {
+            ...defaultBuildDependencies(), spawn, platform: 'win32', env: {}, cancelDeadlineMs: SHORT_DEADLINE_MS,
+        };
+        const runner = new BuildRunner(dependencies);
+        const outcome = runner.start({ latexmk: 'C:\\m\\latexmk.exe', mainFile: 'C:\\p\\main.tex', options: PDFLATEX });
+        const cancelled = runner.cancel();
+        if (emitExit) child.emit('exit', 1, null);
+        await cancelled;
+        expect(await outcome).toMatchObject({ kind: 'finished', cancelled: true, ok: false, exitCode, problem });
+        expect(child.stdout.destroyed && child.stderr.destroyed).toBe(true);
+        expect(runner.currentState).toBe('idle');
+        const next = runner.start({ latexmk: 'C:\\m\\latexmk.exe', mainFile: 'C:\\p\\main.tex', options: PDFLATEX });
+        child.emit('close', 0, null);
+        expect(await next).not.toMatchObject({ kind: 'rejected', reason: 'busy' });
     });
 });
 
@@ -283,6 +314,35 @@ describe('Build mit Fake-latexmk', () => {
 
 // ---------- echter TeX-Lauf (nur mit LATEXEDITOR_REAL_TEX=1) ----------
 
+function isGroupAlive(groupId: number): boolean {
+    if (!HAS_PROCESS_GROUPS) throw new Error('Prozessgruppen gibt es unter Windows nicht');
+    return isAlive(-groupId);
+}
+
+async function waitUntilGroupGone(groupId: number): Promise<boolean> {
+    const deadline = Date.now() + GONE_CHECK_LIMIT_MS;
+    while (isGroupAlive(groupId) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, GONE_CHECK_STEP_MS));
+    return !isGroupAlive(groupId);
+}
+
+describe('Prüfhilfe Prozessgruppe', () => {
+    it.runIf(HAS_PROCESS_GROUPS)('erkennt eine lebende eigene Gruppe und ihr Ende (sonst prüfte der Abbruchtest nichts)', async () => {
+        const child = nodeSpawn(process.execPath, ['-e', `setTimeout(() => undefined, ${LONG_DOCUMENT_MS})`], {
+            detached: true,
+            stdio: 'ignore',
+        });
+        const groupId = child.pid ?? -1;
+        ownPids.add(groupId);
+        expect(isGroupAlive(groupId)).toBe(true);
+        process.kill(-groupId, 'SIGKILL');
+        expect(await waitUntilGroupGone(groupId)).toBe(true);
+    });
+
+    it.skipIf(HAS_PROCESS_GROUPS)('Windows: Gruppenprüfung verweigert, statt still „weg“ zu melden', () => {
+        expect(() => isGroupAlive(1)).toThrow('Prozessgruppen');
+    });
+});
+
 describe.skipIf(process.env.LATEXEDITOR_REAL_TEX !== '1')('echter latexmk-Lauf auf einer Kopie von HgbDemo', () => {
     it('kompiliert die Demo; einzige Verweis-Warnung ist fig:fehlt', { timeout: REAL_TEX_TIMEOUT_MS }, async () => {
         const tools = await detectTools();
@@ -305,7 +365,8 @@ describe.skipIf(process.env.LATEXEDITOR_REAL_TEX !== '1')('echter latexmk-Lauf a
         }
     });
 
-    it('Abbruch eines rund 40 s rechnenden Dokuments: < 3 s, ganze Prozessgruppe weg', { timeout: REAL_TEX_TIMEOUT_MS }, async () => {
+    // Windows: die Enkel von latexmk kennt der Test nicht, ihr Ende prüft der Handtest (taskkill /T).
+    it.runIf(HAS_PROCESS_GROUPS)('Abbruch eines rund 40 s rechnenden Dokuments: < 3 s, ganze Prozessgruppe weg', { timeout: REAL_TEX_TIMEOUT_MS }, async () => {
         const tools = await detectTools();
         const copy = await mkdtemp(join(tmpdir(), 'latexeditor-slow-'));
         let childPid: number | undefined;
@@ -322,13 +383,13 @@ describe.skipIf(process.env.LATEXEDITOR_REAL_TEX !== '1')('echter latexmk-Lauf a
             const started = Date.now();
             await runner.cancel();
             // Negative PID: die ganze Prozessgruppe des eigenen Kindes
-            const groupGone = await waitUntilGone(-(childPid ?? 0));
+            const groupGone = await waitUntilGroupGone(childPid ?? 0);
             const elapsed = Date.now() - started;
             console.log(`Echter Abbruch: ${elapsed} ms, ${JSON.stringify(await outcome)}`);
             expect(groupGone).toBe(true);
             expect(elapsed).toBeLessThan(CANCEL_BUDGET_MS);
         } finally {
-            if (childPid !== undefined && isAlive(-childPid)) process.kill(-childPid, 'SIGKILL');
+            if (childPid !== undefined && isGroupAlive(childPid)) process.kill(-childPid, 'SIGKILL');
             await rm(copy, { recursive: true, force: true });
         }
     });

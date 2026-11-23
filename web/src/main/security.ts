@@ -1,11 +1,9 @@
 import type { Session, WebContents } from 'electron';
-import { arePathsEqual, fileUrlToPath, type PathPlatform } from './paths';
+import { arePathsEqual, fileUrlToPath, isPathWithin, type PathPlatform } from './paths';
 
 // Sicherheitsregeln aus PLAN-WEBUI.md §2 „Sicherheit (Electron)“. Electron kommt nur als Typ
 // herein; die Prüfungen sind reine Funktionen, die Installationsfunktionen bekommen Session
 // und WebContents als Parameter. So läuft alles in Vitest ohne Electron.
-
-export const APP_PROTOCOL = 'latexeditor:';
 
 export type RendererLocation =
     | { readonly kind: 'packaged'; readonly indexFileUrl: string }
@@ -13,20 +11,28 @@ export type RendererLocation =
 
 export type SecurityLog = (message: string) => void;
 
+export interface RequestPolicy {
+    readonly location: RendererLocation;
+    readonly platform: PathPlatform;
+    // Nur unverpackt (`!app.isPackaged`): die DevTools laufen in derselben Session; ohne
+    // `devtools:` bliebe ihr Fenster leer. Im Paket sind sie ganz abgeschaltet.
+    readonly allowDevTools: boolean;
+}
+
 // `data:` und `blob:` bleiben erlaubt: Chromium lädt sie meist über eigene Loader ohne den
 // webRequest-Filter; meldet es sie doch, bräche ein Verbot pdf.js (Worker als `blob:`, Bilder
 // als `data:`). Beide verweisen nur auf Daten im Speicher und erreichen kein Netz. Im Fenster
 // geprüft wird das mit der Prüfseite aus W0-10.
-const ALWAYS_ALLOWED_PROTOCOLS: ReadonlySet<string> = new Set(['file:', APP_PROTOCOL, 'data:', 'blob:']);
+const MEMORY_PROTOCOLS: ReadonlySet<string> = new Set(['data:', 'blob:']);
+const FILE_PROTOCOL = 'file:';
 const DEV_SERVER_PROTOCOLS: ReadonlySet<string> = new Set(['http:', 'https:', 'ws:', 'wss:']);
-// Die DevTools laufen in derselben Session; ohne `devtools:` bliebe das Fenster leer.
 const DEVTOOLS_PROTOCOL = 'devtools:';
 const CSP_HEADER_NAME = 'Content-Security-Policy';
 
 // Muss mit dem `<meta>`-Tag in `src/renderer/index.html` übereinstimmen (Test `security`).
 export const RENDERER_CSP =
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; " +
-    "worker-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'";
+    "worker-src 'self' blob:; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
 
 // `frame-ancestors` wirkt nur als Header, im `<meta>`-Tag ignoriert Chromium es mit Warnung.
 export const PACKAGED_CSP_HEADER = `${RENDERER_CSP}; frame-ancestors 'none'`;
@@ -41,13 +47,26 @@ function isDevServerRequest(url: URL, devServerUrl: string): boolean {
     return DEV_SERVER_PROTOCOLS.has(url.protocol) && url.host === devServer.host;
 }
 
-export function isRequestAllowed(rawUrl: string, location: RendererLocation): boolean {
+// Gepackt nur Dateien unterhalb des Ordners der eigenen `index.html` (nicht Projektordner, nicht `C:\`).
+function isFileRequestAllowed(rawUrl: string, policy: RequestPolicy): boolean {
+    const { location, platform } = policy;
+    if (location.kind === 'development') return true;
+    try {
+        const rendererFolder = platform.path.dirname(fileUrlToPath(location.indexFileUrl, platform));
+        return isPathWithin(fileUrlToPath(rawUrl, platform), rendererFolder, platform);
+    } catch {
+        return false;
+    }
+}
+
+export function isRequestAllowed(rawUrl: string, policy: RequestPolicy): boolean {
     const url = parseUrl(rawUrl);
     if (url === null) return false;
-    if (ALWAYS_ALLOWED_PROTOCOLS.has(url.protocol)) return true;
-    if (location.kind !== 'development') return false;
-    if (url.protocol === DEVTOOLS_PROTOCOL) return true;
-    return isDevServerRequest(url, location.devServerUrl);
+    if (MEMORY_PROTOCOLS.has(url.protocol)) return true;
+    if (url.protocol === FILE_PROTOCOL) return isFileRequestAllowed(rawUrl, policy);
+    if (url.protocol === DEVTOOLS_PROTOCOL) return policy.allowDevTools;
+    if (policy.location.kind !== 'development') return false;
+    return isDevServerRequest(url, policy.location.devServerUrl);
 }
 
 function isSameFile(frameUrl: string, indexFileUrl: string, platform: PathPlatform): boolean {
@@ -81,9 +100,9 @@ export function withCspHeader(headers: ResponseHeaders | undefined, csp: string)
 
 // ---------- dünne Installationsfunktionen (Electron-Objekte als Parameter) ----------
 
-export function installRequestFilter(session: Session, location: RendererLocation, log: SecurityLog): void {
+export function installRequestFilter(session: Session, policy: RequestPolicy, log: SecurityLog): void {
     session.webRequest.onBeforeRequest((details, callback) => {
-        const allowed = isRequestAllowed(details.url, location);
+        const allowed = isRequestAllowed(details.url, policy);
         if (!allowed) log(`Anfrage blockiert: ${details.url}`);
         callback({ cancel: !allowed });
     });
@@ -106,9 +125,9 @@ export function denyAllPermissions(session: Session, log: SecurityLog): void {
     session.setPermissionCheckHandler(() => false);
 }
 
-export function applySessionSecurity(session: Session, location: RendererLocation, log: SecurityLog): void {
-    installRequestFilter(session, location, log);
-    installCspHeader(session, location);
+export function applySessionSecurity(session: Session, policy: RequestPolicy, log: SecurityLog): void {
+    installRequestFilter(session, policy, log);
+    installCspHeader(session, policy.location);
     denyAllPermissions(session, log);
 }
 

@@ -1,7 +1,8 @@
-import { app, BrowserWindow, ipcMain, session } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, session } from 'electron';
 import { join } from 'node:path';
 import { registerIpcHandlers } from './ipc';
 import { createHandlerRegistry } from './ipcHandlers';
+import { bringToFront, createBeforeQuitHandler, QuitTasks } from './lifecycle';
 import { currentPathPlatform, pathToFileUrl } from './paths';
 import { applySessionSecurity, lockNavigation, type RendererLocation } from './security';
 
@@ -11,9 +12,15 @@ const RENDERER_INDEX_PATH = join(__dirname, '../renderer/index.html');
 const DEV_SERVER_ENV = 'ELECTRON_RENDERER_URL';
 
 let mainWindow: BrowserWindow | null = null;
+// Aufräumen beim Beenden; W2-10 trägt hier den Build-Abbruch ein (`quitTasks.add(() => runner.cancel())`).
+const quitTasks = new QuitTasks();
 
 function logSecurity(message: string): void {
     console.warn(`[Sicherheit] ${message}`);
+}
+
+function logLifecycle(message: string): void {
+    console.warn(`[Beenden] ${message}`);
 }
 
 function getRendererLocation(): RendererLocation {
@@ -39,6 +46,7 @@ function createWindow(location: RendererLocation): BrowserWindow {
             nodeIntegration: false,
             webSecurity: true,
             spellcheck: false,
+            devTools: !app.isPackaged,
         },
     });
     window.on('closed', () => {
@@ -54,17 +62,27 @@ function createWindow(location: RendererLocation): BrowserWindow {
 
 async function start(): Promise<void> {
     await app.whenReady();
+    // Bis W2-16 kein Menü: das Standardmenü böte „Toggle Developer Tools“ und Neuladen.
+    Menu.setApplicationMenu(null);
     const location = getRendererLocation();
-    applySessionSecurity(session.defaultSession, location, logSecurity);
+    const platform = currentPathPlatform();
+    applySessionSecurity(session.defaultSession, { location, platform, allowDevTools: !app.isPackaged }, logSecurity);
     registerIpcHandlers(ipcMain, {
         handlers: createHandlerRegistry(),
-        policy: { getTrustedWebContentsId: trustedWebContentsId, location, platform: currentPathPlatform() },
+        policy: { getTrustedWebContentsId: trustedWebContentsId, location, platform },
         log: logSecurity,
     });
     mainWindow = createWindow(location);
 }
 
-// Jedes webContents (auch künftige Fenster und die DevTools) bekommt die Navigationssperre.
-app.on('web-contents-created', (_event, contents) => lockNavigation(contents, logSecurity));
-app.on('window-all-closed', () => app.quit());
-void start();
+// Zwei Instanzen teilten sich `userData` (Einstellungen, Wiederherstellung); die zweite holt die erste nach vorn.
+if (!app.requestSingleInstanceLock()) {
+    app.quit();
+} else {
+    app.on('second-instance', () => bringToFront(mainWindow));
+    app.on('before-quit', createBeforeQuitHandler({ tasks: quitTasks, quit: () => app.quit(), log: logLifecycle }));
+    // Jedes webContents (auch künftige Fenster und die DevTools) bekommt die Navigationssperre.
+    app.on('web-contents-created', (_event, contents) => lockNavigation(contents, logSecurity));
+    app.on('window-all-closed', () => app.quit());
+    void start();
+}

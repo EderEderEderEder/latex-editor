@@ -39,10 +39,10 @@ Das ist eine Faustregel. Stellt sich heraus, dass eine Stufe zu schwach war (Bui
 1. **Verstehen.** Mehrere `Explore`-Agents parallel (je eine Frage). Eine einzelne bekannte Stelle liest die Hauptsitzung selbst.
 2. **Plan.** Bei größeren Änderungen: `Plan`-Agent, Ergebnis kurz dem Nutzer zeigen, **OK abwarten**. Bei kleinen Änderungen entfällt das.
 3. **Umsetzen.** Pro Teilaufgabe ein Agent laut Tabelle. Jeder bekommt die Dateien, die er ändern darf, und die Pflichtangaben.
-4. **Prüfen.** Hauptsitzung: `swift build` (ohne Warnungen) und `scripts/test-run.sh --fast` oder `--filter …`.
+4. **Prüfen.** Hauptsitzung. swift (in `swift/`): `swift build` (ohne Warnungen) und `scripts/test-run.sh --fast` oder `--filter …`. web (in `web/`): `npm run typecheck`, `npm run build` und `node scripts/test-run.mjs --fast` oder `--filter …`, jeweils ohne Fehler und Warnungen.
 5. **Review.** Bei mehr als einer Datei oder in einem schweren Bereich: Review-Agent. Befunde einarbeiten, nicht wegdiskutieren.
-6. **Doku.** `swift/TESTING.md` (Handtests, Nummer weiterzählen, Zahl in `CLAUDE.md` nachziehen), `swift/docs/ARCHITEKTUR.md` und die `CLAUDE.md` des Ordners, wenn sich eine Regel ergeben hat. Leichte Aufgabe für `sonnet`/`low`.
-7. **Voller Lauf.** `scripts/test-run.sh` einmal im Hintergrund vor Commit oder Installation.
+6. **Doku.** `TESTING.md` des Ordners (Handtests, Nummer weiterzählen: swift Zahl in `CLAUDE.md` nachziehen, web `W-H…`), `docs/ARCHITEKTUR.md` und die `CLAUDE.md` des Ordners, wenn sich eine Regel ergeben hat. Leichte Aufgabe für `sonnet`/`low`.
+7. **Voller Lauf.** swift: `scripts/test-run.sh`; web: `node scripts/test-run.mjs` (bei Bedarf `--e2e`) und `npm run build`; einmal im Hintergrund vor Commit oder Installation.
 8. **Bericht.** Kurz (nur das Nötigste). Commit, Push und Installation nur auf ausdrückliches Wort des Nutzers.
 
 ## Wann kein Subagent
@@ -53,7 +53,7 @@ Eine Änderung an einer bekannten Zeile, ein Tippfehler, eine Antwort aus dem Ge
 
 - **Lesen** (`Explore`, Review): parallel, beliebig.
 - **Schreiben**: parallel nur bei **verschiedenen Dateien**. Sonst nacheinander oder `isolation: "worktree"` (dort fehlt `shared/Testdaten/`, Tests dazu überspringen sich).
-- **Build und Tests: nie parallel.** Es läuft immer nur ein Lauf, und nur über `scripts/test-run.sh`. Parallele Schreib-Agents testen nicht selbst, das macht danach die Hauptsitzung.
+- **Build und Tests: nie parallel.** Es läuft immer nur ein Lauf, und nur über `scripts/test-run.sh` (swift) bzw. `node scripts/test-run.mjs` (web). Parallele Schreib-Agents testen nicht selbst, das macht danach die Hauptsitzung.
 
 ## Pflichtangaben im Prompt jedes Subagents
 

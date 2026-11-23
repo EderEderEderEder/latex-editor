@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { createHandlerRegistry } from '../../src/main/ipcHandlers';
 import { ARG_SCHEMAS } from '../../src/main/ipcValidation';
-import { EVENT_CHANNELS, isGitError, REQUEST_CHANNELS, splitChannel } from '../../src/shared/contract';
+import {
+    EVENT_CHANNELS,
+    isGitError,
+    isPreloadOnlyChannel,
+    RENDERER_CHANNELS,
+    REQUEST_CHANNELS,
+    splitChannel,
+} from '../../src/shared/contract';
 import { IpcFailure } from '../../src/shared/ipcResult';
 import { createPreloadStub, DEFAULT_STUB_RESPONSES } from '../support/preloadStub';
 
@@ -108,10 +115,47 @@ describe('Vertrag: Abdeckung', () => {
     it('jeder Kanal hat einen Eintrag im Preload-Stub', () => {
         expect(sorted(Object.keys(DEFAULT_STUB_RESPONSES))).toEqual(sorted(REQUEST_CHANNELS));
         const api = createPreloadStub().api as unknown as Record<string, Record<string, unknown>>;
-        for (const channel of REQUEST_CHANNELS) {
+        for (const channel of RENDERER_CHANNELS) {
             const { area, method } = splitChannel(channel);
             expect(typeof api[area]?.[method], channel).toBe('function');
         }
+    });
+});
+
+describe('Vertrag: Gewährungen statt Pfadherkunft (H1)', () => {
+    it('drop:grant ist nur für den Preload, nicht als window.api.drop sichtbar', () => {
+        expect(isPreloadOnlyChannel('drop:grant')).toBe(true);
+        expect(RENDERER_CHANNELS).not.toContain('drop:grant');
+        expect(RENDERER_CHANNELS.length).toBe(REQUEST_CHANNELS.length - 1);
+        const api = createPreloadStub().api as unknown as Record<string, unknown>;
+        expect(api.drop).toBeUndefined();
+    });
+
+    it('marks/recovery kennen kein projectRoot, project:open und Importe nehmen Kennungen', () => {
+        expect(ARG_SCHEMAS['marks:load']).toHaveLength(0);
+        expect(ARG_SCHEMAS['marks:save']).toHaveLength(1);
+        expect(ARG_SCHEMAS['recovery:list']).toHaveLength(0);
+        expect(ARG_SCHEMAS['recovery:delete']).toHaveLength(1);
+        expect(ARG_SCHEMAS['project:open'][0]('/etc')).toBe(false);
+        expect(ARG_SCHEMAS['project:open'][0]('b1f0c2e4-1a2b-4c3d-8e9f-0123456789ab')).toBe(true);
+        expect(ARG_SCHEMAS['image:import'][0]('C:\\Bilder\\a.png')).toBe(false);
+    });
+
+    it('dragDrop.grantFiles schickt nur Pfade aus getPathForFile, nie selbst erzeugte Dateien', async () => {
+        const stub = createPreloadStub();
+        const dropped = new File(['x'], 'bild.png');
+        const fabricated = new File(['x'], 'geheim.tex');
+        stub.setPathForFile(dropped, '/Users/u/Bilder/bild.png');
+        const result = await stub.api.dragDrop.grantFiles([dropped, fabricated]);
+        expect(stub.calls).toEqual([{ channel: 'drop:grant', args: [['/Users/u/Bilder/bild.png']] }]);
+        expect(result).toEqual({ ok: true, value: { granted: [{ grantId: 'stub-grant-0', name: 'bild.png' }], rejected: [] } });
+    });
+
+    it('dragDrop.grantFiles ohne echte Pfade fragt den Main gar nicht', async () => {
+        const stub = createPreloadStub();
+        const result = await stub.api.dragDrop.grantFiles([new File(['x'], 'a.tex')]);
+        expect(result).toEqual({ ok: true, value: { granted: [], rejected: [] } });
+        expect(stub.calls).toEqual([]);
     });
 });
 

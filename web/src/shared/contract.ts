@@ -1,7 +1,10 @@
 // IPC-Vertrag zwischen Main, Preload und Renderer (PLAN-WEBUI.md §2).
 // Konventionen für alle Kanäle:
 // - Pfade sind absolute, native Pfade des Betriebssystems (Windows `C:\…`, UNC `\\server\share\…`).
-//   Der Main-Prozess normalisiert und prüft jeden Pfad (`main/paths.ts`).
+//   Der Main-Prozess normalisiert und prüft jeden Pfad (`main/paths.ts`): Pfade vom Renderer gelten nur
+//   innerhalb des aktuell geöffneten Projekts, das der Main selbst kennt.
+// - Pfade außerhalb des Projekts (Dialoge, „Zuletzt geöffnet“, Drag & Drop) sieht der Renderer nie als
+//   Pfad, sondern als Kennung (`GrantId`), die nur der Main vergeben hat (`main/grants.ts`).
 // - Offsets und Spalten zählen UTF-16-Codeeinheiten (wie JavaScript-Strings), 0-basiert.
 // - Zeilennummern sind 1-basiert (wie SyncTeX, Log-Meldungen und die Anzeige im Editor).
 // - Zeiten sind Millisekunden seit 1970 (`Date.now()`), Koordinaten im PDF sind Punkte, Ursprung oben links.
@@ -14,6 +17,8 @@ export type EpochMillis = number;
 export type ContentHash = string;
 export type UndoToken = string;
 export type SearchId = string;
+// Vom Main vergebene Kennung für einen Pfad außerhalb des Projekts (Dialog, Zuletzt geöffnet, Drop).
+export type GrantId = string;
 
 export type JsonValue = string | number | boolean | null | readonly JsonValue[] | { readonly [key: string]: JsonValue };
 
@@ -93,10 +98,20 @@ export interface ProjectInfo {
     readonly tree: DirectoryNode;
 }
 
-export interface RecentProject {
-    readonly root: AbsolutePath;
+// Pfad, den der Main gewährt hat: der Renderer bekommt nur Kennung und Anzeigenamen.
+export interface GrantedPath {
+    readonly grantId: GrantId;
     readonly name: string;
+}
+
+export interface RecentProject extends GrantedPath {
     readonly openedAt: EpochMillis;
+}
+
+// Ergebnis von Drag & Drop: abgelehnte Dateien (Endung, Größe, Netzwerkpfad) nur mit Namen.
+export interface DropGrantResult {
+    readonly granted: readonly GrantedPath[];
+    readonly rejected: readonly string[];
 }
 
 export interface FileFilter {
@@ -257,8 +272,8 @@ export interface GitResetResult {
 
 // ---------- App-Daten, Bilder, PDF ----------
 
+// Gehört immer zum aktuell geöffneten Projekt (der Main kennt es, der Renderer nennt es nicht).
 export interface RecoveryEntry {
-    readonly projectRoot: AbsolutePath;
     readonly path: AbsolutePath;
     readonly text: string;
     readonly savedAt: EpochMillis;
@@ -271,9 +286,8 @@ export interface ImageImportResult {
     readonly reused: boolean;
 }
 
-export type PdfSource =
-    | { readonly kind: 'url'; readonly url: string }
-    | { readonly kind: 'bytes'; readonly bytes: Uint8Array };
+/** PDF-Transport laut Spike S9: nur Bytes über IPC (kein eigenes Protokoll) */
+export type PdfSource = { readonly kind: 'bytes'; readonly bytes: Uint8Array };
 
 // ---------- Anfragen (invoke → handle) ----------
 
@@ -285,11 +299,13 @@ interface Request<Args extends readonly unknown[], Result> {
 export interface IpcRequests {
     'app:ping': Request<[], 'pong'>;
     'tools:detect': Request<[], ToolsInfo>;
-    'project:open': Request<[path: AbsolutePath], ProjectInfo>;
+    'project:open': Request<[projectGrant: GrantId], ProjectInfo>;
     'project:recent': Request<[], RecentProject[]>;
-    'dialog:openProject': Request<[], AbsolutePath | null>;
-    'dialog:pickFiles': Request<[options: PickFilesOptions], AbsolutePath[] | null>;
-    'dialog:saveAs': Request<[options: SaveAsOptions], AbsolutePath | null>;
+    'dialog:openProject': Request<[], GrantedPath | null>;
+    'dialog:pickFiles': Request<[options: PickFilesOptions], GrantedPath[] | null>;
+    'dialog:saveAs': Request<[options: SaveAsOptions], GrantedPath | null>;
+    // Nur für den Preload (`dragDrop.grantFiles`), nicht als `window.api.drop.grant` sichtbar.
+    'drop:grant': Request<[paths: AbsolutePath[]], DropGrantResult>;
     'fs:readText': Request<[path: AbsolutePath], TextFile>;
     'fs:readMany': Request<[paths: AbsolutePath[]], ReadManyItem[]>;
     'fs:writeText': Request<
@@ -300,7 +316,7 @@ export interface IpcRequests {
     'fs:rename': Request<[path: AbsolutePath, newName: string], FileOpResult>;
     'fs:move': Request<[path: AbsolutePath, targetDir: AbsolutePath], FileOpResult>;
     'fs:duplicate': Request<[path: AbsolutePath], FileOpResult>;
-    'fs:import': Request<[paths: AbsolutePath[], targetDir: AbsolutePath], ImportResult>;
+    'fs:import': Request<[sourceGrants: GrantId[], targetDir: AbsolutePath], ImportResult>;
     'fs:trash': Request<[path: AbsolutePath], UndoToken>;
     'fs:restore': Request<[undoToken: UndoToken], UndoToken>;
     'search:project': Request<[query: string, options: SearchOptions, excludePaths: AbsolutePath[]], SearchId>;
@@ -322,14 +338,14 @@ export interface IpcRequests {
     'git:create': Request<[branch: string], void>;
     'git:resetPlan': Request<[], GitResetPlan>;
     'git:resetApply': Request<[planId: string], GitResetResult>;
-    'marks:load': Request<[projectRoot: AbsolutePath], string | null>;
-    'marks:save': Request<[projectRoot: AbsolutePath, json: string], void>;
+    'marks:load': Request<[], string | null>;
+    'marks:save': Request<[json: string], void>;
     'recovery:save': Request<[entry: RecoveryEntry], void>;
-    'recovery:list': Request<[projectRoot: AbsolutePath], RecoveryEntry[]>;
-    'recovery:delete': Request<[projectRoot: AbsolutePath, path: AbsolutePath], void>;
+    'recovery:list': Request<[], RecoveryEntry[]>;
+    'recovery:delete': Request<[path: AbsolutePath], void>;
     'settings:get': Request<[], SettingsData>;
     'settings:set': Request<[key: string, value: JsonValue], void>;
-    'image:import': Request<[source: AbsolutePath, imagesDir: AbsolutePath], ImageImportResult>;
+    'image:import': Request<[sourceGrant: GrantId, imagesDir: AbsolutePath], ImageImportResult>;
     'pdf:open': Request<[path: AbsolutePath], PdfSource>;
 }
 
@@ -377,6 +393,7 @@ const REQUEST_CHANNEL_TABLE: Readonly<Record<RequestChannel, true>> = {
     'dialog:openProject': true,
     'dialog:pickFiles': true,
     'dialog:saveAs': true,
+    'drop:grant': true,
     'fs:readText': true,
     'fs:readMany': true,
     'fs:writeText': true,
@@ -428,6 +445,15 @@ const EVENT_CHANNEL_TABLE: Readonly<Record<EventChannel, true>> = {
     'app:closeRequested': true,
 };
 
+// Kanäle, die nur der Preload selbst aufruft (nicht Teil von `window.api.<bereich>`). `drop:grant`
+// bekommt nur Pfade aus `webUtils.getPathForFile`, die der Renderer nicht fälschen kann.
+export type PreloadOnlyChannel = 'drop:grant';
+export type RendererChannel = Exclude<RequestChannel, PreloadOnlyChannel>;
+
+const PRELOAD_ONLY_CHANNEL_TABLE: Readonly<Record<PreloadOnlyChannel, true>> = {
+    'drop:grant': true,
+};
+
 export const REQUEST_CHANNELS = Object.freeze(Object.keys(REQUEST_CHANNEL_TABLE) as RequestChannel[]);
 export const EVENT_CHANNELS = Object.freeze(Object.keys(EVENT_CHANNEL_TABLE) as EventChannel[]);
 
@@ -438,6 +464,14 @@ export function isRequestChannel(name: unknown): name is RequestChannel {
 export function isEventChannel(name: unknown): name is EventChannel {
     return typeof name === 'string' && Object.hasOwn(EVENT_CHANNEL_TABLE, name);
 }
+
+export function isPreloadOnlyChannel(name: unknown): name is PreloadOnlyChannel {
+    return typeof name === 'string' && Object.hasOwn(PRELOAD_ONLY_CHANNEL_TABLE, name);
+}
+
+export const RENDERER_CHANNELS = Object.freeze(
+    REQUEST_CHANNELS.filter((channel): channel is RendererChannel => !isPreloadOnlyChannel(channel)),
+);
 
 const GIT_ERROR_KINDS: Readonly<Record<GitErrorKind, true>> = {
     gitMissing: true,
@@ -460,13 +494,13 @@ const CHANNEL_SEPARATOR = ':';
 
 type AreaOf<C extends string> = C extends `${infer Area}:${string}` ? Area : never;
 type MethodOf<C extends string> = C extends `${string}:${infer Method}` ? Method : never;
-export type ApiArea = AreaOf<RequestChannel>;
+export type ApiArea = AreaOf<RendererChannel>;
 
 export type ApiMethod<C extends RequestChannel> = (...args: RequestArgs<C>) => Promise<IpcResult<RequestResult<C>>>;
 
 export type RequestApi = {
     readonly [A in ApiArea]: {
-        readonly [C in RequestChannel as AreaOf<C> extends A ? MethodOf<C> : never]: ApiMethod<C>;
+        readonly [C in RendererChannel as AreaOf<C> extends A ? MethodOf<C> : never]: ApiMethod<C>;
     };
 };
 
@@ -478,8 +512,9 @@ export interface EventApi {
 }
 
 export interface DragDropApi {
-    // Liefert den Pfad einer per Drag & Drop abgelegten Datei ('' für Dateien ohne Pfad).
-    getPathForFile(file: File): string;
+    // Meldet abgelegte Dateien dem Main; der Renderer sieht ihre Pfade nie. Dateien ohne Pfad
+    // (z. B. im Renderer erzeugte `File`-Objekte) werden übergangen.
+    grantFiles(files: readonly File[]): Promise<IpcResult<DropGrantResult>>;
 }
 
 export type RendererApi = RequestApi & {

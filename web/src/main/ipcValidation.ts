@@ -14,6 +14,8 @@ const MAX_PATH_LENGTH = 32_767;
 const MAX_ARRAY_LENGTH = 10_000;
 const MAX_JSON_DEPTH = 32;
 const MIN_LINE_OR_PAGE = 1;
+const MAX_GRANT_ID_LENGTH = 64;
+const GRANT_ID_PATTERN = /^[A-Za-z0-9-]+$/;
 
 export const isString: Guard<string> = (value): value is string => typeof value === 'string';
 
@@ -22,6 +24,10 @@ export const isNonEmptyString: Guard<string> = (value): value is string =>
 
 export const isPath: Guard<string> = (value): value is string =>
     isNonEmptyString(value) && value.length <= MAX_PATH_LENGTH;
+
+// Nur die Form; ob der Main die Kennung vergeben hat, prüft `GrantStore.resolve`.
+export const isGrantId: Guard<string> = (value): value is string =>
+    typeof value === 'string' && value.length <= MAX_GRANT_ID_LENGTH && GRANT_ID_PATTERN.test(value);
 
 export const isBoolean: Guard<boolean> = (value): value is boolean => typeof value === 'boolean';
 
@@ -73,6 +79,7 @@ function isJsonAtDepth(value: unknown, depth: number): boolean {
 export const isJsonValue: Guard<JsonValue> = (value): value is JsonValue => isJsonAtDepth(value, 0);
 
 const isPathList = arrayOf(isPath);
+const isGrantIdList = arrayOf(isGrantId);
 const isEncoding = literal('utf8', 'latin1');
 const isLineEnding = literal('lf', 'crlf');
 const isFileFilter = objectOf({ name: isString, extensions: arrayOf(isNonEmptyString) });
@@ -95,7 +102,6 @@ const isBuildOptions = objectOf({ engine: literal('pdflatex', 'xelatex', 'lualat
 const isGitBlobSpec = objectOf({ path: isPath, revision: literal('HEAD', 'index') });
 
 const isRecoveryEntry = objectOf({
-    projectRoot: isPath,
     path: isPath,
     text: isString,
     savedAt: isFiniteNumber,
@@ -104,11 +110,12 @@ const isRecoveryEntry = objectOf({
 export const ARG_SCHEMAS: ArgSchemas = {
     'app:ping': [],
     'tools:detect': [],
-    'project:open': [isPath],
+    'project:open': [isGrantId],
     'project:recent': [],
     'dialog:openProject': [],
     'dialog:pickFiles': [isPickFilesOptions],
     'dialog:saveAs': [isSaveAsOptions],
+    'drop:grant': [isPathList],
     'fs:readText': [isPath],
     'fs:readMany': [isPathList],
     'fs:writeText': [isPath, isString, isEncoding, isLineEnding, optional(isNonEmptyString)],
@@ -116,7 +123,7 @@ export const ARG_SCHEMAS: ArgSchemas = {
     'fs:rename': [isPath, isNonEmptyString],
     'fs:move': [isPath, isPath],
     'fs:duplicate': [isPath],
-    'fs:import': [isPathList, isPath],
+    'fs:import': [isGrantIdList, isPath],
     'fs:trash': [isPath],
     'fs:restore': [isNonEmptyString],
     'search:project': [isNonEmptyString, isSearchOptions, isPathList],
@@ -138,14 +145,14 @@ export const ARG_SCHEMAS: ArgSchemas = {
     'git:create': [isNonEmptyString],
     'git:resetPlan': [],
     'git:resetApply': [isNonEmptyString],
-    'marks:load': [isPath],
-    'marks:save': [isPath, isString],
+    'marks:load': [],
+    'marks:save': [isString],
     'recovery:save': [isRecoveryEntry],
-    'recovery:list': [isPath],
-    'recovery:delete': [isPath, isPath],
+    'recovery:list': [],
+    'recovery:delete': [isPath],
     'settings:get': [],
     'settings:set': [isNonEmptyString, isJsonValue],
-    'image:import': [isPath, isPath],
+    'image:import': [isGrantId, isPath],
     'pdf:open': [isPath],
 };
 

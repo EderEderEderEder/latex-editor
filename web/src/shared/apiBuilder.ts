@@ -1,5 +1,6 @@
 import {
     type ApiArea,
+    type DropGrantResult,
     type EventChannel,
     type IpcEvents,
     type IpcResult,
@@ -7,7 +8,7 @@ import {
     type RequestChannel,
     type Unsubscribe,
     isEventChannel,
-    REQUEST_CHANNELS,
+    RENDERER_CHANNELS,
     splitChannel,
 } from './contract';
 
@@ -29,7 +30,7 @@ type MutableArea = Record<string, (...args: readonly unknown[]) => Promise<IpcRe
 
 function buildRequestAreas(transport: ApiTransport): Record<string, MutableArea> {
     const areas: Record<string, MutableArea> = {};
-    for (const channel of REQUEST_CHANNELS) {
+    for (const channel of RENDERER_CHANNELS) {
         const { area, method } = splitChannel(channel);
         const target = (areas[area] ??= {});
         target[method] = (...args) => transport.invoke(channel, args);
@@ -47,6 +48,15 @@ function subscribeChecked<E extends EventChannel>(
     return transport.subscribe(event, (payload) => listener(payload as IpcEvents[E]));
 }
 
+const NO_PATH = '';
+
+// Die Pfade holt der Preload selbst (`webUtils.getPathForFile`); fehlt einer, ist die Datei nicht echt abgelegt.
+function grantDroppedFiles(transport: ApiTransport, files: readonly File[]): Promise<IpcResult<DropGrantResult>> {
+    const paths = Array.from(files, (file) => transport.getPathForFile(file)).filter((path) => path !== NO_PATH);
+    if (paths.length === 0) return Promise.resolve({ ok: true, value: { granted: [], rejected: [] } });
+    return transport.invoke('drop:grant', [paths]) as Promise<IpcResult<DropGrantResult>>;
+}
+
 export function buildRendererApi(transport: ApiTransport): RendererApi {
     const api = {
         ...buildRequestAreas(transport),
@@ -55,11 +65,11 @@ export function buildRendererApi(transport: ApiTransport): RendererApi {
                 subscribeChecked(transport, event, listener),
         },
         dragDrop: {
-            getPathForFile: (file: File) => transport.getPathForFile(file),
+            grantFiles: (files: readonly File[]) => grantDroppedFiles(transport, files),
         },
     };
     void RESERVED_AREAS_FREE;
-    // Die Form ist durch die Schleife über REQUEST_CHANNELS vollständig; der Compiler kann das
+    // Die Form ist durch die Schleife über RENDERER_CHANNELS vollständig; der Compiler kann das
     // aus einer Schleife nicht ableiten, deshalb die Umwandlung.
     return api as unknown as RendererApi;
 }

@@ -1,13 +1,14 @@
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
     arePathsEqual,
     currentPathPlatform,
     fileUrlToPath,
     isInsideProject,
     isPathWithin,
+    isUncPath,
     LINUX_PATHS,
     MACOS_PATHS,
     normalizeAbsolutePath,
@@ -93,6 +94,11 @@ describe('isPathWithin', () => {
         const nfc = '/Users/u/\u00dcbung';
         expect(arePathsEqual(nfd, nfc, MACOS_PATHS)).toBe(true);
     });
+
+    it('Linux und Windows: NFD und NFC sind verschiedene Namen (ext4, NTFS)', () => {
+        expect(arePathsEqual('/home/u/U\u0308bung', '/home/u/\u00dcbung', LINUX_PATHS)).toBe(false);
+        expect(arePathsEqual('C:\\U\u0308bung', 'C:\\\u00dcbung', WINDOWS_PATHS)).toBe(false);
+    });
 });
 
 function fakeRealpath(links: Record<string, string>, existing: readonly string[]): RealpathFunction {
@@ -120,6 +126,27 @@ describe('resolveRealPath / isInsideProject mit gefälschtem realpath (Windows)'
     it('Symlink aus dem Projekt hinaus zählt als außerhalb', async () => {
         await expect(isInsideProject('C:\\Proj\\link\\x.tex', 'C:\\Proj', options)).resolves.toBe(false);
         await expect(isInsideProject('C:\\Proj\\kapitel\\x.tex', 'c:\\proj', options)).resolves.toBe(true);
+    });
+
+    it('lexikalisch außerhalb: realpath wird gar nicht aufgerufen (kein SMB, kein autofs)', async () => {
+        const spy = vi.fn<RealpathFunction>((target) => Promise.resolve(target));
+        const spied = { platform: WINDOWS_PATHS, realpath: spy };
+        await expect(isInsideProject('\\\\server\\share\\x.tex', 'C:\\Proj', spied)).resolves.toBe(false);
+        await expect(isInsideProject('\\\\?\\UNC\\server\\s\\x', 'C:\\Proj', spied)).resolves.toBe(false);
+        await expect(isInsideProject('D:\\Woanders\\x.tex', 'C:\\Proj', spied)).resolves.toBe(false);
+        const macSpy = vi.fn<RealpathFunction>((target) => Promise.resolve(target));
+        await expect(isInsideProject('/net/server/x.tex', '/Users/u/p', { platform: MACOS_PATHS, realpath: macSpy })).resolves.toBe(false);
+        expect(spy).not.toHaveBeenCalled();
+        expect(macSpy).not.toHaveBeenCalled();
+    });
+
+    it('UNC nur, wenn die Projektwurzel selbst UNC ist', async () => {
+        const identity: RealpathFunction = (target) => Promise.resolve(target);
+        const options = { platform: WINDOWS_PATHS, realpath: identity };
+        await expect(isInsideProject('\\\\server\\share\\p\\a.tex', '\\\\server\\share\\p', options)).resolves.toBe(true);
+        expect(isUncPath('\\\\server\\share', WINDOWS_PATHS)).toBe(true);
+        expect(isUncPath('C:\\x', WINDOWS_PATHS)).toBe(false);
+        expect(isUncPath('//server/share', LINUX_PATHS)).toBe(false);
     });
 
     it('andere Fehler als „fehlt“ werden weitergereicht', async () => {

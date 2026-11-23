@@ -149,13 +149,14 @@ function stripMacPrivatePrefix(key: string): string {
 }
 
 // Vergleichsschlüssel für Quelldateien (aus der SyncTeX-Datei wie vom Editor): Trenner, `./`, `..`,
-// Laufwerk, Unicode NFC und Groß-/Kleinschreibung wie `paths.comparisonKey`. Symlinks und
-// Windows-8.3-Namen löst das nicht auf (dafür `resolveRealPath` vor der Anfrage).
+// Laufwerk und Groß-/Kleinschreibung wie `paths.comparisonKey`, Unicode NFC auf allen Plattformen
+// (nur Nachschlagen, keine Sicherheitsprüfung: ein von macOS kopierter NFD-Name soll trotzdem passen).
+// Symlinks und Windows-8.3-Namen löst das nicht auf (dafür `resolveRealPath` vor der Anfrage).
 export function sourcePathKey(file: string, platformName: NodeJS.Platform, baseDirectory?: string): string | null {
     const platform = currentPathPlatform(platformName);
     const absolute = absoluteSourcePath(file, platform, baseDirectory);
     if (absolute === null) return null;
-    const key = comparisonKey(absolute, platform);
+    const key = comparisonKey(absolute, platform).normalize('NFC');
     return platformName === 'darwin' ? stripMacPrivatePrefix(key) : key;
 }
 

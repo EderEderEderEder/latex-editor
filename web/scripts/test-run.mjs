@@ -15,6 +15,10 @@
 //   TEST_RUN_COMMAND          JSON-Array ["programm", "arg", ...]; ersetzt den Vitest-Aufruf (keine Zusammenfassung aus JSON)
 //   TEST_RUN_STALL_SECONDS    ersetzt die Stillstandgrenze
 //   TEST_RUN_TIMEOUT_SECONDS  ersetzt die Gesamtgrenze
+//   TEST_RUN_PRINT_COMMAND=1  gibt nur die Befehle (Vitest, Playwright, taskkill) als JSON aus und startet nichts
+//
+// Gestartet wird immer ohne Shell: `node <vitest.mjs>` statt `npx` (unter Windows wäre npx eine .cmd-Datei,
+// die nur über eine Shell mit ungequoteten Argumenten liefe).
 import { spawn, spawnSync } from 'node:child_process';
 import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -41,6 +45,10 @@ const logDir = join(webDir, '.test-logs');
 const logPath = join(logDir, 'last.log');
 const jsonPath = join(logDir, 'vitest-result.json');
 const isWindows = process.platform === 'win32';
+const vitestEntry = join(webDir, 'node_modules', 'vitest', 'vitest.mjs');
+const playwrightEntry = join(webDir, 'node_modules', '@playwright', 'test', 'cli.js');
+// Voller Pfad, damit kein fremdes taskkill aus PATH oder dem Arbeitsordner läuft.
+const taskkillPath = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe');
 
 function parseArgs(argv) {
     const options = { fast: false, e2e: false, filter: null, name: null };
@@ -57,17 +65,26 @@ function parseArgs(argv) {
 
 function buildVitestCommand(options, nameOverride = null) {
     if (process.env.TEST_RUN_COMMAND) return JSON.parse(process.env.TEST_RUN_COMMAND);
-    const args = ['vitest', 'run', '--reporter=default', '--reporter=json', `--outputFile.json=${jsonPath}`];
+    const args = [vitestEntry, 'run', '--reporter=default', '--reporter=json', `--outputFile.json=${jsonPath}`];
     if (options.fast) SLOW_EXCLUDES.forEach((pattern) => args.push('--exclude', pattern));
     const name = nameOverride ?? options.name;
     if (name) args.push('-t', name);
     if (options.filter) args.push(options.filter);
-    return ['npx', ...args];
+    return [process.execPath, ...args];
+}
+
+function playwrightCommand() {
+    return [process.execPath, playwrightEntry, 'test'];
+}
+
+function killCommand(pid) {
+    return [taskkillPath, '/PID', String(pid), '/T', '/F'];
 }
 
 function killProcessTree(child) {
     if (isWindows) {
-        spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+        const [command, ...args] = killCommand(child.pid);
+        spawnSync(command, args, { stdio: 'ignore', windowsHide: true });
         return;
     }
     signalGroup(child.pid, 'SIGTERM');
@@ -88,7 +105,8 @@ function runWatched([command, ...args], logStream) {
         const child = spawn(command, args, {
             cwd: webDir,
             detached: !isWindows,
-            shell: isWindows,
+            shell: false,
+            windowsHide: true,
             stdio: ['ignore', 'pipe', 'pipe'],
         });
         const state = { lines: [], partial: '', lastOutput: Date.now(), reason: null, finished: false };
@@ -213,7 +231,7 @@ async function runE2eStage(logStream) {
         console.log('Playwright: übersprungen, es gibt noch keine e2e-Tests (tests/e2e/*.spec.ts).');
         return EXIT_OK;
     }
-    const run = await runWatched(['npx', 'playwright', 'test'], logStream);
+    const run = await runWatched(playwrightCommand(), logStream);
     if (run.reason) { reportHang(run); return EXIT_HUNG; }
     console.log(`Playwright: ${run.code === 0 ? 'bestanden' : 'fehlgeschlagen'} in ${run.seconds.toFixed(1)} s`);
     if (run.code !== 0) run.lines.slice(-TAIL_LINE_COUNT).forEach((line) => console.log(`  ${line}`));
@@ -222,6 +240,10 @@ async function runE2eStage(logStream) {
 
 async function main() {
     const options = parseArgs(process.argv.slice(2));
+    if (process.env.TEST_RUN_PRINT_COMMAND === '1') {
+        console.log(JSON.stringify({ vitest: buildVitestCommand(options), playwright: playwrightCommand(), kill: killCommand(1234) }));
+        return;
+    }
     mkdirSync(logDir, { recursive: true });
     const logStream = createWriteStream(logPath);
     let exitCode = await runVitestStage(options, logStream);

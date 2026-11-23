@@ -21,15 +21,18 @@ Regeln (Thesis, Prozesse, Subagents, Code-Stil): `../CLAUDE.md`, nicht doppelt h
 ## Landkarte
 
 - `src/shared/contract.ts`: IPC-Vertrag (`IpcRequests`, `IpcEvents`, Allow-Listen); `apiBuilder.ts` baut daraus `window.api.<bereich>.<methode>` (Preload und Test-Stub gleich), `ipcResult.ts` (`{ok, value}` / `IpcError`, `GitError`).
-- `src/main/`: `index.ts` (Fenster; nur hier und im Preload wird `electron` zur Laufzeit importiert), `ipc.ts` + `ipcHandlers.ts` + `ipcValidation.ts` (Handler-Register, Absenderprüfung, Eingabeprüfung; Fachhandler sind noch Platzhalter „nicht implementiert“), `security.ts` (Navigation, `webRequest`-Filter, Berechtigungen, CSP-Header), `paths.ts` (Pfadnormalisierung, „liegt im Projekt“, Projekt-Hash).
-- `src/preload/index.ts`: `contextBridge` mit `window.api` und `webUtils.getPathForFile` (`dragDrop`).
+- `src/main/`: `index.ts` (Fenster, Single-Instance; nur hier und im Preload wird `electron` zur Laufzeit importiert, `ipc.ts`/`security.ts` nur Typen), `ipc.ts` + `ipcHandlers.ts` + `ipcValidation.ts` (Handler-Register, Absenderprüfung, Eingabeprüfung; Fachhandler sind noch Platzhalter „nicht implementiert“), `lifecycle.ts` (Beenden: `QuitTasks`, `before-quit`, Fenster nach vorn bei zweiter Instanz; W2-10 trägt dort das Abbrechen des Builds ein), `grants.ts` (Pfad-Gewährungen: der Main vergibt `GrantId`s für Dialog-, „Zuletzt geöffnet“- und Drop-Pfade; der Renderer kann keine Pfadherkunft behaupten, kein `projectRoot` in Kanälen, noch nicht in `index.ts` verdrahtet bis zu den ersten echten Handlern), `security.ts` (Navigation, `webRequest`-Filter, Berechtigungen, CSP-Header), `paths.ts` (Pfadnormalisierung, „liegt im Projekt“, Projekt-Hash), `tools.ts` (TeX/Git finden, S4), `build.ts` (`BuildRunner`: latexmk starten und abbrechen, S4), `synctex.ts` + `workers/synctex.worker.ts` (SyncTeX-Parser und Index im `worker_threads`-Worker, S3).
+- `src/preload/index.ts`: `contextBridge` mit `window.api` und `webUtils.getPathForFile` (`dragDrop`, löst Drop-Pfade über `drop:grant` in Gewährungen auf).
 - `src/renderer/`: `index.html` (strikte CSP), `main.tsx`, `App.tsx`, `ipc/` (dünner Zugriff auf `window.api`), `global.d.ts`.
-- `tests/unit/` Vitest (`*.test.ts`), `tests/support/preloadStub.ts` (Stub für `window.api`), später `tests/e2e/*.spec.ts`, langsame Tests in `tests/slow/` oder `*.slow.*`.
-- `spikes/`: Wegwerfcode und Messungen der Spikes S1–S10 (Ergebnisse in `docs/ARCHITEKTUR.md`, Abschnitt „Entscheidungen aus den Spikes“).
-- Abhängigkeiten und Lizenzen: `docs/ABHAENGIGKEITEN.md`.
+- `tests/unit/` Vitest (`*.test.ts`), `tests/support/preloadStub.ts` (Stub für `window.api`), `tests/support/fakeLatexmk.mjs` (Fake-latexmk für `build`-Tests), später `tests/e2e/*.spec.ts`, langsame Tests in `tests/slow/` oder `*.slow.*`.
+- `spikes/`: Wegwerfcode und Messungen der Spikes S1–S10 (Ergebnisse in `docs/ARCHITEKTUR.md`, Abschnitt „Entscheidungen aus den Spikes“; Rohdaten `spikes/*/ERGEBNIS.md`).
+- Abhängigkeiten und Lizenzen: `docs/ABHAENGIGKEITEN.md`. Review M0 mit offenen Befunden: `docs/REVIEW-M0.md`. Handtests: `TESTING.md`.
+- Geplant, noch nicht angelegt: `renderer/editor/lineStateCache.ts` und `language.ts` (ViewPlugin, W1-4), `core/` unter `src/shared/` (Logik nach `shared/spec`), `main/watch.ts`, `fsOps.ts`, `textIo.ts` usw. (siehe Plan §2).
 
 ## Stolpersteine
 
 - Das Electron-Programm lädt `npm install` nicht; es kommt beim ersten Start (`npm run dev`) aus dem Netz.
 - Das Paket ist CommonJS (kein `"type": "module"`), weil ein Sandbox-Preload kein ESM sein darf.
+- `fs.watch` (`EMFILE`) und Electron-Starts laufen nicht in der Claude-Sandbox; solche Tests außerhalb der Sandbox ausführen.
+- DevTools gibt es nur unverpackt (`devTools: !app.isPackaged`); bis W2-16 hat die App kein eigenes Menü.
 - Im Entwicklungsmodus lockert ein Vite-Plugin die CSP (Inline-Skript für React Refresh, WebSocket); im Build gilt die strikte CSP aus `index.html`.

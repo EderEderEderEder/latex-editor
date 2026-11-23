@@ -6,8 +6,8 @@ Pflegeliste für beide Plattformen: Was die Swift-App kann, welches Pendant die 
 
 | Bereich / Feature (Swift) | Web-Pendant | Prio | Aufw. | Besonderheiten |
 |---|---|---|---|---|
-| Syntaxfarben LaTeX (`LatexTokenizer`, `SyntaxHighlighter`, Zustandskonvergenz) | `core/latex/tokenizer.ts` + CM `StreamLanguage` | MVP | L | Offsets UTF-16 (in JS gleich); Mathe endet am Absatz; Prosa-Argumente bleiben ungefärbt |
-| BibTeX-Farben (`BibTokenizer`, `BibLexState`) | `core/bib/tokenizer.ts` als eigene Stream-Sprache | MVP | M | Sprache nach Endung, beim Umbenennen neu färben |
+| Syntaxfarben LaTeX (`LatexTokenizer`, `SyntaxHighlighter`, Zustandskonvergenz) | `core/latex/tokenizer.ts` + eigenes CM-`ViewPlugin` mit `LineStateCache` (S1; `StreamLanguage` nur Rückfall) | MVP | L | Offsets UTF-16 (in JS gleich); Mathe endet am Absatz; Prosa-Argumente bleiben ungefärbt |
+| BibTeX-Farben (`BibTokenizer`, `BibLexState`) | `core/bib/tokenizer.ts`, im selben `ViewPlugin`-Mechanismus wie LaTeX (keine eigene Stream-Sprache) | MVP | M | Sprache nach Endung, beim Umbenennen neu färben |
 | Zeilennummern, aktuelle Zeile, Markierungen (Kreis/Dreieck/Raute, Git-Marken), Tooltip | CM `gutter` + `GutterMarker`, Markierungen per `RangeSet.map` | MVP | M | Form statt nur Farbe; nur sichtbarer Bereich (CM-Standard) |
 | Einklappen (Abschnitte, `\begin…\end`, Kommentarblöcke, ⋯, alles zu/auf) | `core/latex/foldRegions.ts` + `foldService`/`foldGutter` | MVP | M | Text bleibt unverändert (CM-Standard); eine Bearbeitung im Zugeklappten klappt auf |
 | Diagnose (`SyntaxChecker`, doppelte Labels, Build-Meldungen, rot gestrichelt / orange strichpunktiert / blau gepunktet) | `editor/diagnostics.ts` (Dekorationen, Worker, 0,6 s entprellt) | MVP | M | 0 Fehlalarme im Demo-Projekt samt `.cls`/`.sty`; strichpunktiert per SVG-Unterstreichung |
@@ -26,8 +26,8 @@ Pflegeliste für beide Plattformen: Was die Swift-App kann, welches Pendant die 
 | Strg-Klick (ref/cite/include → Ziel; Text → PDF) | `core/jumpTargets.ts` + CM-Mausbehandlung | MVP | M | – |
 | Umbenennen (Label, Quelle, Abkürzung, Befehl, Umgebung, Paar) | `core/renaming/*` | später | L | wie Ersetzen: in Sitzungen, ungespeichert |
 | Verwendungen anzeigen, Abkürzungen/Glossar | `core/usages.ts`, `core/acronyms.ts` | später | M | – |
-| Bildvorschau (Hover, Bildbibliothek) | `<img>` über das eigene Protokoll (S9, nur Projektordner) | später | S | – |
-| Vervollständigung (Befehle mit Gerüst, Labels, `\cite` mit Autor/Titel, Bilder über `graphicspath`, Dateien, Umgebungen, innerstes `\end`) | `core/completion/*` + `@codemirror/autocomplete` | MVP | L | pro Tastendruck nur Kontext der Zeile; nie in Kommentar/Verbatim |
+| Bildvorschau (Hover, Bildbibliothek) | `<img>` mit `blob:`-URL aus IPC-Bytes (S9: kein eigenes Protokoll; Quelle nur im Projektordner) | später | S | – |
+| Vervollständigung (Befehle mit Gerüst, Labels, `\cite` mit Autor/Titel, Bilder über `graphicspath`, Dateien, Umgebungen, innerstes `\end`) | `core/completion/*` + `@codemirror/autocomplete` | MVP | L | pro Tastendruck nur Kontext der Zeile; nie in Kommentar/Verbatim, entschieden über den Zustand im `LineStateCache` (nicht über `syntaxTree`, es gibt keinen Lezer-Baum) |
 | Optionen in `[…]` (`OptionScanner`, `OptionCatalog`, HgbThesis-Schlüssel) | `core/completion/options.ts` | MVP | M | Folgeliste nach `key=` |
 | Projektindex aus `.tex`/`.cls`/`.sty` | Worker + Main `fs:readMany` | MVP | M | meldet sich nur bei echter Änderung |
 | Einfügen-Fenster (Bausteinliste, Einstellungen, Vorschau an Ort und Stelle, Fußzeile) | `ui/insert/*` | MVP | M | 3 Spalten, gleiche Farben wie der Editor |

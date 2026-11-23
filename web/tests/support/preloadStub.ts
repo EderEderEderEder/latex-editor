@@ -41,6 +41,7 @@ const STUB_MAIN = `${STUB_ROOT}/main.tex`;
 const STUB_HASH = '0'.repeat(64);
 const STUB_TIME = 0;
 const STUB_UNDO = 'stub-undo';
+const PATH_SEPARATOR = /[\\/]/;
 
 const STUB_TREE = {
     kind: 'directory',
@@ -59,15 +60,18 @@ const textFile = (path: string): TextFile => ({
     mtime: STUB_TIME,
 });
 const nothing = (): void => undefined;
+const baseName = (path: string): string => path.split(PATH_SEPARATOR).at(-1) ?? path;
+const stubGrant = (path: string, index: number) => ({ grantId: `stub-grant-${index}`, name: baseName(path) });
 
 export const DEFAULT_STUB_RESPONSES: StubResponders = {
     'app:ping': () => 'pong',
     'tools:detect': () => ({ latexmk: null, git: null, synctexRef: null, distro: null, problems: [] }),
-    'project:open': (path) => ({ root: path, mainFile: STUB_MAIN, tree: STUB_TREE }),
+    'project:open': () => ({ root: STUB_ROOT, mainFile: STUB_MAIN, tree: STUB_TREE }),
     'project:recent': () => [],
     'dialog:openProject': () => null,
     'dialog:pickFiles': () => null,
     'dialog:saveAs': () => null,
+    'drop:grant': (paths) => ({ granted: paths.map(stubGrant), rejected: [] }),
     'fs:readText': (path) => textFile(path),
     'fs:readMany': (paths) => paths.map((path) => ({ path, result: ok(textFile(path)) })),
     'fs:writeText': () => ({ hash: STUB_HASH, mtime: STUB_TIME }),
@@ -75,7 +79,10 @@ export const DEFAULT_STUB_RESPONSES: StubResponders = {
     'fs:rename': (path) => fileOp(path),
     'fs:move': (path) => fileOp(path),
     'fs:duplicate': (path) => fileOp(path),
-    'fs:import': (paths) => ({ paths, undoToken: STUB_UNDO }),
+    'fs:import': (sourceGrants, targetDir) => ({
+        paths: sourceGrants.map((grant) => `${targetDir}/${grant}`),
+        undoToken: STUB_UNDO,
+    }),
     'fs:trash': () => STUB_UNDO,
     'fs:restore': () => STUB_UNDO,
     'search:project': () => 'stub-search',

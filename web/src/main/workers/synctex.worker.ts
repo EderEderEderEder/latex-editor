@@ -1,11 +1,21 @@
 import { performance } from 'node:perf_hooks';
-import { parentPort } from 'node:worker_threads';
+import { isMainThread, parentPort, workerData } from 'node:worker_threads';
 import type { GeneralError, SyncTexBackwardResult, SyncTexForwardResult } from '../../shared/contract';
 import { backwardSearch, forwardSearch, loadSyncTeX, SyncTeXError, type SyncTeXIndex } from '../synctex';
 
 // SyncTeX-Worker (worker_threads): hält den Index und beantwortet Anfragen, der Main-Prozess
 // schickt nur Pfade und Koordinaten. Anfragen werden der Reihe nach beantwortet; ein `forward`
 // direkt nach `load` sieht also schon die neuen Daten. Schlägt `load` fehl, bleiben die alten.
+
+// Kennung in `workerData`: nur ein so gestarteter Thread beantwortet Anfragen. Ohne sie bliebe der Import
+// eine Nebenwirkung, z. B. in einem Vitest-Thread, dessen `parentPort` dem Testlauf gehört.
+export const SYNCTEX_WORKER_KIND = 'latexeditor-synctex';
+
+export interface SyncTeXWorkerData {
+    readonly kind: typeof SYNCTEX_WORKER_KIND;
+}
+
+export const SYNCTEX_WORKER_DATA: SyncTeXWorkerData = { kind: SYNCTEX_WORKER_KIND };
 
 export type SyncTeXWorkerRequest =
     | { readonly id: number; readonly type: 'load'; readonly file: string; readonly platform?: NodeJS.Platform }
@@ -77,6 +87,11 @@ export function createSyncTeXRequestHandler(): SyncTeXRequestHandler {
     };
 }
 
+export function shouldStartWorker(mainThread: boolean, data: unknown): boolean {
+    if (mainThread || typeof data !== 'object' || data === null) return false;
+    return 'kind' in data && data.kind === SYNCTEX_WORKER_KIND;
+}
+
 function startWorker(): void {
     const port = parentPort;
     if (port === null) return;
@@ -93,4 +108,4 @@ function startWorker(): void {
     });
 }
 
-startWorker();
+if (shouldStartWorker(isMainThread, workerData)) startWorker();

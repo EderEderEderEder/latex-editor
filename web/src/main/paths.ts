@@ -15,11 +15,15 @@ export interface PathPlatform {
     readonly windows: boolean;
     // NTFS und APFS (Standard) unterscheiden Groß-/Kleinschreibung nicht, ext4 schon.
     readonly caseSensitive: boolean;
+    // Nur APFS/HFS+ behandeln NFC und NFD als denselben Namen; NTFS und ext4 nicht.
+    readonly unicodeInsensitive: boolean;
 }
 
-export const WINDOWS_PATHS: PathPlatform = { path: path.win32, windows: true, caseSensitive: false };
-export const MACOS_PATHS: PathPlatform = { path: path.posix, windows: false, caseSensitive: false };
-export const LINUX_PATHS: PathPlatform = { path: path.posix, windows: false, caseSensitive: true };
+// Angenommen wird das Standard-Dateisystem der Plattform. Abweichungen (case-sensitives APFS,
+// NTFS-Ordner mit Groß-/Kleinschreibung, exFAT-Stick unter Linux) erkennt das nicht.
+export const WINDOWS_PATHS: PathPlatform = { path: path.win32, windows: true, caseSensitive: false, unicodeInsensitive: false };
+export const MACOS_PATHS: PathPlatform = { path: path.posix, windows: false, caseSensitive: false, unicodeInsensitive: true };
+export const LINUX_PATHS: PathPlatform = { path: path.posix, windows: false, caseSensitive: true, unicodeInsensitive: false };
 
 export type RealpathFunction = (target: string) => Promise<string>;
 
@@ -54,6 +58,11 @@ function stripWindowsLongPrefix(input: string): string {
     return input.replace(WINDOWS_LONG_PREFIX, '');
 }
 
+// UNC-Netzwerkpfad (`\\server\share`, auch `\\?\UNC\…`)? Unter POSIX gibt es keine.
+export function isUncPath(input: string, platform: PathPlatform): boolean {
+    return platform.windows && WINDOWS_UNC.test(stripWindowsLongPrefix(input));
+}
+
 function isAcceptedAbsolute(input: string, platform: PathPlatform): boolean {
     if (!platform.windows) return input.startsWith('/');
     return WINDOWS_DRIVE_ABSOLUTE.test(input) || WINDOWS_UNC.test(input);
@@ -81,10 +90,11 @@ export function normalizeAbsolutePath(input: unknown, platform: PathPlatform): s
     return uppercaseDriveLetter(trimTrailingSeparator(normalized, platform), platform);
 }
 
-// Schlüssel für Vergleiche: normalisiert, Unicode NFC (macOS liefert Umlaute als NFD) und
-// je nach Plattform kleingeschrieben.
+// Schlüssel für Vergleiche: normalisiert, unter macOS Unicode NFC (es liefert Umlaute als NFD)
+// und je nach Plattform kleingeschrieben.
 export function comparisonKey(input: string, platform: PathPlatform): string {
-    const normalized = normalizeAbsolutePath(input, platform).normalize('NFC');
+    const lexical = normalizeAbsolutePath(input, platform);
+    const normalized = platform.unicodeInsensitive ? lexical.normalize('NFC') : lexical;
     return platform.caseSensitive ? normalized : normalized.toLowerCase();
 }
 
@@ -138,13 +148,17 @@ export async function resolveRealPath(input: string, options: RealPathOptions = 
     return normalized;
 }
 
-// Entscheidend sind die aufgelösten Pfade: ein Symlink im Projekt, der hinaus zeigt, zählt als außerhalb.
+// Erst lexikalisch, dann über die aufgelösten Pfade: ein Symlink im Projekt, der hinaus zeigt, zählt als
+// außerhalb. Die lexikalische Vorprüfung verhindert, dass `realpath` fremde Orte berührt (UNC baut eine
+// SMB-Verbindung auf und kann NTLM-Daten senden, `/net/…` weckt autofs).
 export async function isInsideProject(
     candidate: string,
     projectRoot: string,
     options: RealPathOptions = {},
 ): Promise<boolean> {
     const platform = options.platform ?? currentPathPlatform();
+    if (isUncPath(candidate, platform) && !isUncPath(projectRoot, platform)) return false;
+    if (!isPathWithin(candidate, projectRoot, platform)) return false;
     const [realCandidate, realRoot] = await Promise.all([
         resolveRealPath(candidate, options),
         resolveRealPath(projectRoot, options),

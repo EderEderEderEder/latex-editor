@@ -75,6 +75,15 @@ describe('Argumentprüfung', () => {
         ['dialog:pickFiles', [{ title: 'x', unbekannt: true }]],
         ['search:project', ['x', { caseSensitive: true, wholeWord: false }, []]],
         ['settings:set', ['k', () => undefined]],
+        ['project:open', ['/Users/u/geheim']],
+        ['project:open', ['C:\\']],
+        ['fs:import', [['/etc/passwd'], '/p']],
+        ['image:import', ['../a.png', '/p/images']],
+        ['marks:load', ['/p']],
+        ['marks:save', ['/p', '{}']],
+        ['recovery:list', ['/p']],
+        ['recovery:delete', ['/p', '/p/a.tex']],
+        ['recovery:save', [{ projectRoot: '/p', path: '/p/a.tex', text: '', savedAt: 0 }]],
     ] as const)('%s %j ist ungültig', (channel, args) => {
         expect(areArgsValid(channel, args)).toBe(false);
     });
@@ -86,6 +95,13 @@ describe('Argumentprüfung', () => {
         ['dialog:pickFiles', [{ title: 'Bilder', filters: [{ name: 'Bild', extensions: ['png'] }], multiple: true }]],
         ['settings:set', ['editor.fontSize', { a: [1, 'b', null, true] }]],
         ['synctex:backward', [3, 10.5, 200]],
+        ['project:open', ['b1f0c2e4-1a2b-4c3d-8e9f-0123456789ab']],
+        ['fs:import', [['g-1', 'g-2'], '/p/kapitel']],
+        ['image:import', ['g-1', '/p/images']],
+        ['marks:save', ['{}']],
+        ['recovery:save', [{ path: '/p/a.tex', text: '', savedAt: 0 }]],
+        ['recovery:delete', ['/p/a.tex']],
+        ['drop:grant', [['/Users/u/a.png']]],
     ] as const)('%s %j ist gültig', (channel, args) => {
         expect(areArgsValid(channel, args)).toBe(true);
     });

@@ -2,20 +2,6 @@
 
 ## Entscheidungen aus den Spikes
 
-### S10 Dateiüberwachung
-
-Entscheidung (W0-14, 2026-11-23): **`fs.watch(root, { recursive: true })` + eigener Entpreller, kein `chokidar`.** Auf macOS gemessen (Node 25 und Electron-Node 24.22.3): ein Stapel je Speichern (direkt und atomar), 300 Hilfsdateien in 2 s ergeben mit Filter keinen Stapel, 1000 Schreibvorgänge ohne verlorenen Namen, 5.000 Dateien im Dauerbetrieb 62 bis 72 MB, 1 ms CPU im Leerlauf, kein Wachstum.
-
-Regeln für `main/watch.ts` (W2-2):
-- 300 ms Ruhe (Höchstwartezeit 1,5 s), Menge relativer Pfade, Filter für Build-Hilfsdateien, Editor-Reste, `.git/objects`, Build-PDF.
-- **Die Ereignisart (`rename`/`change`) ignorieren:** auf macOS kommt fast alles als `rename`. Neu/geändert/gelöscht per `lstat` gegen einen Index (Schlüssel `normalize('NFC')`); unbekannte, nicht mehr vorhandene Pfade (Temp-Dateien beim atomaren Speichern) verwerfen.
-- Ordner-Umbenennen meldet nur alten und neuen Ordnernamen: Teilbaum neu einlesen. Groß-/Kleinschreibung: Existenz per `readdir(Elternordner)`, nicht per `stat`.
-- Lesen nach Ereignis mit Wiederholung und Rückoff (OneDrive, Virenscanner); Sicherheitsnetz statt Polling: bei `build:finished`, Fenster-Fokus und Überwacher-Fehler Baum und `mtime` geöffneter Tabs prüfen.
-- Ungeprüft: Windows und Linux (Handtest in `spikes/watch/ERGEBNIS.md`); `git status` und `.git`-Rückkopplung. `chokidar` nur mit Nutzer-OK nachrüsten, falls der Handtest scheitert.
-- Umgebungshinweis: in der Claude-Sandbox scheitert `fs.watch` mit `EMFILE`; Messungen und Tests der Überwachung außerhalb der Sandbox ausführen.
-
-Alle Zahlen und Tabellen: `spikes/watch/ERGEBNIS.md`.
-
 ### S1 CodeMirror-Leistung
 
 Entscheidung (W0-6, 2026-11-23): **eigenes `ViewPlugin` mit Zeilenzustands-Cache statt `StreamLanguage`.** Es merkt sich den Endzustand je Zeile, rechnet nach einer Änderung nur bis zur Zustandskonvergenz neu und baut Dekorationen nur für den sichtbaren Bereich; Zeilen hinter dem sichtbaren Bereich rechnet es im Leerlauf nach. Gemessen auf dem Intel-Mac mit Electron 45.4.1, schnellster von 5 Läufen:
@@ -47,9 +33,34 @@ Regeln für `pdf/textGeometry.ts` (W5-4):
 - Normalisierung von pdf.js lassen (Ligaturen kommen als „fi“, „ffi“), Wörter wie `MarkText` (NFKC, klein, `[\p{L}\p{N}\p{M}]+`), `hasEOL` als Trenner ohne Lage, Leerzeichen nicht in Zeilenrechtecke.
 - Ergebnis je Seite und PDF-Stand zwischenspeichern; ohne Treffer bleibt die Zeile (`Precision.lines`).
 
-Nebenbefund Swift (nicht in der App geprüft): `PDFPage.characterBounds(at:)` und `page.string` laufen nach Ligaturen auseinander; `MarkResolver` nutzt beides zusammen. Ungeprüft: Windows/Linux, Rendern im Worker, Type3-Schriften, Fremd-PDFs, mehrspaltiger Satz, Markierungen über Seitengrenzen.
+Nebenbefund Swift (nicht in der App geprüft): `PDFPage.characterBounds(at:)` und `page.string` laufen nach Ligaturen auseinander; `MarkResolver` nutzt beides zusammen. Ungeprüft: Windows/Linux, Rendern im Worker, Type3-Schriften, Fremd-PDFs, mehrspaltiger Satz, Markierungen über Seitengrenzen. **Offen (Review H2):** `disableWorkerRendering` rendert im Renderer-Hauptthread; ungemessen gegen das Tippbudget und 300 Seiten, Spike-Seite ohne CSP → Messung W3-3a, Wiederholung unter `RENDERER_CSP` und auf Windows in W5-4.
 
 Alle Zahlen: `spikes/pdf-text/ERGEBNIS.md`.
+
+### S3 SyncTeX in Node
+
+Entscheidung (W0-8, 2026-11-23, nur Mac geprüft): **eigener TS-Parser (`main/synctex.ts`, Port von `SyncTeX.swift`), Index in einem `worker_threads`-Worker (`main/workers/synctex.worker.ts`), der `load`/`forward`/`backward` selbst beantwortet**; kein `utilityProcess`, kein CLI-Rückfall. Fixture-Referenzwerte aus `SyncTeXTests.swift` und Gegenprobe mit dem `synctex`-CLI stimmen.
+
+- 250.000 Einträge (7,7 MB, 1 MB gzip), schnellster von 5 Läufen: Einlesen 102–106 ms (Streuung bis 208 ms unter Last), Main-Zeitgeber-Verzögerung währenddessen < 1 ms (im Main wären es ~110 ms Blockade), Abfrage vorwärts 0,004 ms, rückwärts 0,003 ms, Rundlauf über den Worker 0,03 ms; Index ca. 11 MB typisierte Arrays.
+- Pfade: Schlüssel über `paths.comparisonKey` (Trenner, `./`, `..`, Laufwerk, NFC, Groß-/Kleinschreibung je Plattform), relative `Input:`-Pfade gegen den Ordner der `.synctex.gz`, CRLF toleriert, unter macOS `/private` abgeschnitten. 8.3-Namen und Symlinks werden nicht aufgelöst (bei Bedarf `resolveRealPath` beim Laden).
+- `forward` liefert je PDF-Zeile ein Rechteck (Vertrag `rects[]`), Swift vereinigt sie.
+- Offen für W3-2: Main-Client und Worker als eigener electron-vite-Einstieg; Windows-Gegenprobe mit `synctex.exe`/MiKTeX (Pfadkodierung, 8.3).
+
+Alle Zahlen: `spikes/synctex/ERGEBNIS.md`.
+
+### S4 Werkzeuge, latexmk, Abbruch
+
+Entscheidung (W0-9, 2026-11-23, nur Mac geprüft, Windows per Handtest): **`main/tools.ts` findet TeX und Git, `main/build.ts` startet latexmk ohne Shell und bricht über die eigene Kind-PID ab; unter Windows nur `.exe`.**
+
+- Werkzeugsuche: PATH, dann bekannte Orte (MiKTeX `%LOCALAPPDATA%\Programs\MiKTeX\miktex\bin\x64` und `%ProgramFiles%\MiKTeX\…`, TeX Live `C:\texlive\<Jahr>\bin\windows`, macOS `/Library/TeX/texbin`, Linux `/usr/local/texlive/<Jahr>/bin/<Arch>`; Git für Windows `%ProgramFiles%\Git\cmd`). **`/usr/bin/git` wird unter macOS nie genommen** (xcode-select-Platzhalter). `distro` aus dem Pfad (`miktex`, `mactex`, `texlive`, `unknown`).
+- MiKTeX unter Windows: latexmk braucht Perl; fehlt es, meldet `tools.ts` das Problem `perl`, und `launchBlocker` verweigert den Start.
+- `.bat`/`.cmd` starten in Node seit dem Fix zu CVE-2024-27980 nicht mehr ohne `shell: true`; mit Shell ließen sich Pfade mit `&`, `%`, `^` nicht sicher quoten. Deshalb nur `.exe`; Skript-Funde sind ein Problem, kein Treffer.
+- Start: `spawn(latexmk, [-pdf|-xelatex|-lualatex, -synctex=1, -interaction=nonstopmode, -file-line-error, -cd, <Datei>], {shell: false, windowsHide: true, detached: !windows})`; `max_print_line=10000`, `error_line=254`, `half_error_line=238` wie in Swift. Status `idle → running → (cancelling →) idle`, nie parallel (`busy`).
+- Abbruch Unix: eigene Prozessgruppe, `SIGTERM`, nach 1 s `SIGKILL` an die Gruppe, beim Ende ein `SIGKILL`-Nachschlag. Windows: `%SystemRoot%\System32\taskkill.exe /PID <eigene Kind-PID> /T /F`. Nie nach Namen.
+- Gemessen (macOS): Abbruch Fake-Baum 3 ms (SIGTERM-fester Enkel 1005 ms); echter Build der HgbDemo-Kopie 8,9–10,8 s, einzige Warnung `fig:fehlt`; echter Abbruch eines 40-s-Dokuments 3 ms.
+- Offen (Review M4, M5, N3, M6): Windows-`cancel()` ohne Frist (Status bleibt `cancelling`), Abbruch beim Beenden der App, Dateiname mit `-` am Anfang (`./` voranstellen), Abbruchtest mit `process.kill(-pid, 0)` wirkt unter Windows nicht. Ungeprüft: taskkill-Baum, MiKTeX-Paketdialog bei „Nachfragen“ trotz `-interaction=nonstopmode`.
+
+Alle Zahlen und der Windows-Handtest: `spikes/build/ERGEBNIS.md`.
 
 ### S5/S9 Electron-Besonderheiten und PDF-Transport
 
@@ -65,13 +76,20 @@ Weitere Befunde:
 
 Prüfseite und Rohwerte: `spikes/electron-check/` (`ERGEBNIS.md`).
 
-### S3 SyncTeX in Node
+### S10 Dateiüberwachung
 
-Entscheidung (W0-8, 2026-11-23, nur Mac geprüft): **eigener TS-Parser (`main/synctex.ts`, Port von `SyncTeX.swift`), Index in einem `worker_threads`-Worker (`main/workers/synctex.worker.ts`), der `load`/`forward`/`backward` selbst beantwortet**; kein `utilityProcess`, kein CLI-Rückfall. Fixture-Referenzwerte aus `SyncTeXTests.swift` und Gegenprobe mit dem `synctex`-CLI stimmen.
+Entscheidung (W0-14, 2026-11-23): **`fs.watch(root, { recursive: true })` + eigener Entpreller, kein `chokidar`.** Auf macOS gemessen (Node 25 und Electron-Node 24.22.3): ein Stapel je Speichern (direkt und atomar), 300 Hilfsdateien in 2 s ergeben mit Filter keinen Stapel, 1000 Schreibvorgänge ohne verlorenen Namen, 5.000 Dateien im Dauerbetrieb 62 bis 72 MB, 1 ms CPU im Leerlauf, kein Wachstum.
 
-- 250.000 Einträge (7,7 MB, 1 MB gzip), schnellster von 5 Läufen: Einlesen 102–106 ms (Streuung bis 208 ms unter Last), Main-Zeitgeber-Verzögerung währenddessen < 1 ms (im Main wären es ~110 ms Blockade), Abfrage vorwärts 0,004 ms, rückwärts 0,003 ms, Rundlauf über den Worker 0,03 ms; Index ca. 11 MB typisierte Arrays.
-- Pfade: Schlüssel über `paths.comparisonKey` (Trenner, `./`, `..`, Laufwerk, NFC, Groß-/Kleinschreibung je Plattform), relative `Input:`-Pfade gegen den Ordner der `.synctex.gz`, CRLF toleriert, unter macOS `/private` abgeschnitten. 8.3-Namen und Symlinks werden nicht aufgelöst (bei Bedarf `resolveRealPath` beim Laden).
-- `forward` liefert je PDF-Zeile ein Rechteck (Vertrag `rects[]`), Swift vereinigt sie.
-- Offen für W3-2: Main-Client und Worker als eigener electron-vite-Einstieg; Windows-Gegenprobe mit `synctex.exe`/MiKTeX (Pfadkodierung, 8.3).
+Regeln für `main/watch.ts` (W2-2):
+- 300 ms Ruhe (Höchstwartezeit 1,5 s), Menge relativer Pfade, Filter für Build-Hilfsdateien, Editor-Reste, `.git/objects`, Build-PDF.
+- **Die Ereignisart (`rename`/`change`) ignorieren:** auf macOS kommt fast alles als `rename`. Neu/geändert/gelöscht per `lstat` gegen einen Index (Schlüssel `normalize('NFC')`); unbekannte, nicht mehr vorhandene Pfade (Temp-Dateien beim atomaren Speichern) verwerfen.
+- Ordner-Umbenennen meldet nur alten und neuen Ordnernamen: Teilbaum neu einlesen. Groß-/Kleinschreibung: Existenz per `readdir(Elternordner)`, nicht per `stat`.
+- Lesen nach Ereignis mit Wiederholung und Rückoff (OneDrive, Virenscanner); Sicherheitsnetz statt Polling: bei `build:finished`, Fenster-Fokus und Überwacher-Fehler Baum und `mtime` geöffneter Tabs prüfen.
+- Ungeprüft: Windows und Linux (Handtest in `spikes/watch/ERGEBNIS.md`); `git status` und `.git`-Rückkopplung. `chokidar` nur mit Nutzer-OK nachrüsten, falls der Handtest scheitert.
+- Umgebungshinweis: in der Claude-Sandbox scheitert `fs.watch` mit `EMFILE`; Messungen und Tests der Überwachung außerhalb der Sandbox ausführen.
 
-Alle Zahlen: `spikes/synctex/ERGEBNIS.md`.
+Alle Zahlen und Tabellen: `spikes/watch/ERGEBNIS.md`.
+
+## Review M0
+
+Review durch einen Opus-Agenten (W0-R, 2026-11-23): Befunde H1–N12 mit Stand der Einarbeitung und die Liste der nötigen Plan-Änderungen in `REVIEW-M0.md`. Wichtigste Folgen für die Architektur: Der Main hält die Pfad-Gewährungen (Renderer kann keine Pfadherkunft behaupten, H1), `main/pdfProtocol.ts` und das Protokoll `latexeditor:` entfallen, `file:` nur unter dem App-Ordner, DevTools nur unverpackt, Single-Instance-Lock, S2 unter CSP und mit Hauptthread-Rendern nachmessen (H2, W3-3a). Eingearbeitet in `shared/PLAN-WEBUI.md` und `shared/FEATURES.md`.

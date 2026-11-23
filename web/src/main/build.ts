@@ -15,6 +15,7 @@ export interface SpawnedProcess {
     readonly stdout: Readable | null;
     readonly stderr: Readable | null;
     on(event: 'close', listener: (code: number | null, signal: NodeJS.Signals | null) => void): this;
+    on(event: 'exit', listener: (code: number | null, signal: NodeJS.Signals | null) => void): this;
     on(event: 'error', listener: (error: Error) => void): this;
 }
 
@@ -28,6 +29,8 @@ export interface BuildDependencies {
     readonly env: Environment;
     readonly now: () => EpochMillis;
     readonly killGraceMs: number;
+    // Spätestens so lange nach dem Abbruch gilt der Lauf als beendet, auch ohne `close`.
+    readonly cancelDeadlineMs: number;
 }
 
 export interface BuildRequest {
@@ -51,6 +54,8 @@ export type BuildOutcome =
           readonly exitCode: number | null;
           readonly signal: NodeJS.Signals | null;
           readonly durationMs: number;
+          // Hinweis, wenn der Abbruch nicht sauber bestätigt wurde (sonst `null`)
+          readonly problem: string | null;
       }
     | { readonly kind: 'rejected'; readonly reason: 'busy' | 'blocked' | 'launchFailed'; readonly message: string };
 
@@ -60,6 +65,12 @@ export type KillPlan =
 
 // Nach SIGTERM an die Gruppe so lange warten, dann SIGKILL (Abbruch muss unter 3 s bleiben).
 export const KILL_GRACE_MS = 1_000;
+// Windows: taskkill erreicht nicht immer alle Enkel; hält einer die Pipe offen, kommt `close` nie.
+const CANCEL_CLOSE_EXTRA_MS = 2_000;
+export const CANCEL_DEADLINE_MS = KILL_GRACE_MS + CANCEL_CLOSE_EXTRA_MS;
+// Beginnt der Dateiname damit, läse latexmk ihn als Option.
+const OPTION_PREFIX = '-';
+const CURRENT_DIRECTORY_PREFIX = './';
 const ENGINE_FLAGS: Readonly<Record<LatexEngine, string>> = { pdflatex: '-pdf', xelatex: '-xelatex', lualatex: '-lualatex' };
 const COMMON_ARGUMENTS = ['-synctex=1', '-interaction=nonstopmode', '-file-line-error', '-cd'];
 // Verhindert Zeilenumbrüche im Log bei 79 Zeichen, die sonst Pfade und Meldungen zerreißen.
@@ -74,11 +85,15 @@ export const BUILD_MESSAGES = {
         `latexmk muss unter Windows eine .exe sein (${file}). Skripte (.bat/.cmd) lassen sich ohne Shell nicht starten.`,
     perlMissing: 'latexmk kann nicht starten: MiKTeX braucht dafür Perl.',
     launchFailed: (detail: string) => `latexmk ließ sich nicht starten: ${detail}`,
+    outputHeldOpen: 'latexmk ist abgebrochen, aber ein Unterprozess hielt die Ausgabe offen; sie wurde getrennt.',
+    cancelUnconfirmed: 'Der Abbruch ließ sich nicht bestätigen: latexmk läuft womöglich noch (Task-Manager prüfen).',
 } as const;
 
 export function buildArguments(mainFile: AbsolutePath, options: BuildOptions, platform: NodeJS.Platform): string[] {
     const pathModule = isWindowsPlatform(platform) ? path.win32 : path.posix;
-    return [ENGINE_FLAGS[options.engine], ...COMMON_ARGUMENTS, pathModule.basename(mainFile)];
+    const name = pathModule.basename(mainFile);
+    const fileArgument = name.startsWith(OPTION_PREFIX) ? CURRENT_DIRECTORY_PREFIX + name : name;
+    return [ENGINE_FLAGS[options.engine], ...COMMON_ARGUMENTS, fileArgument];
 }
 
 // Ordner von latexmk vorne in PATH: pdflatex, biber usw. liegen daneben, und eine GUI-App erbt den Shell-PATH nicht.
@@ -154,7 +169,13 @@ export function defaultBuildDependencies(): BuildDependencies {
         env: process.env,
         now: Date.now,
         killGraceMs: KILL_GRACE_MS,
+        cancelDeadlineMs: CANCEL_DEADLINE_MS,
     };
+}
+
+interface ProcessExit {
+    readonly code: number | null;
+    readonly signal: NodeJS.Signals | null;
 }
 
 interface ActiveRun {
@@ -162,8 +183,11 @@ interface ActiveRun {
     readonly pid: number | undefined;
     readonly startedAt: EpochMillis;
     readonly done: Promise<BuildOutcome>;
+    finish: (outcome: BuildOutcome) => void;
     cancelRequested: boolean;
     killTimer: NodeJS.Timeout | null;
+    deadlineTimer: NodeJS.Timeout | null;
+    exit: ProcessExit | null;
 }
 
 export class BuildRunner {
@@ -203,6 +227,7 @@ export class BuildRunner {
             run.cancelRequested = true;
             this.setState('cancelling', run.startedAt);
             this.terminateTree(run);
+            run.deadlineTimer = setTimeout(() => this.forceFinish(run), this.dependencies.cancelDeadlineMs);
         }
         await run.done;
     }
@@ -211,21 +236,36 @@ export class BuildRunner {
         const startedAt = this.dependencies.now();
         let settle: (outcome: BuildOutcome) => void = () => undefined;
         const done = new Promise<BuildOutcome>((resolve) => (settle = resolve));
-        const run: ActiveRun = { child, pid: child.pid, startedAt, done, cancelRequested: false, killTimer: null };
+        const run: ActiveRun = {
+            child, pid: child.pid, startedAt, done, finish: () => undefined,
+            cancelRequested: false, killTimer: null, deadlineTimer: null, exit: null,
+        };
         this.active = run;
         this.setState('running', startedAt);
         const splitters = this.attachOutput(child);
         let settled = false;
-        const finish = (outcome: BuildOutcome): void => {
+        run.finish = (outcome) => {
             if (settled) return;
             settled = true;
             splitters.forEach((splitter) => splitter.flush());
             this.release(run);
             settle(outcome);
         };
-        child.on('error', (error) => finish(rejected('launchFailed', BUILD_MESSAGES.launchFailed(error.message))));
-        child.on('close', (code, signal) => finish(this.finishedOutcome(run, code, signal)));
+        child.on('error', (error) => run.finish(rejected('launchFailed', BUILD_MESSAGES.launchFailed(error.message))));
+        child.on('exit', (code, signal) => {
+            run.exit = { code, signal };
+        });
+        child.on('close', (code, signal) => run.finish(this.finishedOutcome(run, { code, signal }, null)));
         return done;
+    }
+
+    // Frist nach dem Abbruch abgelaufen: Pipes trennen und über `exit` (oder ohne) abschließen, damit der
+    // Runner nicht in `cancelling` hängen bleibt und neue Builds nicht für immer `busy` sind.
+    private forceFinish(run: ActiveRun): void {
+        run.child.stdout?.destroy();
+        run.child.stderr?.destroy();
+        const problem = run.exit === null ? BUILD_MESSAGES.cancelUnconfirmed : BUILD_MESSAGES.outputHeldOpen;
+        run.finish(this.finishedOutcome(run, run.exit ?? { code: null, signal: null }, problem));
     }
 
     private attachOutput(child: SpawnedProcess): LineSplitter[] {
@@ -239,15 +279,18 @@ export class BuildRunner {
         });
     }
 
-    private finishedOutcome(run: ActiveRun, code: number | null, signal: NodeJS.Signals | null): BuildOutcome {
+    private finishedOutcome(run: ActiveRun, exit: ProcessExit, problem: string | null): BuildOutcome {
         const cancelled = run.cancelRequested;
         const durationMs = this.dependencies.now() - run.startedAt;
-        return { kind: 'finished', ok: code === 0 && !cancelled, cancelled, exitCode: code, signal, durationMs };
+        const { code, signal } = exit;
+        return { kind: 'finished', ok: code === 0 && !cancelled, cancelled, exitCode: code, signal, durationMs, problem };
     }
 
     private release(run: ActiveRun): void {
         if (run.killTimer !== null) clearTimeout(run.killTimer);
+        if (run.deadlineTimer !== null) clearTimeout(run.deadlineTimer);
         run.killTimer = null;
+        run.deadlineTimer = null;
         // Restliche Gruppenmitglieder (Enkel, die SIGTERM ignorieren und keine Pipe mehr halten) mitnehmen.
         if (run.cancelRequested && run.pid !== undefined && !isWindowsPlatform(this.dependencies.platform)) {
             this.signalGroup(run.pid, 'SIGKILL');

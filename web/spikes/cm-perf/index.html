@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="de">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            http-equiv="Content-Security-Policy"
+            content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'"
+        />
+        <title>Spike S1: CodeMirror-Leistung</title>
+        <style>
+            body { margin: 0; font: 13px -apple-system, "Segoe UI", sans-serif; background: #fff; color: #222; }
+            header { display: flex; gap: 12px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #ddd; height: 32px; }
+            #editor { height: 640px; border-bottom: 1px solid #ddd; }
+            #editor .cm-editor { height: 100%; }
+            #output { margin: 0; padding: 8px 12px; white-space: pre; overflow: auto; max-height: 200px; user-select: text; }
+        </style>
+    </head>
+    <body>
+        <header>
+            <button id="start" type="button">Alle Messungen starten (5 Läufe, etwa 10 Minuten)</button>
+            <span id="status">Bereit. Während der Messung nichts anderes tun.</span>
+        </header>
+        <div id="editor"></div>
+        <pre id="output"></pre>
+        <script src="./page.js"></script>
+    </body>
+</html>

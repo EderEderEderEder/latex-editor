@@ -5,14 +5,22 @@ directories:
 files:
   - out/**
   - package.json
+# Keine nativen Module: spart den Rebuild-Schritt (S6).
+npmRebuild: false
 win:
-  target: nsis
+  target:
+    - target: nsis
+      arch: x64
+  # Kein Administratorrecht: Installer und App laufen als aufrufender Benutzer.
   requestedExecutionLevel: asInvoker
 nsis:
+  # Assistent mit Ordnerwahl statt Ein-Klick-Installer; Installation je Benutzer unter %LOCALAPPDATA%.
   oneClick: false
   perMachine: false
   allowElevation: false
   allowToChangeInstallationDirectory: true
+  artifactName: "${productName}-Setup-${version}.${ext}"
+# Dateizuordnungen sind nicht nötig und bewusst nicht gesetzt (keine fileAssociations).
 mac:
   target: dmg
   category: public.app-category.productivity

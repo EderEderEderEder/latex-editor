@@ -1,0 +1,625 @@
+{
+  "pdfBytes": 11123397,
+  "index.html": {
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.8078.100 Electron/45.4.1 Safari/537.36",
+    "webPreferences": {
+      "allowRunningInsecureContent": false,
+      "contextIsolation": true,
+      "disableDialogs": false,
+      "disablePopups": false,
+      "disableWakeLocks": false,
+      "enableBlinkFeatures": "",
+      "experimentalFeatures": false,
+      "javascript": true,
+      "nodeIntegration": false,
+      "nodeIntegrationInSubFrames": false,
+      "nodeIntegrationInWorker": false,
+      "safeDialogs": false,
+      "safeDialogsMessage": "",
+      "sandbox": true,
+      "webSecurity": true,
+      "webviewTag": false
+    },
+    "sandbox": [
+      {
+        "name": "Sandbox aktiv (Preload meldet)",
+        "ok": true,
+        "detail": "true"
+      },
+      {
+        "name": "contextIsolation aktiv (Preload meldet)",
+        "ok": true,
+        "detail": "true"
+      },
+      {
+        "name": "Renderer ohne require/process/module/Buffer/global",
+        "ok": true,
+        "detail": "alle undefined"
+      },
+      {
+        "name": "window.spike zeigt nur freigegebene Funktionen",
+        "ok": true,
+        "detail": "isContextIsolated, isSandboxed, getConfig, getPathForFile, readPdf, clipboardRead, clipboardWrite"
+      }
+    ],
+    "csp": [
+      {
+        "name": "Inline-Skript (erwartet: blockiert)",
+        "ok": true,
+        "detail": "blockiert (Error)"
+      },
+      {
+        "name": "eval/new Function (erwartet: blockiert)",
+        "ok": true,
+        "detail": "blockiert (EvalError)"
+      },
+      {
+        "name": "img data: (erwartet: erlaubt)",
+        "ok": true,
+        "detail": "erlaubt"
+      },
+      {
+        "name": "img blob: (erwartet: erlaubt)",
+        "ok": true,
+        "detail": "erlaubt"
+      },
+      {
+        "name": "Worker blob: klassisch (erwartet: erlaubt)",
+        "ok": true,
+        "detail": "erlaubt"
+      },
+      {
+        "name": "Modul-Worker aus eigenem Paket (erwartet: erlaubt)",
+        "ok": true,
+        "detail": "erlaubt"
+      },
+      {
+        "name": "fetch blob: (erwartet: blockiert, connect-src)",
+        "ok": true,
+        "detail": "blockiert (TypeError)"
+      },
+      {
+        "name": "fetch data: (erwartet: blockiert, connect-src)",
+        "ok": true,
+        "detail": "blockiert (TypeError)"
+      },
+      {
+        "name": "fetch https://example.invalid (erwartet: blockiert)",
+        "ok": true,
+        "detail": "blockiert (TypeError)"
+      },
+      {
+        "name": "WebAssembly.compile im Renderer (Info: ohne wasm-unsafe-eval)",
+        "ok": true,
+        "detail": "blockiert (CompileError)"
+      }
+    ],
+    "probeWorker": "{\"wasm\":\"nein (CompileError)\",\"crossOriginIsolated\":false}",
+    "clipboardRenderer": [
+      {
+        "name": "navigator.clipboard.writeText (Info)",
+        "ok": false,
+        "detail": "blockiert (NotAllowedError)"
+      },
+      {
+        "name": "navigator.clipboard.readText (Info: bei denyAll erwartet abgelehnt)",
+        "ok": false,
+        "detail": "blockiert (NotAllowedError)"
+      },
+      {
+        "name": "Zwischenablage über IPC (Main: clipboard) schreiben/lesen",
+        "ok": true,
+        "detail": "\"S5 äöü {}[]\\\\@~| \\tTab\""
+      }
+    ],
+    "paste": {
+      "textareaKeepsTabs": false,
+      "textareaValue": "",
+      "editorKeepsTabs": false,
+      "editorValue": ""
+    },
+    "altgr": {
+      "expected": "{[]}\\@~|",
+      "ctrl+alt (Windows-AltGr) focusTextarea": "{[]}\\@~|",
+      "ctrl+alt (Windows-AltGr) focusEditor": "{[]}\\@~|",
+      "alt (Mac-Option) focusTextarea": "{[]}\\@~|",
+      "alt (Mac-Option) focusEditor": "{[]}\\@~|",
+      "keyRecordsSample": {
+        "textarea": [
+          {
+            "key": "~",
+            "code": "BracketRight",
+            "ctrlKey": false,
+            "altKey": true,
+            "altGraph": false,
+            "shiftKey": false,
+            "metaKey": false
+          },
+          {
+            "key": "|",
+            "code": "IntlBackslash",
+            "ctrlKey": false,
+            "altKey": true,
+            "altGraph": false,
+            "shiftKey": false,
+            "metaKey": false
+          }
+        ],
+        "codemirror": [
+          {
+            "key": "~",
+            "code": "BracketRight",
+            "ctrlKey": false,
+            "altKey": true,
+            "altGraph": false,
+            "shiftKey": false,
+            "metaKey": false
+          },
+          {
+            "key": "|",
+            "code": "IntlBackslash",
+            "ctrlKey": false,
+            "altKey": true,
+            "altGraph": false,
+            "shiftKey": false,
+            "metaKey": false
+          }
+        ]
+      }
+    },
+    "ime": {
+      "focusIme": {
+        "value": "日本"
+      },
+      "focusImeEditor": {
+        "value": "日本"
+      },
+      "compositionRecords": {
+        "textarea": [
+          "compositionstart:",
+          "compositionupdate:に",
+          "beforeinput/insertCompositionText:に",
+          "compositionupdate:にほん",
+          "beforeinput/insertCompositionText:にほん",
+          "compositionupdate:日本",
+          "beforeinput/insertCompositionText:日本",
+          "compositionend:日本"
+        ],
+        "codemirror": [
+          "beforeinput/insertText:{",
+          "beforeinput/insertText:[",
+          "beforeinput/insertText:]",
+          "beforeinput/insertText:}",
+          "beforeinput/insertText:\\",
+          "beforeinput/insertText:@",
+          "beforeinput/insertText:~",
+          "beforeinput/insertText:|",
+          "beforeinput/insertText:{",
+          "beforeinput/insertText:[",
+          "beforeinput/insertText:]",
+          "beforeinput/insertText:}",
+          "beforeinput/insertText:\\",
+          "beforeinput/insertText:@",
+          "beforeinput/insertText:~",
+          "beforeinput/insertText:|",
+          "compositionstart:",
+          "compositionupdate:に",
+          "beforeinput/insertCompositionText:に",
+          "compositionupdate:にほん",
+          "beforeinput/insertCompositionText:にほん",
+          "compositionupdate:日本",
+          "beforeinput/insertCompositionText:日本",
+          "compositionend:日本"
+        ]
+      }
+    },
+    "drop": {
+      "inputPath": "/var/folders/fg/nspc26vx0g3dz3tchk97_1kw0000gn/T/electron-check/pdf/big.pdf",
+      "dropPath": "/var/folders/fg/nspc26vx0g3dz3tchk97_1kw0000gn/T/electron-check/pdf/big.pdf",
+      "syntheticPath": ""
+    },
+    "protocolSecurity": {
+      "innerhalb": "Fehler TypeError",
+      "ausserhalb": "Fehler TypeError",
+      "traversal": "Fehler TypeError",
+      "anderesHost": "Fehler TypeError"
+    },
+    "pdf": {
+      "workerStartMs": 69.2999999821186,
+      "first_ipc": {
+        "ms": 56.30000001192093,
+        "pages": 400,
+        "bytes": 11123397,
+        "rendered": "Seite 1 gerendert, 102 Textelemente"
+      },
+      "first_protocolRange": {
+        "error": "ResponseException: Unexpected server response (0) while retrieving PDF \"latexeditor://pdf/?p=%2Fvar%2Ffolders%2Ffg%2Fnspc26vx0g3dz3tchk97_1kw0000gn%2FT%2Felectron-check%2Fpdf%2Fbig.pdf&n=1\"."
+      },
+      "first_protocolFull": {
+        "error": "ResponseException: Unexpected server response (0) while retrieving PDF \"latexeditor://pdf/?p=%2Fvar%2Ffolders%2Ffg%2Fnspc26vx0g3dz3tchk97_1kw0000gn%2FT%2Felectron-check%2Fpdf%2Fbig.pdf&n=2\"."
+      },
+      "times": {
+        "ipc": [
+          40.80000001192093,
+          40.400000005960464,
+          38.900000005960464,
+          40.20000001788139,
+          42.39999997615814,
+          40.39999997615814,
+          39.400000005960464
+        ],
+        "protocolRange": [
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1
+        ],
+        "protocolFull": [
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1
+        ]
+      },
+      "fastest": {
+        "ipc": 38.900000005960464,
+        "protocolRange": -1,
+        "protocolFull": -1
+      }
+    },
+    "violations": [
+      "script-src-elem -> inline",
+      "script-src-elem -> inline",
+      "script-src -> eval",
+      "script-src -> eval",
+      "connect-src -> blob",
+      "connect-src -> blob",
+      "connect-src -> data",
+      "connect-src -> data",
+      "connect-src -> https://example.invalid/",
+      "connect-src -> https://example.invalid/",
+      "script-src -> wasm-eval",
+      "script-src -> wasm-eval",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor",
+      "connect-src -> latexeditor"
+    ]
+  },
+  "index-protocol.html": {
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.8078.100 Electron/45.4.1 Safari/537.36",
+    "webPreferences": {
+      "allowRunningInsecureContent": false,
+      "contextIsolation": true,
+      "disableDialogs": false,
+      "disablePopups": false,
+      "disableWakeLocks": false,
+      "enableBlinkFeatures": "",
+      "experimentalFeatures": false,
+      "javascript": true,
+      "nodeIntegration": false,
+      "nodeIntegrationInSubFrames": false,
+      "nodeIntegrationInWorker": false,
+      "safeDialogs": false,
+      "safeDialogsMessage": "",
+      "sandbox": true,
+      "webSecurity": true,
+      "webviewTag": false
+    },
+    "sandbox": [
+      {
+        "name": "Sandbox aktiv (Preload meldet)",
+        "ok": true,
+        "detail": "true"
+      },
+      {
+        "name": "contextIsolation aktiv (Preload meldet)",
+        "ok": true,
+        "detail": "true"
+      },
+      {
+        "name": "Renderer ohne require/process/module/Buffer/global",
+        "ok": true,
+        "detail": "alle undefined"
+      },
+      {
+        "name": "window.spike zeigt nur freigegebene Funktionen",
+        "ok": true,
+        "detail": "isContextIsolated, isSandboxed, getConfig, getPathForFile, readPdf, clipboardRead, clipboardWrite"
+      }
+    ],
+    "csp": [
+      {
+        "name": "Inline-Skript (erwartet: blockiert)",
+        "ok": true,
+        "detail": "blockiert (Error)"
+      },
+      {
+        "name": "eval/new Function (erwartet: blockiert)",
+        "ok": true,
+        "detail": "blockiert (EvalError)"
+      },
+      {
+        "name": "img data: (erwartet: erlaubt)",
+        "ok": true,
+        "detail": "erlaubt"
+      },
+      {
+        "name": "img blob: (erwartet: erlaubt)",
+        "ok": true,
+        "detail": "erlaubt"
+      },
+      {
+        "name": "Worker blob: klassisch (erwartet: erlaubt)",
+        "ok": true,
+        "detail": "erlaubt"
+      },
+      {
+        "name": "Modul-Worker aus eigenem Paket (erwartet: erlaubt)",
+        "ok": true,
+        "detail": "erlaubt"
+      },
+      {
+        "name": "fetch blob: (erwartet: blockiert, connect-src)",
+        "ok": true,
+        "detail": "blockiert (TypeError)"
+      },
+      {
+        "name": "fetch data: (erwartet: blockiert, connect-src)",
+        "ok": true,
+        "detail": "blockiert (TypeError)"
+      },
+      {
+        "name": "fetch https://example.invalid (erwartet: blockiert)",
+        "ok": true,
+        "detail": "blockiert (TypeError)"
+      },
+      {
+        "name": "WebAssembly.compile im Renderer (Info: ohne wasm-unsafe-eval)",
+        "ok": true,
+        "detail": "blockiert (CompileError)"
+      }
+    ],
+    "probeWorker": "{\"wasm\":\"nein (CompileError)\",\"crossOriginIsolated\":false}",
+    "clipboardRenderer": [
+      {
+        "name": "navigator.clipboard.writeText (Info)",
+        "ok": false,
+        "detail": "blockiert (NotAllowedError)"
+      },
+      {
+        "name": "navigator.clipboard.readText (Info: bei denyAll erwartet abgelehnt)",
+        "ok": false,
+        "detail": "blockiert (NotAllowedError)"
+      },
+      {
+        "name": "Zwischenablage über IPC (Main: clipboard) schreiben/lesen",
+        "ok": true,
+        "detail": "\"S5 äöü {}[]\\\\@~| \\tTab\""
+      }
+    ],
+    "paste": {
+      "textareaKeepsTabs": false,
+      "textareaValue": "",
+      "editorKeepsTabs": false,
+      "editorValue": ""
+    },
+    "altgr": {
+      "expected": "{[]}\\@~|",
+      "ctrl+alt (Windows-AltGr) focusTextarea": "{[]}\\@~|",
+      "ctrl+alt (Windows-AltGr) focusEditor": "{[]}\\@~|",
+      "alt (Mac-Option) focusTextarea": "{[]}\\@~|",
+      "alt (Mac-Option) focusEditor": "{[]}\\@~|",
+      "keyRecordsSample": {
+        "textarea": [
+          {
+            "key": "~",
+            "code": "BracketRight",
+            "ctrlKey": false,
+            "altKey": true,
+            "altGraph": false,
+            "shiftKey": false,
+            "metaKey": false
+          },
+          {
+            "key": "|",
+            "code": "IntlBackslash",
+            "ctrlKey": false,
+            "altKey": true,
+            "altGraph": false,
+            "shiftKey": false,
+            "metaKey": false
+          }
+        ],
+        "codemirror": [
+          {
+            "key": "~",
+            "code": "BracketRight",
+            "ctrlKey": false,
+            "altKey": true,
+            "altGraph": false,
+            "shiftKey": false,
+            "metaKey": false
+          },
+          {
+            "key": "|",
+            "code": "IntlBackslash",
+            "ctrlKey": false,
+            "altKey": true,
+            "altGraph": false,
+            "shiftKey": false,
+            "metaKey": false
+          }
+        ]
+      }
+    },
+    "ime": {
+      "focusIme": {
+        "value": "日本"
+      },
+      "focusImeEditor": {
+        "value": "日本"
+      },
+      "compositionRecords": {
+        "textarea": [
+          "compositionstart:",
+          "compositionupdate:に",
+          "beforeinput/insertCompositionText:に",
+          "compositionupdate:にほん",
+          "beforeinput/insertCompositionText:にほん",
+          "compositionupdate:日本",
+          "beforeinput/insertCompositionText:日本",
+          "compositionend:日本"
+        ],
+        "codemirror": [
+          "beforeinput/insertText:{",
+          "beforeinput/insertText:[",
+          "beforeinput/insertText:]",
+          "beforeinput/insertText:}",
+          "beforeinput/insertText:\\",
+          "beforeinput/insertText:@",
+          "beforeinput/insertText:~",
+          "beforeinput/insertText:|",
+          "beforeinput/insertText:{",
+          "beforeinput/insertText:[",
+          "beforeinput/insertText:]",
+          "beforeinput/insertText:}",
+          "beforeinput/insertText:\\",
+          "beforeinput/insertText:@",
+          "beforeinput/insertText:~",
+          "beforeinput/insertText:|",
+          "compositionstart:",
+          "compositionupdate:に",
+          "beforeinput/insertCompositionText:に",
+          "compositionupdate:にほん",
+          "beforeinput/insertCompositionText:にほん",
+          "compositionupdate:日本",
+          "beforeinput/insertCompositionText:日本",
+          "compositionend:日本"
+        ]
+      }
+    },
+    "drop": {
+      "inputPath": "/var/folders/fg/nspc26vx0g3dz3tchk97_1kw0000gn/T/electron-check/pdf/big.pdf",
+      "dropPath": "/var/folders/fg/nspc26vx0g3dz3tchk97_1kw0000gn/T/electron-check/pdf/big.pdf",
+      "syntheticPath": ""
+    },
+    "protocolSecurity": {
+      "innerhalb": "200",
+      "ausserhalb": "403",
+      "traversal": "403",
+      "anderesHost": "403"
+    },
+    "pdf": {
+      "workerStartMs": 70.40000000596046,
+      "first_ipc": {
+        "ms": 50.900000005960464,
+        "pages": 400,
+        "bytes": 11123397,
+        "rendered": "Seite 1 gerendert, 102 Textelemente"
+      },
+      "first_protocolRange": {
+        "ms": 56.599999994039536,
+        "pages": 400,
+        "bytes": 0,
+        "rendered": "Seite 1 gerendert, 102 Textelemente"
+      },
+      "first_protocolFull": {
+        "ms": 54.30000001192093,
+        "pages": 400,
+        "bytes": 0,
+        "rendered": "Seite 1 gerendert, 102 Textelemente"
+      },
+      "times": {
+        "ipc": [
+          40.900000005960464,
+          41.30000001192093,
+          41.5,
+          47.30000001192093,
+          42.20000001788139,
+          38.80000001192093,
+          44.10000002384186
+        ],
+        "protocolRange": [
+          49.19999998807907,
+          49.30000001192093,
+          44.19999998807907,
+          44.69999998807907,
+          46.80000001192093,
+          53.5,
+          47
+        ],
+        "protocolFull": [
+          57.599999994039536,
+          46.30000001192093,
+          45.900000005960464,
+          47.5,
+          42.5,
+          46.599999994039536,
+          45.099999994039536
+        ]
+      },
+      "fastest": {
+        "ipc": 38.80000001192093,
+        "protocolRange": 44.19999998807907,
+        "protocolFull": 42.5
+      }
+    },
+    "violations": [
+      "script-src-elem -> inline",
+      "script-src-elem -> inline",
+      "script-src -> eval",
+      "script-src -> eval",
+      "connect-src -> blob",
+      "connect-src -> blob",
+      "connect-src -> data",
+      "connect-src -> data",
+      "connect-src -> https://example.invalid/",
+      "connect-src -> https://example.invalid/",
+      "script-src -> wasm-eval",
+      "script-src -> wasm-eval"
+    ]
+  }
+}

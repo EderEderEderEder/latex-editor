@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="%%CSP%%">
+    <title>Prüfseite Electron (W0-10)</title>
+    <style>
+        body { font: 13px system-ui, sans-serif; margin: 12px; }
+        section { border: 1px solid #aaa; border-radius: 6px; padding: 8px; margin-bottom: 10px; }
+        h2 { font-size: 14px; margin: 0 0 6px; }
+        textarea { width: 100%; height: 56px; box-sizing: border-box; font: 13px monospace; }
+        #editor { border: 1px solid #888; height: 90px; overflow: auto; }
+        pre { background: #f3f3f3; max-height: 130px; overflow: auto; margin: 6px 0 0; font-size: 11px; white-space: pre-wrap; }
+        #dropzone { border: 2px dashed #888; padding: 14px; text-align: center; }
+        button { margin: 2px 4px 2px 0; }
+        .ok { color: #070; } .fail { color: #b00; }
+    </style>
+</head>
+<body>
+    <h1 style="font-size:16px">Prüfseite Electron (Spike S5/S6/S9, Wegwerfcode)</h1>
+    <p id="info"></p>
+    <button id="runAll">Alle automatischen Prüfungen</button>
+    <pre id="summary">noch nicht gelaufen</pre>
+
+    <section><h2>(a) AltGr: <code>{ } [ ] \ @ ~ |</code> eintippen (Windows: AltGr, Mac: Option)</h2>
+        <textarea id="altgrText" placeholder="Textfeld"></textarea>
+        <div id="editor"></div>
+        <pre id="log-keys"></pre></section>
+
+    <section><h2>(b) IME: japanisch/chinesisch/Emoji-Zeichenwahl (Compose-Ereignisse)</h2>
+        <textarea id="imeText" placeholder="IME-Textfeld"></textarea>
+        <pre id="log-ime"></pre></section>
+
+    <section><h2>(c) Drag &amp; Drop: Datei hierher ziehen oder wählen</h2>
+        <div id="dropzone">Datei hier ablegen</div>
+        <input type="file" id="fileInput"><button id="btnDrop">Ablage simulieren</button>
+        <pre id="log-dnd"></pre></section>
+
+    <section><h2>(d) Zwischenablage: Excel-Zellen hier einfügen (Strg/Cmd+V)</h2>
+        <textarea id="pasteText" placeholder="Einfügen"></textarea>
+        <button id="btnClip">navigator.clipboard und IPC prüfen</button>
+        <pre id="log-clipboard"></pre></section>
+
+    <section><h2>(e) Sandbox / (f) CSP / (g) PDF</h2>
+        <button id="btnSandbox">Sandbox</button><button id="btnCsp">CSP</button>
+        <button id="btnPdf">PDF-Transport (5 Läufe)</button>
+        <pre id="log-auto"></pre></section>
+    <script type="module" src="./page.js"></script>
+</body>
+</html>

@@ -4,11 +4,14 @@ import { registerIpcHandlers } from './ipc';
 import { createHandlerRegistry } from './ipcHandlers';
 import { bringToFront, createBeforeQuitHandler, QuitTasks } from './lifecycle';
 import { currentPathPlatform, pathToFileUrl } from './paths';
+import { choosePreloadPath } from './preloadChoice';
 import { applySessionSecurity, lockNavigation, type RendererLocation } from './security';
 
 const WINDOW_WIDTH = 1200;
 const WINDOW_HEIGHT = 800;
 const RENDERER_INDEX_PATH = join(__dirname, '../renderer/index.html');
+const REAL_PRELOAD_PATH = join(__dirname, '../preload/index.js');
+const STUB_PRELOAD_PATH = join(__dirname, '../preload/stub.js');
 const DEV_SERVER_ENV = 'ELECTRON_RENDERER_URL';
 
 let mainWindow: BrowserWindow | null = null;
@@ -34,13 +37,24 @@ function trustedWebContentsId(): number | null {
     return mainWindow.webContents.id;
 }
 
+function resolvePreloadPath(): string {
+    const preload = choosePreloadPath({
+        isPackaged: app.isPackaged,
+        env: process.env,
+        realPath: REAL_PRELOAD_PATH,
+        stubPath: STUB_PRELOAD_PATH,
+    });
+    if (preload === STUB_PRELOAD_PATH) logSecurity('Stub-Preload aktiv (nur Tests): window.api liefert gefälschte Antworten');
+    return preload;
+}
+
 function createWindow(location: RendererLocation): BrowserWindow {
     const window = new BrowserWindow({
         width: WINDOW_WIDTH,
         height: WINDOW_HEIGHT,
         title: 'LatexEditor Web',
         webPreferences: {
-            preload: join(__dirname, '../preload/index.js'),
+            preload: resolvePreloadPath(),
             contextIsolation: true,
             sandbox: true,
             nodeIntegration: false,

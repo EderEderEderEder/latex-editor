@@ -5,6 +5,8 @@ directories:
 files:
   - out/**
   - package.json
+  # Test-Preload (Playwright, LATEXEDITOR_STUB_PRELOAD): gehört nicht ins Paket.
+  - "!out/preload/stub*"
 # Keine nativen Module: spart den Rebuild-Schritt (S6).
 npmRebuild: false
 win:

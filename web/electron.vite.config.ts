@@ -1,4 +1,5 @@
 import react from '@vitejs/plugin-react';
+import { resolve } from 'node:path';
 import { defineConfig } from 'electron-vite';
 import type { Plugin } from 'vite';
 
@@ -17,7 +18,21 @@ function developmentCsp(): Plugin {
 
 export default defineConfig({
     main: {},
-    preload: {},
+    // `stub.ts` ist der Test-Preload (siehe `src/main/preloadChoice.ts`) und wird nicht ins Paket aufgenommen
+    // (`electron-builder.yml`). Ein Sandbox-Preload darf keine Nachbardatei laden: jeder Einstieg wird
+    // deshalb allein und vollständig gebündelt, ohne gemeinsame Chunks.
+    preload: {
+        build: {
+            isolatedEntries: true,
+            externalizeDeps: false,
+            rollupOptions: {
+                input: {
+                    index: resolve(__dirname, 'src/preload/index.ts'),
+                    stub: resolve(__dirname, 'src/preload/stub.ts'),
+                },
+            },
+        },
+    },
     renderer: {
         plugins: [react(), developmentCsp()],
     },

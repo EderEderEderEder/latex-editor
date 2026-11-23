@@ -34,8 +34,6 @@ export interface BibLineResult {
     readonly state: BibLexState;
 }
 
-export type SyntaxLanguage = 'bibtex' | 'latex';
-
 /** Zustand vor der ersten Zeile und zwischen Einträgen */
 export const INITIAL_BIB_STATE: BibLexState = Object.freeze({
     phase: 'outside',
@@ -71,9 +69,6 @@ const NAME_SYMBOLS: ReadonlySet<number> = new Set([...'_-:.+/\''].map((symbol) =
 
 const COMMENT_ENTRY_NAME = 'comment';
 const WITHOUT_KEY_ENTRY_NAMES: ReadonlySet<string> = new Set(['string', 'preamble']);
-const FILE_EXTENSION_SEPARATOR = '.';
-const BIB_EXTENSION = 'bib';
-const PATH_SEPARATORS = /[\\/]/;
 
 function isLetter(code: number): boolean {
     return (code >= CHAR_LOWER_A && code <= CHAR_LOWER_Z) || (code >= CHAR_UPPER_A && code <= CHAR_UPPER_Z);
@@ -95,14 +90,6 @@ function entryKindOf(name: string): BibEntryKind {
     const lowerCased = name.toLowerCase();
     if (lowerCased === COMMENT_ENTRY_NAME) return 'comment';
     return WITHOUT_KEY_ENTRY_NAMES.has(lowerCased) ? 'withoutKey' : 'regular';
-}
-
-/** Sprache nach Dateiendung (ohne Beachtung der Groß-/Kleinschreibung): `.bib` ist BibTeX, alles andere LaTeX. */
-export function languageFromPath(path: string): SyntaxLanguage {
-    const name = path.split(PATH_SEPARATORS).pop() ?? '';
-    const dotIndex = name.lastIndexOf(FILE_EXTENSION_SEPARATOR);
-    if (dotIndex <= 0) return 'latex';
-    return name.slice(dotIndex + 1).toLowerCase() === BIB_EXTENSION ? 'bibtex' : 'latex';
 }
 
 export function bibStatesEqual(left: BibLexState, right: BibLexState): boolean {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { EditorHost } from './editor/EditorHost';
 import { getApi } from './ipc/api';
 
 const PING_PENDING = '…';
@@ -22,6 +23,8 @@ export function App() {
         <main>
             <h1>LatexEditor</h1>
             <p>{pingText}</p>
+            {/* Vorläufig (W1-6): nur für den Sitzungstausch-Test; die Editor-Oberfläche baut W1-12. */}
+            <EditorHost />
         </main>
     );
 }

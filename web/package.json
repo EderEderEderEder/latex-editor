@@ -12,6 +12,7 @@
         "test:fast": "node scripts/test-run.mjs --fast",
         "test:e2e": "node scripts/test-run.mjs --e2e",
         "test:raw": "vitest run",
+        "build:e2e": "RENDERER_VITE_EDITOR_TEST_API=1 electron-vite build",
         "package": "electron-vite build && electron-builder"
     },
     "dependencies": {

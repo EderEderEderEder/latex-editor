@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
     INITIAL_BIB_STATE,
     bibStatesEqual,
-    languageFromPath,
     tokenizeBibLine,
     type BibLexState,
     type BibToken,
 } from '../../src/shared/core/bib/tokenizer';
+import { languageFromPath } from '../../src/shared/core/language';
 import { loadSpec, type SpecCase } from '../support/specVectors';
 
 interface TextToken {

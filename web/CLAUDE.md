@@ -13,6 +13,7 @@ Regeln (Thesis, Prozesse, Subagents, Code-Stil): `../CLAUDE.md`, nicht doppelt h
 | Tests mit Zusammenfassung, Hänger-Wächter, Log `.test-logs/last.log` (immer so, nicht direkt `vitest`) | `npm test` (= `node scripts/test-run.mjs`) |
 | Nur schnelle Tests / einzelne Tests / mit E2E | `npm run test:fast`, `node scripts/test-run.mjs --filter <Dateimuster>` oder `--name <Testname>`, `--e2e` |
 | Roher Vitest-Lauf (nur zum Debuggen) | `npm run test:raw` |
+| Build mit Testzugang für Playwright-Sitzungstests (`window.__editorTestApi`, nie im normalen Build) | `npm run build:e2e`, danach `node scripts/test-run.mjs --e2e` (ohne Bash-Sandbox), danach wieder `npm run build` |
 | Bauen nach `out/` | `npm run build` |
 | Installer nach `dist/` (NSIS, dmg, AppImage) | `npm run package` |
 

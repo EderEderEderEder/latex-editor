@@ -26,6 +26,7 @@ Nummerierung W-H1 ff. Prüfseite für W-H3 bis W-H8: `node spikes/electron-check
 | W-H11 | Single-Instance: App starten, dann ein zweites Mal starten (Startmenü/Doppelklick) | ☐ | ☐ | keine zweite Instanz; das erste Fenster kommt nach vorn (aus dem Minimierten wiederhergestellt) |
 | W-H12 | Beenden während eines Builds: langes Dokument (40 s) kompilieren, App schließen | ☐ | ☐ | App beendet sich; im Task-Manager/Aktivitätsanzeige bleiben kein `latexmk`, `perl`, `pdflatex` zurück (Windows: Spalte PID; nichts nach Namen beenden) |
 | W-H13 | UNC-Pfad als Projekt (nur Windows): `\\server\freigabe\projekt` bzw. `\\localhost\c$\…` über „Projekt öffnen“ und aus „Zuletzt geöffnet“ | – | ☐ | wird als Projekt abgelehnt (Fehlermeldung), keine Netzwerkverbindung/kein NTLM-Anmeldeversuch; macOS: `/net/…` (autofs) löst kein Mounten aus |
+| W-H14 | Leistungsmessung (W1-13): in `web/` `npm run build:e2e`, dann `npm run test:perf` (PowerShell; Fenster dabei nicht anfassen, nichts anderes laufen lassen; dauert 2–5 Minuten), danach wieder `npm run build` | – | ☐ | Zeilen `[perf]` und `Perf: Budgets eingehalten`; Messwerte (schnellster Lauf, p95, Streuung) in `docs/ARCHITEKTUR.md`, Abschnitt „Performance-Budgets M1“, als Spalte Windows eintragen (Rechner, CPU, Windows-Version dazu). Bei Überschreitung: Messwert notieren, Ursache suchen; Budget nur mit Begründung ändern |
 
 ## Unverpackter Start für W-H9 (DevTools, CSP-Konsole)
 

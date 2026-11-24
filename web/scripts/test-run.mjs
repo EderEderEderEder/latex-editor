@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // Testlauf mit Überwachung und kurzer Zusammenfassung (Gegenstück zu swift/scripts/test-run.sh).
 //
-// Aufruf (im Ordner web/): node scripts/test-run.mjs [--fast] [--e2e] [--filter MUSTER] [--name MUSTER]
+// Aufruf (im Ordner web/): node scripts/test-run.mjs [--fast] [--e2e] [--perf] [--filter MUSTER] [--name MUSTER]
 //   --fast           Vitest ohne langsame Gruppen (Ordner tests/slow/ und Dateien mit ".slow." im Namen)
 //   --e2e            zusätzlich Playwright (`npx playwright test`); ohne e2e-Tests wird mit Hinweis übersprungen
+//   --perf           nur die Leistungsmessung (tests/perf/*.perf.spec.ts, Playwright mit Electron, eigene Konfiguration);
+//                    Voraussetzung `npm run build:e2e`; läuft ohne Vitest, damit nichts anderes die Messung stört
 //   --filter MUSTER  Dateimuster, geht als Positionsargument an Vitest (z. B. --filter tokenizer)
 //   --name MUSTER    Testnamenmuster, geht als `-t` an Vitest
 //
@@ -28,6 +30,10 @@ const STALL_SECONDS = Number(process.env.TEST_RUN_STALL_SECONDS ?? 60);
 const TIMEOUT_SECONDS = Number(process.env.TEST_RUN_TIMEOUT_SECONDS ?? 300);
 const KILL_GRACE_MS = 5000;
 const POLL_INTERVAL_MS = 1000;
+// Die Leistungsmessung startet fünfmal ein frisches Electron und meldet sich dazwischen nur je Lauf
+const PERF_STALL_SECONDS = 120;
+const PERF_TIMEOUT_SECONDS = 900;
+const PERF_LOG_MARKER = '[perf]';
 const TAIL_LINE_COUNT = 20;
 const SLOWEST_COUNT = 3;
 const MAX_ERROR_LINES = 6;
@@ -51,11 +57,12 @@ const playwrightEntry = join(webDir, 'node_modules', '@playwright', 'test', 'cli
 const taskkillPath = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe');
 
 function parseArgs(argv) {
-    const options = { fast: false, e2e: false, filter: null, name: null };
+    const options = { fast: false, e2e: false, perf: false, filter: null, name: null };
     for (let index = 0; index < argv.length; index++) {
         const arg = argv[index];
         if (arg === '--fast') options.fast = true;
         else if (arg === '--e2e') options.e2e = true;
+        else if (arg === '--perf') options.perf = true;
         else if (arg === '--filter') options.filter = argv[++index];
         else if (arg === '--name') options.name = argv[++index];
         else throw new Error(`Unbekannte Option: ${arg}`);
@@ -75,6 +82,10 @@ function buildVitestCommand(options, nameOverride = null) {
 
 function playwrightCommand() {
     return [process.execPath, playwrightEntry, 'test'];
+}
+
+function perfCommand() {
+    return [process.execPath, playwrightEntry, 'test', '--config', join('tests', 'perf', 'playwright.perf.config.ts')];
 }
 
 function killCommand(pid) {
@@ -100,7 +111,7 @@ function signalGroup(pid, signal) {
 }
 
 // Startet den Befehl, schreibt alles ins Log, überwacht Stillstand und Gesamtdauer.
-function runWatched([command, ...args], logStream) {
+function runWatched([command, ...args], logStream, limits = { stallSeconds: STALL_SECONDS, timeoutSeconds: TIMEOUT_SECONDS }) {
     return new Promise((resolve) => {
         const child = spawn(command, args, {
             cwd: webDir,
@@ -120,7 +131,7 @@ function runWatched([command, ...args], logStream) {
             clearInterval(watcher);
             resolve({ code, reason: state.reason, lines: state.lines, seconds: (Date.now() - started) / 1000 });
         };
-        const watcher = setInterval(() => watchLimits(state, started, child, finish), POLL_INTERVAL_MS);
+        const watcher = setInterval(() => watchLimits(state, started, child, finish, limits), POLL_INTERVAL_MS);
         child.on('error', (error) => { recordOutput(state, logStream, `Start fehlgeschlagen: ${error.message}\n`); finish(null); });
         child.on('close', (code) => finish(code));
     });
@@ -135,21 +146,21 @@ function recordOutput(state, logStream, chunk) {
     state.lines.push(...parts);
 }
 
-function watchLimits(state, started, child, finish) {
+function watchLimits(state, started, child, finish, limits) {
     if (state.reason) return;
     const now = Date.now();
-    if (now - state.lastOutput >= STALL_SECONDS * 1000) state.reason = 'stall';
-    else if (now - started >= TIMEOUT_SECONDS * 1000) state.reason = 'timeout';
+    if (now - state.lastOutput >= limits.stallSeconds * 1000) state.reason = 'stall';
+    else if (now - started >= limits.timeoutSeconds * 1000) state.reason = 'timeout';
     if (!state.reason) return;
     killProcessTree(child);
     // Hält ein Enkel die Ausgabe offen, kommt kein "close"; nach der Gnadenfrist trotzdem fertig melden
     setTimeout(() => finish(null), KILL_GRACE_MS + POLL_INTERVAL_MS);
 }
 
-function reportHang(result) {
+function reportHang(result, limits = { stallSeconds: STALL_SECONDS, timeoutSeconds: TIMEOUT_SECONDS }) {
     const text = result.reason === 'stall'
-        ? `HÄNGER: ${STALL_SECONDS} s ohne Ausgabe, Prozessbaum beendet.`
-        : `ZEITÜBERSCHREITUNG: ${TIMEOUT_SECONDS} s Gesamtdauer überschritten, Prozessbaum beendet.`;
+        ? `HÄNGER: ${limits.stallSeconds} s ohne Ausgabe, Prozessbaum beendet.`
+        : `ZEITÜBERSCHREITUNG: ${limits.timeoutSeconds} s Gesamtdauer überschritten, Prozessbaum beendet.`;
     console.log(text);
     if (result.reason === 'stall') {
         console.log(`Letzte ${TAIL_LINE_COUNT} Ausgabezeilen:`);
@@ -238,16 +249,36 @@ async function runE2eStage(logStream) {
     return run.code === 0 ? EXIT_OK : EXIT_FAILED;
 }
 
+function hasPerfTests() {
+    const perfDir = join(webDir, 'tests', 'perf');
+    return existsSync(perfDir) && readdirSync(perfDir).some((file) => file.endsWith('.perf.spec.ts'));
+}
+
+// Nur die Messung, ohne Vitest davor; die Messzeilen (Marke `[perf]`) kommen in die Zusammenfassung.
+async function runPerfStage(logStream) {
+    if (!hasPerfTests()) {
+        console.log('Perf: übersprungen, es gibt keine Messung (tests/perf/*.perf.spec.ts).');
+        return EXIT_OK;
+    }
+    const limits = { stallSeconds: PERF_STALL_SECONDS, timeoutSeconds: PERF_TIMEOUT_SECONDS };
+    const run = await runWatched(perfCommand(), logStream, limits);
+    if (run.reason) { reportHang(run, limits); return EXIT_HUNG; }
+    run.lines.filter((line) => line.includes(PERF_LOG_MARKER)).forEach((line) => console.log(line));
+    console.log(`Perf: ${run.code === 0 ? 'Budgets eingehalten' : 'fehlgeschlagen'} in ${run.seconds.toFixed(1)} s`);
+    if (run.code !== 0) run.lines.slice(-TAIL_LINE_COUNT).forEach((line) => console.log(`  ${line}`));
+    return run.code === 0 ? EXIT_OK : EXIT_FAILED;
+}
+
 async function main() {
     const options = parseArgs(process.argv.slice(2));
     if (process.env.TEST_RUN_PRINT_COMMAND === '1') {
-        console.log(JSON.stringify({ vitest: buildVitestCommand(options), playwright: playwrightCommand(), kill: killCommand(1234) }));
+        console.log(JSON.stringify({ vitest: buildVitestCommand(options), playwright: playwrightCommand(), perf: perfCommand(), kill: killCommand(1234) }));
         return;
     }
     mkdirSync(logDir, { recursive: true });
     const logStream = createWriteStream(logPath);
-    let exitCode = await runVitestStage(options, logStream);
-    if (options.e2e && exitCode === EXIT_OK) exitCode = await runE2eStage(logStream);
+    let exitCode = options.perf ? await runPerfStage(logStream) : await runVitestStage(options, logStream);
+    if (options.e2e && !options.perf && exitCode === EXIT_OK) exitCode = await runE2eStage(logStream);
     logStream.end();
     console.log(`Log: ${logPath}`);
     process.exit(exitCode);

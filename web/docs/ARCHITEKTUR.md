@@ -93,3 +93,33 @@ Alle Zahlen und Tabellen: `spikes/watch/ERGEBNIS.md`.
 ## Review M0
 
 Review durch einen Opus-Agenten (W0-R, 2026-11-23): Befunde H1–N12 mit Stand der Einarbeitung und die Liste der nötigen Plan-Änderungen in `REVIEW-M0.md`. Wichtigste Folgen für die Architektur: Der Main hält die Pfad-Gewährungen (Renderer kann keine Pfadherkunft behaupten, H1), `main/pdfProtocol.ts` und das Protokoll `latexeditor:` entfallen, `file:` nur unter dem App-Ordner, DevTools nur unverpackt, Single-Instance-Lock, S2 unter CSP und mit Hauptthread-Rendern nachmessen (H2, W3-3a). Eingearbeitet in `shared/PLAN-WEBUI.md` und `shared/FEATURES.md`.
+
+## Performance-Budgets M1
+
+Stand 2026-11-24 (W1-13). Gemessen am fertigen Editor mit allen Erweiterungen (Syntaxfarben, Gutter, Einklappen, Diagnose mit Worker, Tippen, Suche) und 10.000 Zeilen synthetischem LaTeX (`tests/perf/syntheticDocument.ts`, fester Seed, ohne Inhalt aus der Thesis; Absätze, Formeln, Umgebungen, Kommentare, Abschnitte, ein doppeltes Label und eine nicht geschlossene Klammer für die Diagnose). Rechner: Intel-Mac (i9, 8 Kerne, 2,3 GHz, 16 GB), macOS 26.7.1, Electron 45.4.1, Stub-Preload, Fenster nicht verdeckt.
+
+Aufruf: `npm run build:e2e`, dann `npm run test:perf` (= `node scripts/test-run.mjs --perf`, ohne Bash-Sandbox), danach wieder `npm run build`. Der normale `--e2e`-Lauf enthält die Messung nicht (eigene Konfiguration `tests/perf/playwright.perf.config.ts`, Dateimuster `*.perf.spec.ts`). Budgets: `tests/perf/budgets.ts`, Plausibilitätsprüfung `tests/unit/perfBudgets.test.ts`. Ein überschrittenes Budget macht den Test rot; erst die Ursache suchen, nicht das Budget erhöhen.
+
+Methode:
+- 5 Läufe, jeder mit frischem Electron (Öffnen ist damit „kalt“); je Messung zählt der schnellste Lauf (kleinster p95), Streuung = p95 des schlechtesten Laufs. Chromium-Schalter wie im Spike S1 (`--disable-frame-rate-limit`, `--disable-gpu-vsync`, kein Hintergrund-Drosseln), damit „bis zum Rahmen“ die Arbeit misst und nicht das Warten auf den Rahmentakt.
+- Tasten sind echte Tastaturereignisse über Playwright (`keydown` → Eingabebehandlung von CodeMirror), 100 Wiederholungen mit 40 ms Pause, zwei Aufwärmtasten für den Sprung zum Cursor. Messwert „Arbeit“ = `keydown` bis Ende der synchronen Verarbeitung plus Rahmenarbeit bis nach dem Paint (Methode des Spikes). Die Latenz (Taste bis Paint) ist nur 0,0 bis 0,1 ms höher, der Rahmentakt stört also nicht.
+- Öffnen: `open` + `activate` bis nach dem Paint des ersten Rahmens. Scrollen: 120 Rahmen zu je 400 px, Arbeit je Rahmen. Suchen: Strg+F, Suchbegriff tippen, Enter bis nach dem Paint des Rahmens, in dem der Cursor am Treffer steht; der Treffer steht in Zeile 9.500 (Worst Case, Cursor am Anfang). Einklapp-Scan: Überschrift in den sichtbaren Text einfügen; Messwert = Beginn der Scan-Aufgabe (längste Lücke einer Nachrichtenschleife nach der Entprellung von 300 ms) bis nach dem Paint der neuen Einklapp-Marke.
+
+| Messung | Messwert p50 / p95 (schnellster Lauf, ms) | Streuung p95 (5 Läufe) | Budget p95 (ms) |
+|---|---|---|---|
+| Öffnen (Dokument setzen bis erster Rahmen) | 42,5 | 42,5–47,6 | 200 |
+| Tastendruck mittig | 4,2 / 4,6 | 4,6–4,8 | 16 |
+| Tippen am Anfang | 3,4 / 3,5 | 3,5–3,6 | 16 |
+| `$` tippen (öffnet Mathe bis Absatzende) | 5,2 / 5,4 | 5,4–5,5 | 16 |
+| Enter einfügen (Zeilen verschieben) | 7,2 / 8,0 | 8,0–8,1 | 16 |
+| Scrollen (Rahmenzeit, Arbeit) | 5,4 / 6,8 | 6,8–7,4 | 20 |
+| Suchen (Enter bis erster Treffer, Treffer ganz hinten) | 80,5 | 80,5–84,2 | 250 |
+| Einklapp-Scan nach Änderung (bis Folgerahmung) | 5,6 | 5,6–6,0 | 20 |
+
+Budgets: etwa das Dreifache des Messwerts, mindestens die Zielwerte des Spikes (Tastendruck p95 < 16 ms, Öffnen < 200 ms). Enter hat wegen der 16 ms nur zweifachen Puffer (3 × 8,0 ms wären 24 ms). Zusatzwerte: Scroll-Rahmenabstand p95 7,9 ms, Scan-Aufgabe (nur der Scan) 5,6 ms, größter Einzelwert bei Enter 12,8 ms.
+
+Befunde:
+- Kein Engpass gegen die Ziele: Mit allen Erweiterungen liegen Tippen (3,5 bis 8,0 ms) und Scrollen (6,8 ms) auf dem Niveau des Spikes ohne Erweiterungen (3,5 ms bzw. 8 bis 10 ms), `$` mit 5,4 ms ebenfalls.
+- Auffällig, aber im Budget: Enter kostet mit 8,0 ms etwa das Doppelte eines Zeichens (Zeilen verschieben, Marken, Einklapp-Bereiche und Prüfmeldungen werden abgebildet; Einzelwerte bis 12,8 ms). Die Suche nach einem Treffer am Dateiende braucht rund 80 ms (vermutlich durchsucht `@codemirror/search` den Text auf dem Hauptthread in einem Rutsch; Ursache nicht weiter untersucht).
+- Der Scan der Einklapp-Bereiche (5,6 ms) läuft auf dem Hauptthread, ist bei 10.000 Zeilen aber weniger als ein Rahmen; bei sehr großen Dateien wäre `FoldScanOptions.scan` der Anschluss für einen Worker.
+- Ungemessen: Windows (Handtest W-H14), echte IME-Eingabe, mehrere Dateien gleichzeitig offen, 50.000 Zeilen, dunkles Farbschema (kein Einfluss erwartet).

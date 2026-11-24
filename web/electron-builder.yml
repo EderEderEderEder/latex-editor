@@ -7,6 +7,8 @@ files:
   - package.json
   # Test-Preload (Playwright, LATEXEDITOR_STUB_PRELOAD): gehört nicht ins Paket.
   - "!out/preload/stub*"
+# Kein asarUnpack für die Worker (`out/main/parse.worker.js`, `synctex.worker.js`): `worker_threads` lädt sie samt
+# `out/main/chunks/` direkt aus `app.asar` (W2-INT, mit dem Programm aus `electron-builder --dir` geprüft).
 # Keine nativen Module: spart den Rebuild-Schritt (S6).
 npmRebuild: false
 win:

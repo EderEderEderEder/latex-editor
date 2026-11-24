@@ -4,17 +4,19 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-    copyName,
     FsOps,
-    importName,
-    MAX_FILE_NAME_LENGTH,
     MAX_WINDOWS_PATH_LENGTH,
     maxPathLength,
+    type TrashItem,
+} from '../../src/main/fsOps';
+import {
+    copyName,
+    importName,
+    MAX_FILE_NAME_LENGTH,
     newFileName,
     renamedFileName,
-    type TrashItem,
     validateFileName,
-} from '../../src/main/fsOps';
+} from '../../src/shared/core/fileNames';
 import { currentPathPlatform, LINUX_PATHS, MACOS_PATHS, WINDOWS_PATHS } from '../../src/main/paths';
 import { IpcFailure } from '../../src/shared/ipcResult';
 

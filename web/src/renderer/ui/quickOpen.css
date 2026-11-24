@@ -1,0 +1,18 @@
+/* „Schnell öffnen“ und „Gehe zu Zeile“; Rahmen von `.close-confirm` (editorPane.css) */
+.quick-open { width: min(40em, 90vw); max-width: none; padding: 0.6em; align-self: start; margin-top: 12vh; }
+.quick-open input, .goto-line input {
+    width: 100%; box-sizing: border-box; padding: 0.4em 0.6em; font: inherit;
+    background: var(--chrome-background); color: var(--chrome-text); border: 1px solid var(--chrome-border); border-radius: 6px;
+}
+.quick-open-list { list-style: none; margin: 0.5em 0 0; padding: 0; max-height: 50vh; overflow-y: auto; }
+.quick-open-item { display: flex; gap: 0.6em; align-items: baseline; padding: 0.3em 0.6em; border-radius: 6px; cursor: default; }
+.quick-open-item[aria-selected="true"] { background: var(--chrome-accent); color: #fff; }
+.quick-open-name { white-space: nowrap; }
+.quick-open-folder { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; opacity: 0.7; font-size: 0.9em; }
+.quick-open-open { opacity: 0.7; font-size: 0.7em; }
+.quick-open-item mark { background: none; color: inherit; font-weight: 700; text-decoration: underline; }
+.quick-open-empty { padding: 0.5em 0.6em; color: var(--chrome-muted); }
+.goto-line { width: 22em; }
+.goto-line-row { display: flex; align-items: center; gap: 0.6em; }
+.goto-line-count { color: var(--chrome-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.goto-line-error { min-height: 1.3em; margin: 0.4em 0 0.6em; color: var(--chrome-error); }

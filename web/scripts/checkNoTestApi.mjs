@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Prüft vor dem Paketieren, dass der gebaute Renderer den Testzugang `window.__editorTestApi` nicht enthält
-// (er entsteht nur im E2E-Build, `npm run build:e2e`). Aufruf (im Ordner web/): node scripts/checkNoTestApi.mjs [Ordner]
+// Prüft vor dem Paketieren, dass der gebaute Renderer keinen Testzugang enthält (`window.__editorTestApi`,
+// `window.__tabMemoryTestApi`; sie entstehen nur im E2E-Build, `npm run build:e2e`). Aufruf (im Ordner web/): node scripts/checkNoTestApi.mjs [Ordner]
 // Standardordner: out/renderer. Ausgang: 0 sauber, 1 Treffer oder Ordner fehlt.
 //
 // Gesucht wird die Zuweisung (auch minifiziert ohne Leerzeichen); `delete window.__editorTestApi` oder ein Vergleich
@@ -9,7 +9,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const TEST_API_ASSIGNMENT = /__editorTestApi\s*=(?!=)/;
+const TEST_API_ASSIGNMENT = /__(?:editor|tabMemory)TestApi\s*=(?!=)/;
 const SCANNED_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.html']);
 const EXIT_OK = 0;
 const EXIT_FOUND = 1;
@@ -39,7 +39,7 @@ function run(dir) {
         return EXIT_FOUND;
     }
     if (found.length === 0) return EXIT_OK;
-    console.error('checkNoTestApi: Testzugang __editorTestApi im Renderer-Build gefunden, Paket abgebrochen:');
+    console.error('checkNoTestApi: Testzugang (__editorTestApi/__tabMemoryTestApi) im Renderer-Build gefunden, Paket abgebrochen:');
     for (const path of found) console.error(`  ${path}`);
     console.error('Normalen Build ausführen (npm run build), nicht npm run build:e2e.');
     return EXIT_FOUND;

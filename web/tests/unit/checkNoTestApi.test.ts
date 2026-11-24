@@ -30,13 +30,18 @@ function runScript(dir: string): { status: number | null; stderr: string } {
 describe('scripts/checkNoTestApi.mjs', () => {
     it('sauberer Build: Exit 0', () => {
         writeFileSync(join(fixtureDir, 'index.html'), '<script src="assets/app.js"></script>');
-        writeFileSync(join(fixtureDir, 'assets', 'app.js'), 'const a=1;delete window.__editorTestApi;if(x===window.__editorTestApi){}');
+        writeFileSync(
+            join(fixtureDir, 'assets', 'app.js'),
+            'const a=1;delete window.__editorTestApi;if(x===window.__editorTestApi){}delete window.__tabMemoryTestApi;',
+        );
         expect(runScript(fixtureDir)).toMatchObject({ status: 0, stderr: '' });
     });
 
     it.each([
         ['mit Leerzeichen', 'window.__editorTestApi = createTestApi(s);'],
         ['minifiziert', 'window.__editorTestApi=e(t,n);'],
+        ['Tab-Gedächtnis', 'window.__tabMemoryTestApi = { start, flush };'],
+        ['Tab-Gedächtnis minifiziert', 'window.__tabMemoryTestApi={start:a,flush:b}'],
     ])('Treffer (%s): Exit 1 und Dateiname in der Meldung', (_name, code) => {
         writeFileSync(join(fixtureDir, 'assets', 'index-abc.js'), code);
         const result = runScript(fixtureDir);

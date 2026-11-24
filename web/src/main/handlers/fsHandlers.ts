@@ -5,6 +5,7 @@ import type { IpcHandlers } from '../ipcHandlers';
 import { isGrantId } from '../ipcValidation';
 import { type RealpathFunction, resolveRealPath } from '../paths';
 import { readTextFile, type TextIoOptions, writeTextFile } from '../textIo';
+import type { ProjectWatch } from './watchHandlers';
 
 // Text-Dateien lesen und schreiben (H1). Das Ziel ist entweder
 // - ein absoluter Pfad, der (nach Auflösen der Symlinks) im aktuellen Projekt des Main liegt, oder
@@ -17,6 +18,8 @@ export interface FsHandlerDependencies {
     readonly grants: GrantStore;
     readonly realpath?: RealpathFunction;
     readonly textIo?: TextIoOptions;
+    // Dateiüberwachung: das Echo des eigenen Speicherns entfällt. Pfade außerhalb des Projekts ignoriert sie.
+    readonly watch?: Pick<ProjectWatch, 'ignoreOwnWrite'> | null;
 }
 
 export type FsHandlers = Pick<IpcHandlers, 'fs:readText' | 'fs:readMany' | 'fs:writeText'>;
@@ -99,8 +102,11 @@ export function createFsHandlers(deps: FsHandlerDependencies): FsHandlers {
         'fs:readText': (target) => readText(target, deps),
         'fs:readMany': (targets) => readMany(targets, deps),
         'fs:writeText': async (target, text, encoding, eol, expectedHash) => {
+            // Der aufgelöste Pfad, nie die `GrantId`: auch eine gewährte Datei kann im Projekt liegen.
             const path = await resolveFileTarget(target, 'write', deps);
-            return writeTextFile(path, text, encoding, eol, expectedHash, deps.textIo);
+            const result = await writeTextFile(path, text, encoding, eol, expectedHash, deps.textIo);
+            deps.watch?.ignoreOwnWrite(path, result.hash);
+            return result;
         },
     };
 }

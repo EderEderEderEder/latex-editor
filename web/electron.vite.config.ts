@@ -29,7 +29,19 @@ function clearTestApiOutsideE2e(mode: string): void {
 }
 
 const electronViteConfig: UserConfig = {
-    main: {},
+    // Die `worker_threads`-Worker brauchen eigene Dateien neben `index.js` (`out/main/parse.worker.js`,
+    // `out/main/synctex.worker.js`); `index.ts` startet sie über diese Pfade (`workerScriptPath`).
+    main: {
+        build: {
+            rollupOptions: {
+                input: {
+                    index: resolve(__dirname, 'src/main/index.ts'),
+                    'parse.worker': resolve(__dirname, 'src/main/workers/parse.worker.ts'),
+                    'synctex.worker': resolve(__dirname, 'src/main/workers/synctex.worker.ts'),
+                },
+            },
+        },
+    },
     // `stub.ts` ist der Test-Preload (siehe `src/main/preloadChoice.ts`) und wird nicht ins Paket aufgenommen
     // (`electron-builder.yml`). Ein Sandbox-Preload darf keine Nachbardatei laden: jeder Einstieg wird
     // deshalb allein und vollständig gebündelt, ohne gemeinsame Chunks.

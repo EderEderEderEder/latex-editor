@@ -8,8 +8,12 @@ import type {
     RequestChannel,
     RequestResult,
     GeneralErrorKind,
+    DirectoryNode,
+    FileNode,
     GrantedPath,
+    ProjectInfo,
     TabMemory,
+    TreeNode,
     TextFile,
     Unsubscribe,
 } from '../../src/shared/contract';
@@ -50,6 +54,13 @@ export interface StubControl {
     tabMemory(): TabMemory | null;
     /** Schickt ein Ereignis wie der Main (z. B. `app:closeRequested` beim Schließen des Fensters) */
     emit(event: EventChannel, payload: unknown): void;
+    /**
+     * Schaltet ein kleines Beispielprojekt ein (`project:open`, `project:recent`, `dialog:openProject`, Dateitexte);
+     * `extraFileCount` legt zusätzlich so viele Dateien in den Ordner `viele/` (für die Virtualisierung).
+     */
+    installSampleProject(extraFileCount?: number): void;
+    /** Fügt dem Beispielprojekt eine Datei hinzu (relativer Pfad mit `/`); der Baum ändert sich beim nächsten `project:open` */
+    addProjectFile(relativePath: string, text: string): void;
 }
 
 export interface PreloadStub {
@@ -181,6 +192,16 @@ class VirtualFiles implements Pick<StubControl, 'prepareFile' | 'failWrites' | '
         this.pending.push(file);
     }
 
+    /** Datei, die nur über ihren Pfad lesbar ist (Projektdatei); kommt nie aus dem Dialog */
+    registerFile(path: string, text: string): void {
+        const existing = this.files.get(path);
+        if (existing !== undefined) {
+            existing.text = text;
+            return;
+        }
+        this.files.set(path, { grant: { grantId: `stub-file-${path}`, name: baseName(path) }, path, text });
+    }
+
     failWrites(kind: GeneralErrorKind | null, message = 'Schreiben abgelehnt (Stub)'): void {
         this.writeFailure = kind === null ? null : { kind, message };
     }
@@ -235,6 +256,85 @@ class VirtualTabMemory implements Pick<StubControl, 'setTabMemory' | 'tabMemory'
     };
 }
 
+// ---------- Beispielprojekt (W2-3) ----------
+
+const PROJECT_GRANT: GrantedPath = { grantId: 'stub-project-grant', name: 'projekt' };
+const BUILD_FILE_EXTENSIONS: readonly string[] = ['.aux', '.log'];
+const EXTRA_FOLDER = 'viele';
+const EXTRA_NAME_DIGITS = 4;
+
+const SAMPLE_FILES: Readonly<Record<string, string>> = {
+    'main.tex': '\\chapter{Einleitung}\n\\input{kapitel/einleitung}\n\\input{kapitel/fazit}\n',
+    'kapitel/einleitung.tex': '\\section{Motivation}\nText\n\\section{Ziel}\nText\n',
+    'kapitel/fazit.tex': '\\section{Ergebnis}\nText\n',
+    'literatur.bib': '@book{a,\n}\n',
+    'bilder/logo.png': '',
+    'main.aux': '',
+};
+
+interface MutableFolder {
+    kind: 'directory';
+    name: string;
+    path: string;
+    children: (MutableFolder | FileNode)[];
+}
+
+function compareNodes(a: TreeNode | MutableFolder, b: TreeNode | MutableFolder): number {
+    if (a.kind !== b.kind) return a.kind === 'directory' ? -1 : 1;
+    return a.name.localeCompare(b.name);
+}
+
+function folderIn(parent: MutableFolder, name: string, path: string): MutableFolder {
+    const existing = parent.children.find((child) => child.path === path);
+    if (existing?.kind === 'directory') return existing;
+    const created: MutableFolder = { kind: 'directory', name, path, children: [] };
+    parent.children.push(created);
+    return created;
+}
+
+function sortTree(folder: MutableFolder): void {
+    folder.children.sort(compareNodes);
+    for (const child of folder.children) if (child.kind === 'directory') sortTree(child);
+}
+
+function buildSampleTree(files: readonly string[]): DirectoryNode {
+    const root: MutableFolder = { kind: 'directory', name: PROJECT_GRANT.name, path: STUB_ROOT, children: [] };
+    for (const relative of files) {
+        const parts = relative.split('/');
+        let folder = root;
+        parts.slice(0, -1).forEach((part, depth) => {
+            folder = folderIn(folder, part, `${STUB_ROOT}/${parts.slice(0, depth + 1).join('/')}`);
+        });
+        const name = parts.at(-1) ?? relative;
+        const path = `${STUB_ROOT}/${relative}`;
+        const isBuildFile = BUILD_FILE_EXTENSIONS.some((extension) => name.endsWith(extension));
+        folder.children.push(isBuildFile ? { kind: 'file', name, path, isBuildFile } : { kind: 'file', name, path });
+    }
+    sortTree(root);
+    return root;
+}
+
+/** Beispielprojekt im Speicher: Dateiliste mit Texten, daraus Baum und `ProjectInfo` */
+class SampleProject {
+    private readonly texts = new Map<string, string>();
+
+    constructor(private readonly virtualFiles: VirtualFiles, extraFileCount: number) {
+        for (const [relative, text] of Object.entries(SAMPLE_FILES)) this.addFile(relative, text);
+        for (let index = 1; index <= extraFileCount; index++) {
+            this.addFile(`${EXTRA_FOLDER}/datei-${String(index).padStart(EXTRA_NAME_DIGITS, '0')}.txt`, '');
+        }
+    }
+
+    addFile(relative: string, text: string): void {
+        this.texts.set(relative, text);
+        this.virtualFiles.registerFile(`${STUB_ROOT}/${relative}`, text);
+    }
+
+    info(): ProjectInfo {
+        return { root: STUB_ROOT, mainFile: `${STUB_ROOT}/main.tex`, tree: buildSampleTree([...this.texts.keys()]) };
+    }
+}
+
 export function createPreloadStub(overrides: Partial<StubResponders> = {}): PreloadStub {
     const virtualFiles = new VirtualFiles();
     const virtualTabMemory = new VirtualTabMemory();
@@ -243,6 +343,18 @@ export function createPreloadStub(overrides: Partial<StubResponders> = {}): Prel
         ...virtualFiles.responders,
         ...virtualTabMemory.responders,
         ...overrides,
+    };
+    let sampleProject: SampleProject | null = null;
+    const installSampleProject = (extraFileCount = 0): void => {
+        sampleProject = new SampleProject(virtualFiles, extraFileCount);
+        responders['dialog:openProject'] = () => PROJECT_GRANT;
+        responders['project:recent'] = () => [{ ...PROJECT_GRANT, openedAt: STUB_TIME }];
+        responders['project:open'] = (grantId: string) => {
+            if (grantId !== PROJECT_GRANT.grantId || sampleProject === null) {
+                throw new IpcFailure({ kind: 'notFound', message: 'Unbekannte Projektkennung (Stub)' });
+            }
+            return sampleProject.info();
+        };
     };
     const calls: StubCall[] = [];
     const listeners = new Map<EventChannel, Set<AnyListener>>();
@@ -262,6 +374,8 @@ export function createPreloadStub(overrides: Partial<StubResponders> = {}): Prel
         setTabMemory: (memory) => virtualTabMemory.setTabMemory(memory),
         tabMemory: () => virtualTabMemory.tabMemory(),
         emit: (event, payload) => emitEvent(listeners, event, payload),
+        installSampleProject,
+        addProjectFile: (relativePath, text) => sampleProject?.addFile(relativePath, text),
         calls: () => calls.map((call) => ({ channel: call.channel, args: [...call.args] })),
         clearCalls: () => {
             calls.length = 0;

@@ -1,9 +1,10 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, session } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, session, shell, type WebPreferences } from 'electron';
 import { join } from 'node:path';
 import { createAppHandlers } from './handlers/appHandlers';
+import type { ProjectWatch } from './handlers/watchHandlers';
 import { createEventSender, registerIpcHandlers } from './ipc';
 import { bringToFront, CloseGuard, createBeforeQuitHandler, createGuardedQuitHandler, QuitTasks } from './lifecycle';
-import { currentPathPlatform, pathToFileUrl } from './paths';
+import { currentPathPlatform, type PathPlatform, pathToFileUrl } from './paths';
 import { choosePreloadPath } from './preloadChoice';
 import { applySessionSecurity, lockNavigation, type RendererLocation } from './security';
 
@@ -13,9 +14,12 @@ const RENDERER_INDEX_PATH = join(__dirname, '../renderer/index.html');
 const REAL_PRELOAD_PATH = join(__dirname, '../preload/index.js');
 const STUB_PRELOAD_PATH = join(__dirname, '../preload/stub.js');
 const DEV_SERVER_ENV = 'ELECTRON_RENDERER_URL';
+// Eigene Einstiege von `electron.vite.config.ts` neben `index.js` (`out/main/`).
+const PARSE_WORKER_FILE_NAME = 'parse.worker.js';
 
 let mainWindow: BrowserWindow | null = null;
-// Aufräumen beim Beenden; `createBuildHandlers` trägt den Build-Abbruch ein (`queue.shutdown()`).
+// Aufräumen beim Beenden: Einstellungen sichern, Build abbrechen, Überwachung beenden, Log-Worker beenden
+// (jeweils in `createAppHandlers` eingetragen).
 const quitTasks = new QuitTasks();
 let stubPreloadActive = false;
 const sendEvent = createEventSender(() => liveMainWindow()?.webContents ?? null);
@@ -71,31 +75,62 @@ function resolvePreloadPath(): string {
     return preload;
 }
 
-function createWindow(location: RendererLocation): BrowserWindow {
+function workerScriptPath(fileName: string): string {
+    return join(__dirname, fileName);
+}
+
+function windowPreferences(): WebPreferences {
+    return {
+        preload: resolvePreloadPath(),
+        contextIsolation: true,
+        sandbox: true,
+        nodeIntegration: false,
+        webSecurity: true,
+        spellcheck: false,
+        devTools: !app.isPackaged,
+    };
+}
+
+function createWindow(location: RendererLocation, watch: ProjectWatch | null): BrowserWindow {
     const window = new BrowserWindow({
         width: WINDOW_WIDTH,
         height: WINDOW_HEIGHT,
         title: 'LatexEditor Web',
-        webPreferences: {
-            preload: resolvePreloadPath(),
-            contextIsolation: true,
-            sandbox: true,
-            nodeIntegration: false,
-            webSecurity: true,
-            spellcheck: false,
-            devTools: !app.isPackaged,
-        },
+        webPreferences: windowPreferences(),
     });
     window.on('close', (event) => closeGuard.onWindowClose(event));
     window.on('closed', () => {
         mainWindow = null;
     });
+    // Sicherheitsnetz der Dateiüberwachung (S10): Änderungen, die `fs.watch` verpasst hat.
+    window.on('focus', () => void watch?.rescan());
     if (location.kind === 'development') {
         void window.loadURL(location.devServerUrl);
     } else {
         void window.loadFile(RENDERER_INDEX_PATH);
     }
     return window;
+}
+
+function registerHandlers(location: RendererLocation, platform: PathPlatform): ProjectWatch | null {
+    const { handlers, watch } = createAppHandlers({
+        userDataDir: app.getPath('userData'),
+        dialog,
+        window: liveMainWindow,
+        platform,
+        quitTasks,
+        log: logSettings,
+        confirmClose: () => closeGuard.confirm(liveMainWindow()),
+        emit: sendEvent,
+        trashItem: (path) => shell.trashItem(path),
+        parseWorkerScript: workerScriptPath(PARSE_WORKER_FILE_NAME),
+    });
+    registerIpcHandlers(ipcMain, {
+        handlers,
+        policy: { getTrustedWebContentsId: trustedWebContentsId, location, platform },
+        log: logSecurity,
+    });
+    return watch;
 }
 
 async function start(): Promise<void> {
@@ -105,22 +140,8 @@ async function start(): Promise<void> {
     const location = getRendererLocation();
     const platform = currentPathPlatform();
     applySessionSecurity(session.defaultSession, { location, platform, allowDevTools: !app.isPackaged }, logSecurity);
-    const { handlers } = createAppHandlers({
-        userDataDir: app.getPath('userData'),
-        dialog,
-        window: liveMainWindow,
-        platform,
-        quitTasks,
-        log: logSettings,
-        confirmClose: () => closeGuard.confirm(liveMainWindow()),
-        emit: sendEvent,
-    });
-    registerIpcHandlers(ipcMain, {
-        handlers,
-        policy: { getTrustedWebContentsId: trustedWebContentsId, location, platform },
-        log: logSecurity,
-    });
-    mainWindow = createWindow(location);
+    const watch = registerHandlers(location, platform);
+    mainWindow = createWindow(location, watch);
 }
 
 // Zwei Instanzen teilten sich `userData` (Einstellungen, Wiederherstellung); die zweite holt die erste nach vorn.

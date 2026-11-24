@@ -40,11 +40,11 @@ async function rememberProject(path: string, deps: ProjectHandlerDependencies): 
 async function openProject(grantId: string, deps: ProjectHandlerDependencies): Promise<ProjectInfo> {
     const root = deps.grants.resolve(grantId, 'project');
     await assertDirectory(root);
-    const { tree } = await scanProjectTree(root);
+    const { tree, truncated } = await scanProjectTree(root);
     const mainFile = await detectMainFile(tree);
     deps.grants.openProject(grantId);
     await rememberProject(root, deps);
-    return { root, mainFile, tree };
+    return truncated ? { root, mainFile, tree, truncated } : { root, mainFile, tree };
 }
 
 async function listRecent(deps: ProjectHandlerDependencies): Promise<RecentProject[]> {

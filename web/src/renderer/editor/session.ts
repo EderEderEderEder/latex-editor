@@ -259,6 +259,14 @@ export class EditorSession {
         this.dispatch({ selection: clampSelection(selection, this.state.doc.length) });
     }
 
+    /** Setzt den Cursor an den Anfang der Zeile (1-basiert, geklemmt) und scrollt sie in die Mitte, wenn die Sitzung sichtbar ist */
+    revealLine(line: number): void {
+        const doc = this.state.doc;
+        const clamped = Math.min(Math.max(Math.trunc(line) || 1, 1), doc.lines);
+        const position = doc.line(clamped).from;
+        this.dispatch({ selection: { anchor: position }, effects: EditorView.scrollIntoView(position, { y: 'center' }) });
+    }
+
     /** Text zum Speichern lesen; nur hier entsteht der ganze Text als Zeichenkette */
     snapshotForSave(): SaveSnapshot {
         return { text: this.state.doc.toString(), revision: revisionOf(this.state) };

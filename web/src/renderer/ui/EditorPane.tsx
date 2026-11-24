@@ -1,6 +1,6 @@
 // Editor-Rahmen (W1-12b): Kopfzeile, Tab-Leiste, Editor und Statusleiste. Der Text lebt nur in den Sitzungen;
 // hier stehen Aktionen und Tastenkürzel, die den Editor-Store und den IPC-Vertrag benutzen.
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { saveActiveFile, saveActiveFileAs, openFilesFromDialog } from '../app/fileActions';
 import type { FileActionDeps } from '../app/fileActions';
@@ -18,6 +18,7 @@ import { useSettingsStore } from '../stores/settings';
 import { statusStore } from '../stores/status';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
 import { EditorToolbar } from './EditorToolbar';
+import { PathBar } from './PathBar';
 import { StatusBar } from './StatusBar';
 import { TabBar } from './TabBar';
 import './editorPane.css';
@@ -70,8 +71,21 @@ function useScrollMemory(sessionView: SessionView | null): void {
     }, [sessionView]);
 }
 
-export function EditorPane({ heading }: { readonly heading: ReactNode }) {
+export interface EditorPaneProps {
+    readonly heading: ReactNode;
+    /** Meldet den `SessionView` nach außen (Seitenleiste: Gliederung folgt dem Cursor); muss stabil sein */
+    readonly onSessionView?: (sessionView: SessionView | null) => void;
+}
+
+export function EditorPane({ heading, onSessionView }: EditorPaneProps) {
     const [sessionView, setSessionView] = useState<SessionView | null>(null);
+    const handleSessionView = useCallback(
+        (next: SessionView | null): void => {
+            setSessionView(next);
+            onSessionView?.(next);
+        },
+        [onSessionView],
+    );
     const hasActiveTab = useEditorStore((state) => state.tabs.active !== null);
     const actions = useMemo(
         () => ({
@@ -94,7 +108,8 @@ export function EditorPane({ heading }: { readonly heading: ReactNode }) {
                 onSaveAs={actions.saveAs}
             />
             <TabBar />
-            <EditorHost onSessionView={setSessionView} />
+            <PathBar />
+            <EditorHost onSessionView={handleSessionView} />
             <StatusBar sessionView={sessionView} />
             <CloseConfirmDialog />
         </section>

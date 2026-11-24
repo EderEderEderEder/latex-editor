@@ -16,10 +16,14 @@ import { isGrantId } from '../ipcValidation';
 import type { QuitTasks } from '../lifecycle';
 import type { RealpathFunction } from '../paths';
 import { detectTools as nativeDetectTools } from '../tools';
+import type { ProjectWatch } from './watchHandlers';
 
 // Kanäle `tools:detect`, `build:start`, `build:cancel`, `build:clean`. Die Hauptdatei muss (aufgelöst) im
 // aktuellen Projekt liegen; Gewährungen (Einzeldateien außerhalb) werden nicht kompiliert. Ereignisse gehen
 // über `emit` an das Hauptfenster; das Beenden der App bricht einen laufenden Build ab (`QuitTasks`).
+// Die Dateiüberwachung kennt vor jedem Lauf das Build-PDF und prüft nach `build:finished` den Baum (Sicherheitsnetz).
+
+export type BuildWatchHooks = Pick<ProjectWatch, 'setBuildOutputs' | 'rescan'>;
 
 export interface BuildHandlerDependencies {
     readonly grants: GrantStore;
@@ -31,6 +35,7 @@ export interface BuildHandlerDependencies {
     readonly buildDependencies?: BuildDependencies;
     readonly parseLog?: LogParser;
     readonly realpath?: RealpathFunction;
+    readonly watch?: BuildWatchHooks | null;
 }
 
 export type BuildHandlers = Pick<IpcHandlers, 'tools:detect' | 'build:start' | 'build:cancel' | 'build:clean'>;
@@ -38,6 +43,7 @@ export type BuildHandlers = Pick<IpcHandlers, 'tools:detect' | 'build:start' | '
 // Rohe Ausgabe des letzten Laufs (für die Protokollansicht), je Lauf überschrieben.
 export const BUILD_OUTPUT_FILE_NAME = 'latexmk-output.txt';
 const TEX_EXTENSION = '.tex';
+const PDF_EXTENSION = '.pdf';
 
 export const BUILD_HANDLER_MESSAGES = {
     notInProject: 'Kompilieren lässt sich nur eine Datei im geöffneten Projekt.',
@@ -76,8 +82,16 @@ async function prepareRequest(context: BuildContext, mainFile: AbsolutePath, opt
     return { latexmk: tools.latexmk, mainFile: resolved, options, problems: tools.problems };
 }
 
+// Nur das PDF: alle übrigen Build-Dateien filtert die Überwachung ohnehin (`isBuildFileName`).
+function buildOutputsOf(mainFile: AbsolutePath, deps: BuildHandlerDependencies): AbsolutePath[] {
+    const { path } = deps.grants.platform;
+    const { dir, name } = path.parse(mainFile);
+    return [path.join(dir, name + PDF_EXTENSION)];
+}
+
 async function startBuild(context: BuildContext, mainFile: AbsolutePath, options: BuildOptions): Promise<void> {
     const request = await prepareRequest(context, mainFile, options);
+    context.deps.watch?.setBuildOutputs(buildOutputsOf(request.mainFile, context.deps));
     const outputLogPath = context.deps.grants.platform.path.join(context.deps.userDataDir, BUILD_OUTPUT_FILE_NAME);
     const accepted = context.queue.request({ ...request, outputLogPath });
     if (!accepted) throw new IpcFailure({ kind: 'conflict', message: BUILD_MESSAGES.shuttingDown });
@@ -98,9 +112,18 @@ async function cleanBuild(context: BuildContext, mainFile: AbsolutePath): Promis
     if (failure !== null) throw failure;
 }
 
+// Erst das Ereignis an den Renderer, dann der Abgleich: `fs:changed` folgt so nach `build:finished`.
+function rescanAfterBuild(emit: EventSender, watch: BuildWatchHooks | null | undefined): EventSender {
+    if (watch === undefined || watch === null) return emit;
+    return (event, payload) => {
+        emit(event, payload);
+        if (event === 'build:finished') void watch.rescan();
+    };
+}
+
 export function createBuildHandlers(deps: BuildHandlerDependencies): BuildHandlers {
     const queue = new BuildQueue({
-        emit: deps.emit,
+        emit: rescanAfterBuild(deps.emit, deps.watch),
         log: (message) => deps.log(`Build: ${message}`),
         ...(deps.buildDependencies === undefined ? {} : { dependencies: deps.buildDependencies }),
         ...(deps.parseLog === undefined ? {} : { parseLog: deps.parseLog }),

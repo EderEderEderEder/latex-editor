@@ -35,9 +35,10 @@ body {
     font-size: calc(13px * var(--ui-scale));
 }
 
-main { height: 100%; display: flex; flex-direction: column; }
+/* Rahmen: Seitenleiste links (feste Breite), Editorbereich rechts (nimmt den Rest, `min-width: 0`) */
+main { height: 100%; display: flex; flex-direction: row; overflow: hidden; }
 
-.editor-pane { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.editor-pane { flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 
 .editor-toolbar {
     display: flex; align-items: center; gap: 1em; padding: 0.4em 0.8em;

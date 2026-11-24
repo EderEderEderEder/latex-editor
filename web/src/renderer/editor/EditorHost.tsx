@@ -1,10 +1,15 @@
-// Minimaler Editor-Rahmen (W1-6): genau ein `EditorView`, der die aktive Sitzung des Editor-Stores zeigt und
-// Sitzungen per `setState` tauscht. Die volle Oberfläche (Tabs, Speichern, Statusleiste) kommt mit W1-12.
+// Editor-Rahmen (W1-6, W1-12b): genau ein `EditorView`, der die aktive Sitzung des Editor-Stores zeigt und
+// Sitzungen per `setState` tauscht. Tabs, Kopfzeile und Statusleiste stehen in `ui/EditorPane.tsx`; hier wird
+// außerdem die Darstellung (Einstellungen, Farbschema) mit dem View verbunden.
 import { useEffect, useRef } from 'react';
 import { EditorView } from '@codemirror/view';
 import type { LineEnding } from '../../shared/contract';
 import { editorStore } from '../stores/editor';
 import type { EditorStore } from '../stores/editor';
+import { useSettingsStore } from '../stores/settings';
+import { DARK_SCHEME_QUERY, connectAppearance } from './appearanceController';
+import { domAppearanceHost } from './domAppearanceHost';
+import { notifyCursorActivity } from './cursorEvents';
 import { setGutterMarks } from './gutter';
 import type { GutterMark } from './gutter';
 import { SessionView, emptyEditorState } from './session';
@@ -39,7 +44,7 @@ export interface EditorTestApi {
 const TEST_API_ENABLED = '1';
 const TEST_HASH = '';
 const TEST_MTIME = 0;
-const HOST_STYLE = '.editor-host { height: 70vh; } .editor-host .cm-editor { height: 100%; }';
+const HOST_STYLE = '.editor-host .cm-editor { height: 100%; }';
 
 function createTestApi(store: EditorStore, sessionView: SessionView): EditorTestApi {
     const state = () => store.getState();
@@ -71,25 +76,60 @@ function installTestApi(store: EditorStore, sessionView: SessionView): () => voi
     };
 }
 
-export function EditorHost({ store = editorStore }: { readonly store?: EditorStore }) {
+export interface EditorHostProps {
+    readonly store?: EditorStore;
+    /** Meldet den `SessionView` nach dem Aufbau (für die Statusleiste) und `null` beim Abbau */
+    readonly onSessionView?: (sessionView: SessionView | null) => void;
+}
+
+function createSessionView(parent: HTMLElement): SessionView {
+    const view = new EditorView({
+        parent,
+        state: emptyEditorState(),
+        dispatchTransactions: (transactions, target) => {
+            target.update(transactions);
+            notifyCursorActivity(transactions);
+        },
+    });
+    return new SessionView(view);
+}
+
+/** Einstellungen und Systemfarbschema folgen; ein Wechsel zieht nur die sichtbare Sitzung nach */
+function connectEditorAppearance(sessionView: SessionView): () => void {
+    const host = domAppearanceHost(document, () => {
+        sessionView.session?.syncAppearance();
+        sessionView.view.requestMeasure();
+    });
+    return connectAppearance({
+        host,
+        settings: useSettingsStore,
+        media: window.matchMedia(DARK_SCHEME_QUERY),
+    });
+}
+
+export function EditorHost({ store = editorStore, onSessionView }: EditorHostProps) {
     const parentRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const parent = parentRef.current;
         if (parent === null) return;
-        const sessionView = new SessionView(new EditorView({ parent, state: emptyEditorState() }));
+        const sessionView = createSessionView(parent);
+        const disconnectAppearance = connectEditorAppearance(sessionView);
+        onSessionView?.(sessionView);
         const showActive = (): void => sessionView.show(store.getState().activeSession());
         showActive();
         // Abonnement statt React-Effekt: der View wechselt synchron, bevor der Store die alte Sitzung freigibt.
         const unsubscribe = store.subscribe(showActive);
         const removeTestApi = installTestApi(store, sessionView);
         return () => {
+            onSessionView?.(null);
             removeTestApi();
             unsubscribe();
+            disconnectAppearance();
             sessionView.show(null);
             sessionView.view.destroy();
         };
-    }, [store]);
+    }, [store, onSessionView]);
 
     return (
         <>

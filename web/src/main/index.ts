@@ -1,7 +1,7 @@
-import { app, BrowserWindow, ipcMain, Menu, session } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, session } from 'electron';
 import { join } from 'node:path';
+import { createAppHandlers } from './handlers/appHandlers';
 import { registerIpcHandlers } from './ipc';
-import { createHandlerRegistry } from './ipcHandlers';
 import { bringToFront, createBeforeQuitHandler, QuitTasks } from './lifecycle';
 import { currentPathPlatform, pathToFileUrl } from './paths';
 import { choosePreloadPath } from './preloadChoice';
@@ -24,6 +24,15 @@ function logSecurity(message: string): void {
 
 function logLifecycle(message: string): void {
     console.warn(`[Beenden] ${message}`);
+}
+
+function logSettings(message: string): void {
+    console.warn(`[Einstellungen] ${message}`);
+}
+
+function liveMainWindow(): BrowserWindow | null {
+    if (mainWindow === null || mainWindow.isDestroyed()) return null;
+    return mainWindow;
 }
 
 function getRendererLocation(): RendererLocation {
@@ -81,8 +90,16 @@ async function start(): Promise<void> {
     const location = getRendererLocation();
     const platform = currentPathPlatform();
     applySessionSecurity(session.defaultSession, { location, platform, allowDevTools: !app.isPackaged }, logSecurity);
+    const { handlers } = createAppHandlers({
+        userDataDir: app.getPath('userData'),
+        dialog,
+        window: liveMainWindow,
+        platform,
+        quitTasks,
+        log: logSettings,
+    });
     registerIpcHandlers(ipcMain, {
-        handlers: createHandlerRegistry(),
+        handlers,
         policy: { getTrustedWebContentsId: trustedWebContentsId, location, platform },
         log: logSecurity,
     });

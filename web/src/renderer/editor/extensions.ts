@@ -2,6 +2,7 @@ import type { Extension } from '@codemirror/state';
 import { diagnosticsExtension } from './diagnostics';
 import { foldingExtension } from './folding';
 import { gutterExtension } from './gutter';
+import { searchExtension } from './search';
 import { typingExtension } from './typing';
 
 /** Was eine Editor-Funktion über die Sitzung wissen darf */
@@ -17,5 +18,6 @@ export function featureExtensions(context: FeatureContext): Extension[] {
         foldingExtension(context),
         diagnosticsExtension(context),
         typingExtension(context),
+        searchExtension(),
     ];
 }

@@ -16,8 +16,9 @@ import {
 // Ohne Electron, Kennungen und Dateisystem sind einspeisbar.
 
 // project: darf mit `project:open` geöffnet werden; importSource: darf nur gelesen und ins Projekt
-// kopiert werden; saveTarget: Ziel aus „Speichern unter“.
-export type GrantKind = 'project' | 'importSource' | 'saveTarget';
+// kopiert werden; saveTarget: Ziel aus „Speichern unter“; pickedFile: im Dialog „Dateien wählen“
+// ausgesuchte Datei (lesen und zurückschreiben, z. B. Einzeldatei ohne Projekt).
+export type GrantKind = 'project' | 'importSource' | 'saveTarget' | 'pickedFile';
 
 interface Grant {
     readonly kind: GrantKind;
@@ -68,6 +69,13 @@ export class GrantStore {
     resolve(grantId: GrantId, kind: GrantKind): string {
         const grant = this.grants.get(grantId);
         if (grant === undefined || grant.kind !== kind) throw forbidden(GRANT_MESSAGES.unknownGrant);
+        return grant.path;
+    }
+
+    // Wie `resolve`, aber für eine von mehreren zulässigen Arten (z. B. Lesen aus Dialog oder Drop).
+    resolveOneOf(grantId: GrantId, kinds: readonly GrantKind[]): string {
+        const grant = this.grants.get(grantId);
+        if (grant === undefined || !kinds.includes(grant.kind)) throw forbidden(GRANT_MESSAGES.unknownGrant);
         return grant.path;
     }
 

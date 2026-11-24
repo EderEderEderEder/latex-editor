@@ -10,6 +10,8 @@
 // - Zeiten sind Millisekunden seit 1970 (`Date.now()`), Koordinaten im PDF sind Punkte, Ursprung oben links.
 
 export type AbsolutePath = string;
+/** Ziel einer Dateioperation: absoluter Pfad im Projekt ODER `GrantId` einer gewährten Einzeldatei (Dialog); Ergebnisse geben das Ziel unverändert zurück */
+export type FileTarget = string;
 export type RelativePath = string;
 export type Utf16Offset = number;
 export type LineNumber = number;
@@ -138,7 +140,7 @@ export type LineEnding = 'lf' | 'crlf';
 export type CreateKind = 'file' | 'directory';
 
 export interface TextFile {
-    readonly path: AbsolutePath;
+    readonly path: FileTarget;
     readonly text: string;
     readonly encoding: TextEncoding;
     readonly eol: LineEnding;
@@ -147,7 +149,7 @@ export interface TextFile {
 }
 
 export interface ReadManyItem {
-    readonly path: AbsolutePath;
+    readonly path: FileTarget;
     readonly result: IpcResult<TextFile>;
 }
 
@@ -306,10 +308,10 @@ export interface IpcRequests {
     'dialog:saveAs': Request<[options: SaveAsOptions], GrantedPath | null>;
     // Nur für den Preload (`dragDrop.grantFiles`), nicht als `window.api.drop.grant` sichtbar.
     'drop:grant': Request<[paths: AbsolutePath[]], DropGrantResult>;
-    'fs:readText': Request<[path: AbsolutePath], TextFile>;
-    'fs:readMany': Request<[paths: AbsolutePath[]], ReadManyItem[]>;
+    'fs:readText': Request<[path: FileTarget], TextFile>;
+    'fs:readMany': Request<[paths: FileTarget[]], ReadManyItem[]>;
     'fs:writeText': Request<
-        [path: AbsolutePath, text: string, encoding: TextEncoding, eol: LineEnding, expectedHash?: ContentHash],
+        [path: FileTarget, text: string, encoding: TextEncoding, eol: LineEnding, expectedHash?: ContentHash],
         WriteResult
     >;
     'fs:create': Request<[parentDir: AbsolutePath, name: string, kind: CreateKind], FileOpResult>;

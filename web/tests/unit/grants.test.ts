@@ -128,3 +128,13 @@ describe('grantDroppedPaths', () => {
         expect(FILE_IMPORT_RULES.extensions.has('.tex')).toBe(true);
     });
 });
+
+describe('GrantStore.resolveOneOf', () => {
+    it('liefert den Pfad nur für eine der genannten Arten', () => {
+        const store = new GrantStore({ platform: MACOS_PATHS, createId: sequentialIds() });
+        store.grant('/Users/u/brief.tex', 'pickedFile');
+        expect(store.resolveOneOf('grant-0', ['saveTarget', 'pickedFile'])).toBe('/Users/u/brief.tex');
+        expect(errorKind(() => store.resolveOneOf('grant-0', ['saveTarget', 'importSource']))).toBe('forbiddenPath');
+        expect(errorKind(() => store.resolveOneOf('erfunden', ['pickedFile']))).toBe('forbiddenPath');
+    });
+});

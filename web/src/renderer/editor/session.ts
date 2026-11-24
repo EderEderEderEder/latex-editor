@@ -11,6 +11,8 @@ import type { SyntaxLanguage } from '../../shared/core/language';
 import type {
     AbsolutePath, ContentHash, EpochMillis, LineEnding, TextEncoding, TextFile, WriteResult,
 } from '../../shared/contract';
+import { appearanceEffects, appearanceExtensions, currentAppearance } from './appearance';
+import type { AppearanceValues } from './appearance';
 import { syntaxHighlightingForPath } from './language';
 import { featureExtensions } from './extensions';
 
@@ -182,6 +184,7 @@ export class EditorSession {
     private savedRevision = FIRST_REVISION;
     private lastDirty = false;
     private disposed = false;
+    private appliedAppearance: AppearanceValues = currentAppearance();
     private info: SessionFileInfo;
     private onDirtyChange: SessionOptions['onDirtyChange'];
 
@@ -288,11 +291,24 @@ export class EditorSession {
         this.dispatch({ effects: languageCompartment.reconfigure(syntaxHighlightingForPath(newPath)) });
     }
 
+    /**
+     * Zieht Farbschema, Zeilenumbruch, Anzeige und Tippen auf den aktuellen Stand (`currentAppearance`), nur was sich
+     * geändert hat und ohne Neuaufbau. Nicht sichtbare Sitzungen holen das beim Anzeigen nach (`attach`).
+     */
+    syncAppearance(): void {
+        const next = currentAppearance();
+        if (next === this.appliedAppearance || this.disposed) return;
+        const effects = appearanceEffects(this.appliedAppearance, next);
+        this.appliedAppearance = next;
+        if (effects.length > 0) this.dispatch({ effects });
+    }
+
     /** Nur für `SessionView`: zeigt diese Sitzung im View samt gemerkter Scrollposition */
     attach(view: EditorView): void {
         if (this.disposed) return;
         view.setState(this.stored);
         this.view = view;
+        this.syncAppearance();
         if (this.scroll !== null) view.dispatch({ effects: this.scroll });
     }
 
@@ -323,6 +339,7 @@ export class EditorSession {
             normalizeInsertedLineBreaks,
             languageCompartment.of(syntaxHighlightingForPath(this.info.path)),
             featureExtensions({ path: this.info.path }),
+            appearanceExtensions(this.appliedAppearance),
             EditorView.updateListener.of((update) => this.handleViewUpdate(update)),
         ];
     }

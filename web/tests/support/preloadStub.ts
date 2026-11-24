@@ -7,10 +7,12 @@ import type {
     RequestArgs,
     RequestChannel,
     RequestResult,
+    GeneralErrorKind,
+    GrantedPath,
     TextFile,
     Unsubscribe,
 } from '../../src/shared/contract';
-import { fail, ok, toIpcError } from '../../src/shared/ipcResult';
+import { IpcFailure, fail, ok, toIpcError } from '../../src/shared/ipcResult';
 
 // Bildet `window.api` vollständig nach (gleiche Form wie der Preload, über `buildRendererApi`),
 // damit Renderer-Code ohne Electron testbar ist. Antworten sind gefälschte, feste Daten und lassen
@@ -25,6 +27,22 @@ export type StubResponders = { [C in RequestChannel]: StubResponder<C> };
 export interface StubCall {
     readonly channel: RequestChannel;
     readonly args: readonly unknown[];
+}
+
+/**
+ * Steuerung für Playwright-Tests: hängt als `__stub` an `window.api` des Stub-Preloads (nie am echten Preload).
+ * Rückgaben sind einfache Werte, damit sie über `contextBridge` kopiert werden können.
+ */
+export interface StubControl {
+    /** Aufgezeichnete Aufrufe (Kanal und Argumente) seit dem Start oder dem letzten `clearCalls` */
+    calls(): StubCall[];
+    clearCalls(): void;
+    /** Legt eine Datei an, die der nächste Dialog `dialog:pickFiles` liefert; `readText` kennt sie danach */
+    prepareFile(name: string, text: string): void;
+    /** Lässt `fs:writeText` mit diesem Fehler antworten; `null` schaltet es wieder aus */
+    failWrites(kind: GeneralErrorKind | null, message?: string): void;
+    /** Zuletzt geschriebener Text je Pfad */
+    writtenText(path: string): string | null;
 }
 
 export interface PreloadStub {
@@ -126,12 +144,62 @@ async function answer(responder: AnyResponder, args: readonly unknown[]): Promis
     }
 }
 
+interface VirtualFile {
+    readonly grant: GrantedPath;
+    readonly path: string;
+    text: string;
+}
+
+const VIRTUAL_FILE_DIRECTORY = `${STUB_ROOT}/`;
+
+/** Kleine Platte im Speicher für die Abläufe Öffnen und Speichern (Kennung oder Pfad führen zur Datei) */
+class VirtualFiles implements Pick<StubControl, 'prepareFile' | 'failWrites' | 'writtenText'> {
+    private readonly files = new Map<string, VirtualFile>();
+    private pending: VirtualFile[] = [];
+    private writeFailure: { kind: GeneralErrorKind; message: string } | null = null;
+
+    prepareFile(name: string, text: string): void {
+        const path = `${VIRTUAL_FILE_DIRECTORY}${name}`;
+        const file: VirtualFile = { grant: stubGrant(path, this.files.size), path, text };
+        this.files.set(file.grant.grantId, file);
+        this.files.set(path, file);
+        this.pending.push(file);
+    }
+
+    failWrites(kind: GeneralErrorKind | null, message = 'Schreiben abgelehnt (Stub)'): void {
+        this.writeFailure = kind === null ? null : { kind, message };
+    }
+
+    writtenText(path: string): string | null {
+        return this.files.get(path)?.text ?? null;
+    }
+
+    readonly responders: Pick<StubResponders, 'dialog:pickFiles' | 'fs:readText' | 'fs:writeText'> = {
+        'dialog:pickFiles': () => {
+            const picked = this.pending.map((file) => file.grant);
+            this.pending = [];
+            return picked.length === 0 ? null : picked;
+        },
+        'fs:readText': (path) => {
+            const file = this.files.get(path);
+            return file === undefined ? textFile(path) : { ...textFile(file.path), text: file.text };
+        },
+        'fs:writeText': (path, text) => {
+            if (this.writeFailure !== null) throw new IpcFailure(this.writeFailure);
+            const file = this.files.get(path);
+            if (file !== undefined) file.text = text;
+            return { hash: STUB_HASH, mtime: STUB_TIME };
+        },
+    };
+}
+
 export function createPreloadStub(overrides: Partial<StubResponders> = {}): PreloadStub {
-    const responders: Record<string, unknown> = { ...DEFAULT_STUB_RESPONSES, ...overrides };
+    const virtualFiles = new VirtualFiles();
+    const responders: Record<string, unknown> = { ...DEFAULT_STUB_RESPONSES, ...virtualFiles.responders, ...overrides };
     const calls: StubCall[] = [];
     const listeners = new Map<EventChannel, Set<AnyListener>>();
     const filePaths = new WeakMap<File, string>();
-    const api = buildRendererApi({
+    const baseApi = buildRendererApi({
         invoke: (channel, args) => {
             calls.push({ channel, args });
             return answer(responders[channel] as AnyResponder, args);
@@ -139,6 +207,16 @@ export function createPreloadStub(overrides: Partial<StubResponders> = {}): Prel
         subscribe: (event, listener) => subscribe(listeners, event, listener),
         getPathForFile: (file) => filePaths.get(file) ?? '',
     });
+    const stubControl: StubControl = {
+        prepareFile: (name, text) => virtualFiles.prepareFile(name, text),
+        failWrites: (kind, message) => virtualFiles.failWrites(kind, message),
+        writtenText: (path) => virtualFiles.writtenText(path),
+        calls: () => calls.map((call) => ({ channel: call.channel, args: [...call.args] })),
+        clearCalls: () => {
+            calls.length = 0;
+        },
+    };
+    const api = Object.assign({}, baseApi, { __stub: stubControl }) as RendererApi;
     return {
         api,
         calls,

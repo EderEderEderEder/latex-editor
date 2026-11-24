@@ -1,0 +1,72 @@
+/* Rahmen des Editors (W1-12b). Farben aus den Variablen des Farbschemas (`--editor-*`) mit Rückfall für Hell/Dunkel. */
+:root {
+    color-scheme: light dark;
+    --ui-scale: 1;
+    --editor-font-size: 13px;
+    --editor-font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+    --editor-line-height: 1.5;
+    --chrome-background: #f3f3f3;
+    --chrome-text: #1f1f1f;
+    --chrome-muted: #5c5c5c;
+    --chrome-border: #d4d4d4;
+    --chrome-active: #ffffff;
+    --chrome-accent: #0b57d0;
+    --chrome-error: #b3261e;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --chrome-background: #252526;
+        --chrome-text: #e6e6e6;
+        --chrome-muted: #a6a6a6;
+        --chrome-border: #3c3c3c;
+        --chrome-active: #1e1e1e;
+        --chrome-accent: #6cb4ff;
+        --chrome-error: #ff8a80;
+    }
+}
+
+html, body, #root { height: 100%; margin: 0; }
+
+body {
+    background: var(--chrome-background);
+    color: var(--chrome-text);
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-size: calc(13px * var(--ui-scale));
+}
+
+main { height: 100%; display: flex; flex-direction: column; }
+
+.editor-pane { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+
+.editor-toolbar {
+    display: flex; align-items: center; gap: 1em; padding: 0.4em 0.8em;
+    border-bottom: 1px solid var(--chrome-border);
+}
+
+.editor-toolbar h1 { margin: 0; font-size: 1.1em; font-weight: 600; }
+.editor-toolbar-actions { display: flex; gap: 0.4em; }
+
+.editor-pane button {
+    font: inherit; color: inherit; background: transparent; border: 1px solid var(--chrome-border);
+    border-radius: 4px; padding: 0.2em 0.7em; cursor: pointer;
+}
+.editor-pane button:disabled { opacity: 0.5; cursor: default; }
+.editor-pane button:focus-visible { outline: 2px solid var(--chrome-accent); outline-offset: 1px; }
+
+.editor-tabs { display: flex; overflow-x: auto; border-bottom: 1px solid var(--chrome-border); min-height: 2em; }
+.editor-tab { display: flex; align-items: center; gap: 0.2em; padding: 0 0.3em; border-right: 1px solid var(--chrome-border); }
+.editor-tab.is-active { background: var(--chrome-active); box-shadow: inset 0 -2px 0 var(--chrome-accent); }
+.editor-pane .editor-tab-title, .editor-pane .editor-tab-close { border: none; padding: 0.3em 0.4em; }
+.editor-tab-title.is-preview { font-style: italic; }
+.tab-dirty { width: 0.6em; height: 0.6em; border-radius: 50%; background: var(--chrome-text); flex: none; }
+
+.editor-host { flex: 1 1 auto; min-height: 0; background: var(--editor-background, #ffffff); }
+
+.status-bar {
+    display: flex; gap: 1.2em; padding: 0.25em 0.8em; border-top: 1px solid var(--chrome-border);
+    color: var(--chrome-muted); white-space: nowrap;
+}
+.status-position { min-width: 11em; }
+.status-message { margin-left: auto; overflow: hidden; text-overflow: ellipsis; }
+.status-message.is-error { color: var(--chrome-error); font-weight: 600; }

@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
-import { EditorHost } from './editor/EditorHost';
+import { loadSettingsOnce } from './app/startup';
 import { getApi } from './ipc/api';
+import { useSettingsStore } from './stores/settings';
+import { statusStore } from './stores/status';
+import { EditorPane } from './ui/EditorPane';
 
 const PING_PENDING = '…';
 
@@ -19,12 +22,15 @@ export function App() {
         };
     }, []);
 
+    useEffect(() => {
+        void loadSettingsOnce(useSettingsStore, (message) => statusStore.getState().show(message));
+    }, []);
+
     return (
         <main>
-            <h1>LatexEditor</h1>
-            <p>{pingText}</p>
-            {/* Vorläufig (W1-6): nur für den Sitzungstausch-Test; die Editor-Oberfläche baut W1-12. */}
-            <EditorHost />
+            {/* Die Verbindungsprüfung bleibt für den Stub-Smoke-Test (`main p`), ohne Platz in der Oberfläche. */}
+            <p hidden>{pingText}</p>
+            <EditorPane heading={<h1>LatexEditor</h1>} />
         </main>
     );
 }

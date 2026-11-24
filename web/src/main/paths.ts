@@ -199,3 +199,13 @@ export function fileUrlToPath(url: string, platform: PathPlatform): string {
     }
     return normalizeAbsolutePath(converted, platform);
 }
+
+/**
+ * Bildet einen aufgelösten Pfad (z. B. `/private/var/…` oder anderer Laufwerksbuchstabe nach `realpath`) auf die Form
+ * der Projektwurzel ab, wie der Renderer sie kennt; Pfade außerhalb der aufgelösten Wurzel bleiben unverändert.
+ */
+export function rebaseToProjectRoot(file: string, realRoot: string, root: string, platform: PathPlatform): string {
+    if (!isPathWithin(file, realRoot, platform)) return file;
+    const relative = platform.path.relative(realRoot, file);
+    return relative === '' ? root : platform.path.join(root, relative);
+}

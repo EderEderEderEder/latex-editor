@@ -6,10 +6,12 @@ export interface EditorToolbarProps {
     readonly onOpen: () => void;
     readonly onSave: () => void;
     readonly onSaveAs: () => void;
+    /** Platz für die Kompilieren-Leiste rechts neben den Datei-Aktionen */
+    readonly build?: ReactNode;
 }
 
 /** Kopfzeile: Überschrift links, Datei-Aktionen daneben (Kürzel Strg+O, Strg+S, Strg+Umschalt+S) */
-export function EditorToolbar({ heading, canSave, onOpen, onSave, onSaveAs }: EditorToolbarProps) {
+export function EditorToolbar({ heading, canSave, onOpen, onSave, onSaveAs, build }: EditorToolbarProps) {
     return (
         <header className="editor-toolbar">
             {heading}
@@ -30,6 +32,7 @@ export function EditorToolbar({ heading, canSave, onOpen, onSave, onSaveAs }: Ed
                     Speichern unter …
                 </button>
             </div>
+            {build}
         </header>
     );
 }

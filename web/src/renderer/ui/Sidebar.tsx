@@ -1,8 +1,9 @@
-// Seitenleiste (W2-3, Vorlage `SidebarView`): Tab-Leiste mit Symbol und Beschriftung (Dateien, Gliederung; Platz für
-// ein Fehler-Badge), Statistik, dann Dateibaum mit Filterfeld oder Gliederung. Der Zustand liegt im Sidebar-Store.
+// Seitenleiste (W2-3, Vorlage `SidebarView`): Tab-Leiste mit Symbol und Beschriftung (Dateien, Gliederung, Meldungen mit
+// Fehler-Badge), Statistik, dann Dateibaum mit Filterfeld oder Gliederung. Der Zustand liegt im Sidebar-Store.
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { revealLine } from '../app/revealLine';
+import { useBuildStore } from '../app/buildRuntime';
 import { outlineStore } from '../app/outlineRuntime';
 import { revealDeps } from '../app/projectRuntime';
 import { useOutlineStore } from '../stores/outline';
@@ -12,6 +13,7 @@ import { sidebarStore, useSidebarStore } from '../stores/sidebar';
 import type { SidebarTab } from '../stores/sidebar';
 import { FileFilterRow } from './FileFilterRow';
 import { FileTree, useProjectFileCount } from './FileTree';
+import { IssuesPanel } from './IssueList';
 import { OutlineList } from './OutlineList';
 import type { OutlineTarget } from './OutlineList';
 import { ProjectHeader, StartView } from './ProjectHeader';
@@ -25,6 +27,8 @@ interface TabSpec {
     readonly tab: SidebarTab;
     readonly title: string;
     readonly icon: ReactNode;
+    /** Beschriftung des Zählers für Screenreader; ohne Angabe „N Meldungen“ */
+    readonly badgeLabel?: (count: number) => string;
 }
 
 const TAB_SPECS: readonly TabSpec[] = [
@@ -38,6 +42,12 @@ const TAB_SPECS: readonly TabSpec[] = [
         title: 'Gliederung',
         icon: <path d="M2 3.5h12 M5 7h9 M5 10.5h9 M8 14h6 M2.5 7h.01 M2.5 10.5h.01 M2.5 14h.01" />,
     },
+    {
+        tab: 'issues',
+        title: 'Meldungen',
+        icon: <path d="M8 2l6.5 11.5h-13z M8 6.5v3 M8 11.5h.01" />,
+        badgeLabel: (count) => (count === 1 ? '1 Fehler' : `${count} Fehler`),
+    },
 ];
 
 export interface SidebarProps {
@@ -47,7 +57,9 @@ export interface SidebarProps {
     readonly onFocusEditor: () => void;
 }
 
-function TabButton({ spec, badge }: { readonly spec: TabSpec; readonly badge: number }) {
+function TabButton({ spec, badge: givenBadge }: { readonly spec: TabSpec; readonly badge: number }) {
+    const errorCount = useBuildStore((state) => (spec.tab === 'issues' ? state.counts.error : 0));
+    const badge = givenBadge > 0 ? givenBadge : errorCount;
     const isActive = useSidebarStore((state) => state.tab === spec.tab);
     return (
         <button
@@ -61,7 +73,7 @@ function TabButton({ spec, badge }: { readonly spec: TabSpec; readonly badge: nu
             </svg>
             <span className="sidebar-tab-title">{spec.title}</span>
             {badge > 0 && (
-                <span className="sidebar-tab-badge" aria-label={`${badge} Meldungen`}>
+                <span className="sidebar-tab-badge" aria-label={spec.badgeLabel?.(badge) ?? `${badge} Meldungen`}>
                     {badge > MAX_BADGE ? `${MAX_BADGE}+` : badge}
                 </span>
             )}
@@ -107,6 +119,7 @@ function OutlinePanel({ onFocusEditor }: Pick<SidebarProps, 'onFocusEditor'>) {
 function SidebarContent({ project, onFocusEditor }: { project: ProjectView } & Pick<SidebarProps, 'onFocusEditor'>) {
     const tab = useSidebarStore((state) => state.tab);
     if (tab === 'outline') return <OutlinePanel onFocusEditor={onFocusEditor} />;
+    if (tab === 'issues') return <IssuesPanel onFocusEditor={onFocusEditor} />;
     return (
         <>
             <FileFilterRow />

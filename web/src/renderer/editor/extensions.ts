@@ -1,4 +1,5 @@
 import type { Extension } from '@codemirror/state';
+import { buildMarksExtension } from './buildMarks';
 import { diagnosticsExtension } from './diagnostics';
 import { foldingExtension } from './folding';
 import { gutterExtension } from './gutter';
@@ -19,6 +20,7 @@ export function featureExtensions(context: FeatureContext): Extension[] {
         gutterExtension(context),
         foldingExtension(context),
         diagnosticsExtension(context),
+        buildMarksExtension(),
         typingExtension(context),
         searchExtension(),
     ];

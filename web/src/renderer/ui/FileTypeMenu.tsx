@@ -22,7 +22,7 @@ function entryLabel(entry: FileTypeEntry): string {
 }
 
 /** Schließt das Menü bei Klick daneben und mit Escape */
-function useDismiss(rootRef: RefObject<HTMLElement | null>, isOpen: boolean, close: () => void): void {
+export function useDismiss(rootRef: RefObject<HTMLElement | null>, isOpen: boolean, close: () => void): void {
     useEffect(() => {
         if (!isOpen) return undefined;
         const onPointerDown = (event: PointerEvent): void => {

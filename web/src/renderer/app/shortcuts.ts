@@ -7,6 +7,10 @@ export type ShortcutAction =
     | { readonly kind: 'saveAs' }
     | { readonly kind: 'nextTab' }
     | { readonly kind: 'previousTab' }
+    | { readonly kind: 'compile' }
+    | { readonly kind: 'cancelBuild' }
+    | { readonly kind: 'nextIssue' }
+    | { readonly kind: 'previousIssue' }
     | { readonly kind: 'zoom'; readonly direction: ZoomDirection };
 
 export interface KeyInput {
@@ -24,6 +28,8 @@ const ZOOM_OUT_KEYS: ReadonlySet<string> = new Set(['-', '_']);
 function letterAction(key: string, shift: boolean): ShortcutAction | null {
     if (key === 'o' && !shift) return { kind: 'open' };
     if (key === 's') return { kind: shift ? 'saveAs' : 'save' };
+    if (key === 'b' && !shift) return { kind: 'compile' };
+    if (key === '.' && !shift) return { kind: 'cancelBuild' };
     return null;
 }
 
@@ -40,8 +46,16 @@ function tabSwitchAction(input: KeyInput): ShortcutAction | null {
     return { kind: input.shiftKey ? 'previousTab' : 'nextTab' };
 }
 
+// F8 / Umschalt+F8: nächste/vorherige Meldung des Builds (ohne Strg)
+function issueAction(input: KeyInput): ShortcutAction | null {
+    if (input.key !== 'F8' || input.ctrlKey || input.metaKey) return null;
+    return { kind: input.shiftKey ? 'previousIssue' : 'nextIssue' };
+}
+
 export function matchShortcut(input: KeyInput): ShortcutAction | null {
     if (input.defaultPrevented === true || input.altKey) return null;
+    const issue = issueAction(input);
+    if (issue !== null) return issue;
     const tabSwitch = tabSwitchAction(input);
     if (tabSwitch !== null) return tabSwitch;
     if (input.ctrlKey === input.metaKey) return null;

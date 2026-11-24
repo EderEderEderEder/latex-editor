@@ -1,0 +1,40 @@
+/* Kompilieren-Leiste (W2-12). Farben aus den `--chrome-*`-Variablen; Statusfarben nur als Zusatz zu Symbol und Text. */
+.build-toolbar {
+    --build-ok: #1e7d32; --build-warn: #9a5b00; --build-busy: var(--chrome-accent);
+    flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 0.5em; margin-left: auto; justify-content: flex-end;
+}
+
+@media (prefers-color-scheme: dark) {
+    .build-toolbar { --build-ok: #81c995; --build-warn: #ffb74d; }
+}
+
+.build-status {
+    min-width: 0; display: flex; align-items: center; gap: 0.35em; overflow: hidden; white-space: nowrap;
+}
+.editor-pane .build-status-text {
+    border: none; padding: 0.1em 0.2em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.editor-pane .build-status-text:hover { text-decoration: underline; }
+.build-status-icon { flex: none; }
+.build-status[data-kind='success'] .build-status-icon { color: var(--build-ok); }
+.build-status[data-kind='failed'] .build-status-icon, .build-status[data-kind='startFailed'] .build-status-icon { color: var(--chrome-error); }
+.build-status[data-kind='unavailable'] .build-status-icon, .build-status[data-kind='noMainFile'] .build-status-icon { color: var(--build-warn); }
+.build-status[data-kind='unavailable'] .build-status-text, .build-status[data-kind='failed'] .build-status-text { font-weight: 600; }
+.build-status-icon.is-busy { color: var(--build-busy); animation: build-spin 1.2s linear infinite; transform-origin: center; }
+
+@media (prefers-reduced-motion: reduce) {
+    .build-status-icon.is-busy { animation: none; }
+}
+
+@keyframes build-spin { to { transform: rotate(360deg); } }
+
+.build-menu { position: relative; flex: none; }
+.build-menu-popover, .build-menu-confirm {
+    position: absolute; z-index: 10; top: 100%; right: 0; margin-top: 0.3em; width: 18em; box-sizing: border-box;
+    display: flex; flex-direction: column; gap: 0.5em; padding: 0.6em;
+    background: var(--chrome-active); border: 1px solid var(--chrome-border); border-radius: 6px;
+    box-shadow: 0 4px 14px rgb(0 0 0 / 25%);
+}
+.build-menu-confirm p { margin: 0; overflow-wrap: anywhere; }
+.build-menu-buttons { display: flex; justify-content: flex-end; gap: 0.5em; }
+.build-menu-item { display: flex; align-items: center; gap: 0.4em; white-space: nowrap; }

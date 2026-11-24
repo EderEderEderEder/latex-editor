@@ -2,6 +2,9 @@
 // hier stehen Aktionen und Tastenkürzel, die den Editor-Store und den IPC-Vertrag benutzen.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { buildStore, compileOnSave } from '../app/buildRuntime';
+import { goToIssue } from '../app/issueActions';
+import { revealDeps } from '../app/projectRuntime';
 import { saveActiveFile, saveActiveFileAs, openFilesFromDialog } from '../app/fileActions';
 import type { FileActionDeps } from '../app/fileActions';
 import { matchShortcut } from '../app/shortcuts';
@@ -17,6 +20,7 @@ import { editorStore, useEditorStore } from '../stores/editor';
 import { useSettingsStore } from '../stores/settings';
 import { statusStore } from '../stores/status';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
+import { BuildToolbar } from './BuildToolbar';
 import { EditorToolbar } from './EditorToolbar';
 import { PathBar } from './PathBar';
 import { StatusBar } from './StatusBar';
@@ -24,7 +28,33 @@ import { TabBar } from './TabBar';
 import './editorPane.css';
 
 function fileActionDeps(): FileActionDeps {
-    return { api: getApi(), store: editorStore, report: (message) => statusStore.getState().show(message) };
+    return {
+        api: getApi(),
+        store: editorStore,
+        report: (message) => statusStore.getState().show(message),
+        onSaved: (path) => compileOnSave.notifySaved(path),
+    };
+}
+
+/** F8 geschieht meist im Editor, der Fokus bleibt dort; aus der Liste springt der Klick selbst mit Fokus */
+const KEEP_FOCUS = (): void => undefined;
+
+function runBuildShortcut(action: ShortcutAction): void {
+    switch (action.kind) {
+        case 'compile':
+            void buildStore.getState().compile();
+            return;
+        case 'cancelBuild':
+            void buildStore.getState().cancel();
+            return;
+        case 'nextIssue':
+            void goToIssue(revealDeps(KEEP_FOCUS), buildStore, 'next');
+            return;
+        case 'previousIssue':
+            void goToIssue(revealDeps(KEEP_FOCUS), buildStore, 'previous');
+            return;
+        default:
+    }
 }
 
 function runShortcut(action: ShortcutAction): void {
@@ -44,6 +74,12 @@ function runShortcut(action: ShortcutAction): void {
             return;
         case 'previousTab':
             editorStore.getState().activatePrevious();
+            return;
+        case 'compile':
+        case 'cancelBuild':
+        case 'nextIssue':
+        case 'previousIssue':
+            runBuildShortcut(action);
             return;
         case 'zoom':
             void changeEditorZoom(useSettingsStore, action.direction, (text) => statusStore.getState().show({ text, kind: 'error' }));
@@ -106,6 +142,7 @@ export function EditorPane({ heading, onSessionView }: EditorPaneProps) {
                 onOpen={actions.open}
                 onSave={actions.save}
                 onSaveAs={actions.saveAs}
+                build={<BuildToolbar />}
             />
             <TabBar />
             <PathBar />

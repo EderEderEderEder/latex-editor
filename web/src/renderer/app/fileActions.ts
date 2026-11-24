@@ -10,6 +10,8 @@ export interface FileActionDeps {
     readonly api: Pick<RendererApi, 'dialog' | 'fs'>;
     readonly store: EditorStore;
     readonly report: (message: StatusMessage) => void;
+    /** Nach jedem erfolgreichen Speichern einer Datei (Strg+S); „Speichern unter“ und Speichern vor dem Build melden nicht */
+    readonly onSaved?: (path: string) => void;
 }
 
 export type SaveOutcome = 'saved' | 'unchanged' | 'conflict' | 'failed' | 'missing' | 'cancelled';
@@ -94,6 +96,7 @@ async function writeAndMark(deps: FileActionDeps, session: EditorSession): Promi
     }
     deps.store.getState().markSaved(path, snapshot, written.value);
     deps.report({ text: SAVE_TEXTS.saved(name), kind: 'info' });
+    deps.onSaved?.(path);
     return 'saved';
 }
 

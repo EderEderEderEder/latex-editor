@@ -6,7 +6,7 @@ import { createStore } from 'zustand/vanilla';
 import type { StoreApi } from 'zustand/vanilla';
 import type { AbsolutePath } from '../../shared/contract';
 
-export type SidebarTab = 'files' | 'outline';
+export type SidebarTab = 'files' | 'outline' | 'issues';
 
 export const SIDEBAR_MIN_WIDTH = 180;
 export const SIDEBAR_MAX_WIDTH = 480;

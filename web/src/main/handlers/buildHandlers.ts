@@ -14,6 +14,7 @@ import type { EventSender } from '../ipc';
 import type { IpcHandlers } from '../ipcHandlers';
 import { isGrantId } from '../ipcValidation';
 import type { QuitTasks } from '../lifecycle';
+import { currentPathPlatform, rebaseToProjectRoot, resolveRealPath } from '../paths';
 import type { RealpathFunction } from '../paths';
 import { detectTools as nativeDetectTools } from '../tools';
 import type { ProjectWatch } from './watchHandlers';
@@ -121,12 +122,26 @@ function rescanAfterBuild(emit: EventSender, watch: BuildWatchHooks | null | und
     };
 }
 
+// Meldungen tragen aufgelöste Pfade (`realpath`); die Oberfläche kennt das Projekt in der Form der Gewährung.
+function parseLogInProjectForm(deps: BuildHandlerDependencies, parse: LogParser): LogParser {
+    return async (logPath) => {
+        const issues = await parse(logPath);
+        const root = deps.grants.currentProject;
+        if (root === null) return issues;
+        const platform = currentPathPlatform();
+        const realRoot = await resolveRealPath(root, deps.realpath === undefined ? {} : { realpath: deps.realpath });
+        return issues.map((issue) =>
+            issue.file === null ? issue : { ...issue, file: rebaseToProjectRoot(issue.file, realRoot, root, platform) },
+        );
+    };
+}
+
 export function createBuildHandlers(deps: BuildHandlerDependencies): BuildHandlers {
     const queue = new BuildQueue({
         emit: rescanAfterBuild(deps.emit, deps.watch),
         log: (message) => deps.log(`Build: ${message}`),
         ...(deps.buildDependencies === undefined ? {} : { dependencies: deps.buildDependencies }),
-        ...(deps.parseLog === undefined ? {} : { parseLog: deps.parseLog }),
+        ...(deps.parseLog === undefined ? {} : { parseLog: parseLogInProjectForm(deps, deps.parseLog) }),
     });
     const context: BuildContext = { deps, queue, tools: null };
     deps.quitTasks.add(() => queue.shutdown());

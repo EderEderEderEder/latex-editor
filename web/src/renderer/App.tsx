@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { loadSettingsOnce } from './app/startup';
+import { useBuildSync } from './app/useBuildSync';
 import { useOutlineSync } from './app/outlineSync';
 import { useProjectSync } from './app/useProjectSync';
 import type { SessionView } from './editor/session';
@@ -39,6 +40,7 @@ export function App() {
     }, []);
 
     useProjectSync();
+    useBuildSync();
     useOutlineSync(sessionView);
 
     return (

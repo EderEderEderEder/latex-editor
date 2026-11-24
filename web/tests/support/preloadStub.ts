@@ -1,5 +1,7 @@
 import { buildRendererApi } from '../../src/shared/apiBuilder';
 import type {
+    BuildIssue,
+    ToolsInfo,
     EventChannel,
     IpcEvents,
     IpcResult,
@@ -61,6 +63,17 @@ export interface StubControl {
     installSampleProject(extraFileCount?: number): void;
     /** Fügt dem Beispielprojekt eine Datei hinzu (relativer Pfad mit `/`); der Baum ändert sich beim nächsten `project:open` */
     addProjectFile(relativePath: string, text: string): void;
+    /** Werkzeuge, die `tools:detect` meldet (Standard: latexmk fehlt); die Aufrufe stehen in `calls()` */
+    setTools(tools: ToolsInfo): void;
+    /**
+     * Bericht und Ergebnis des nächsten `build:start`: Der Stub sendet `build:status` (running), dann `build:finished`
+     * (und `build:status` idle). `ok` fehlt: Erfolg, wenn der Bericht keinen Fehler enthält.
+     */
+    setBuildResult(report: BuildIssue[], options?: { ok?: boolean; durationMs?: number }): void;
+    /** `true`: Ein Build bleibt im Zustand `running`, bis `finishBuild()` oder `build:cancel` ihn beendet */
+    holdBuilds(hold: boolean): void;
+    /** Beendet einen gehaltenen Build regulär */
+    finishBuild(): void;
 }
 
 export interface PreloadStub {
@@ -335,13 +348,75 @@ class SampleProject {
     }
 }
 
+// ---------- Build (W2-12) ----------
+
+const BUILD_DEFAULT_DURATION_MS = 3200;
+const STUB_PDF = `${STUB_ROOT}/main.pdf`;
+
+/** Spielt den Ablauf des Mains nach: running → finished (→ idle); ein zweiter Start während des Laufs wird `queued` */
+class VirtualBuild {
+    private report: BuildIssue[] = [];
+    private ok: boolean | undefined;
+    private durationMs = BUILD_DEFAULT_DURATION_MS;
+    private holds = false;
+    private isActive = false;
+    tools: ToolsInfo = { latexmk: null, git: null, synctexRef: null, distro: null, problems: [] };
+
+    constructor(private readonly emit: (event: EventChannel, payload: unknown) => void) {}
+
+    setResult(report: BuildIssue[], options: { ok?: boolean; durationMs?: number } = {}): void {
+        this.report = report;
+        this.ok = options.ok;
+        this.durationMs = options.durationMs ?? BUILD_DEFAULT_DURATION_MS;
+    }
+
+    hold(hold: boolean): void {
+        this.holds = hold;
+    }
+
+    start(): void {
+        if (this.isActive) {
+            this.emit('build:status', { state: 'queued', startedAt: Date.now() });
+            return;
+        }
+        this.isActive = true;
+        this.emit('build:status', { state: 'running', startedAt: Date.now() });
+        if (!this.holds) setTimeout(() => this.finish(false), 0);
+    }
+
+    cancel(): void {
+        if (!this.isActive) return;
+        this.emit('build:status', { state: 'cancelling', startedAt: Date.now() });
+        this.finish(true);
+    }
+
+    finish(cancelled: boolean): void {
+        if (!this.isActive) return;
+        this.isActive = false;
+        const ok = !cancelled && (this.ok ?? !this.report.some((issue) => issue.severity === 'error'));
+        this.emit('build:finished', {
+            ok,
+            cancelled,
+            report: cancelled ? [] : this.report,
+            pdfPath: cancelled ? null : STUB_PDF,
+            durationMs: this.durationMs,
+        });
+        this.emit('build:status', { state: 'idle', startedAt: null });
+    }
+}
+
 export function createPreloadStub(overrides: Partial<StubResponders> = {}): PreloadStub {
     const virtualFiles = new VirtualFiles();
     const virtualTabMemory = new VirtualTabMemory();
+    const listeners = new Map<EventChannel, Set<AnyListener>>();
+    const virtualBuild = new VirtualBuild((event, payload) => emitEvent(listeners, event, payload));
     const responders: Record<string, unknown> = {
         ...DEFAULT_STUB_RESPONSES,
         ...virtualFiles.responders,
         ...virtualTabMemory.responders,
+        'tools:detect': () => virtualBuild.tools,
+        'build:start': () => virtualBuild.start(),
+        'build:cancel': () => virtualBuild.cancel(),
         ...overrides,
     };
     let sampleProject: SampleProject | null = null;
@@ -357,7 +432,6 @@ export function createPreloadStub(overrides: Partial<StubResponders> = {}): Prel
         };
     };
     const calls: StubCall[] = [];
-    const listeners = new Map<EventChannel, Set<AnyListener>>();
     const filePaths = new WeakMap<File, string>();
     const baseApi = buildRendererApi({
         invoke: (channel, args) => {
@@ -376,6 +450,12 @@ export function createPreloadStub(overrides: Partial<StubResponders> = {}): Prel
         emit: (event, payload) => emitEvent(listeners, event, payload),
         installSampleProject,
         addProjectFile: (relativePath, text) => sampleProject?.addFile(relativePath, text),
+        setTools: (tools) => {
+            virtualBuild.tools = tools;
+        },
+        setBuildResult: (report, options) => virtualBuild.setResult(report, options),
+        holdBuilds: (hold) => virtualBuild.hold(hold),
+        finishBuild: () => virtualBuild.finish(false),
         calls: () => calls.map((call) => ({ channel: call.channel, args: [...call.args] })),
         clearCalls: () => {
             calls.length = 0;

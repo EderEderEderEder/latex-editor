@@ -40,4 +40,21 @@ describe('Tastenkürzel', () => {
         expect(matchShortcut(ctrl('s', { metaKey: true }))).toBeNull();
         expect(matchShortcut(ctrl('f'))).toBeNull();
     });
+
+    it('Strg+B kompiliert (nicht mit Umschalt: das ist Fett), Strg+Punkt bricht ab', () => {
+        expect(matchShortcut(ctrl('b'))).toEqual({ kind: 'compile' });
+        expect(matchShortcut(ctrl('b', { ctrlKey: false, metaKey: true }))).toEqual({ kind: 'compile' });
+        expect(matchShortcut(ctrl('B', { shiftKey: true }))).toBeNull();
+        expect(matchShortcut(ctrl('.'))).toEqual({ kind: 'cancelBuild' });
+    });
+
+    it('F8 und Umschalt+F8 springen zur nächsten und vorherigen Meldung, nur ohne Strg, Meta und Alt', () => {
+        const key = (extra: Partial<KeyInput> = {}): KeyInput => ({ ...ctrl('F8', { ctrlKey: false }), ...extra });
+        expect(matchShortcut(key())).toEqual({ kind: 'nextIssue' });
+        expect(matchShortcut(key({ shiftKey: true }))).toEqual({ kind: 'previousIssue' });
+        expect(matchShortcut(key({ ctrlKey: true }))).toBeNull();
+        expect(matchShortcut(key({ metaKey: true }))).toBeNull();
+        expect(matchShortcut(key({ altKey: true }))).toBeNull();
+        expect(matchShortcut(key({ defaultPrevented: true }))).toBeNull();
+    });
 });

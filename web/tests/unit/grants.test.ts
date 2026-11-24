@@ -9,7 +9,7 @@ import {
     IMAGE_IMPORT_RULES,
     type ImportSourceDependencies,
 } from '../../src/main/grants';
-import { MACOS_PATHS, type RealpathFunction, WINDOWS_PATHS } from '../../src/main/paths';
+import { LINUX_PATHS, MACOS_PATHS, type RealpathFunction, WINDOWS_PATHS } from '../../src/main/paths';
 import { IpcFailure } from '../../src/shared/ipcResult';
 
 function sequentialIds(): () => string {
@@ -136,5 +136,41 @@ describe('GrantStore.resolveOneOf', () => {
         expect(store.resolveOneOf('grant-0', ['saveTarget', 'pickedFile'])).toBe('/Users/u/brief.tex');
         expect(errorKind(() => store.resolveOneOf('grant-0', ['saveTarget', 'importSource']))).toBe('forbiddenPath');
         expect(errorKind(() => store.resolveOneOf('erfunden', ['pickedFile']))).toBe('forbiddenPath');
+    });
+});
+
+describe('GrantStore: eine Kennung je Pfad (H1)', () => {
+    it('derselbe normalisierte Pfad und dieselbe Art ergeben dieselbe Kennung', () => {
+        const store = new GrantStore({ platform: MACOS_PATHS, createId: sequentialIds() });
+        const first = store.grant('/Users/u/Brief.tex', 'pickedFile');
+        const again = store.grant('/Users/u/./brief.tex', 'pickedFile');
+        expect(again).toEqual({ grantId: first.grantId, name: 'brief.tex' });
+        expect(store.grant('/Users/u/anders.tex', 'pickedFile').grantId).not.toBe(first.grantId);
+    });
+
+    it('unter Linux zählt die Groß-/Kleinschreibung (eigene Kennung)', () => {
+        const store = new GrantStore({ platform: LINUX_PATHS, createId: sequentialIds() });
+        expect(store.grant('/home/u/a.tex', 'pickedFile').grantId).not.toBe(store.grant('/home/u/A.tex', 'pickedFile').grantId);
+    });
+
+    it('„Speichern unter“ auf eine geöffnete Datei liefert deren Kennung, die Arten sammeln sich', () => {
+        const store = new GrantStore({ platform: MACOS_PATHS, createId: sequentialIds() });
+        const dropped = store.grant('/Users/u/a.tex', 'importSource');
+        const saved = store.grant('/Users/u/a.tex', 'saveTarget');
+        expect(saved.grantId).toBe(dropped.grantId);
+        expect(store.resolve(saved.grantId, 'importSource')).toBe('/Users/u/a.tex');
+        expect(store.resolve(saved.grantId, 'saveTarget')).toBe('/Users/u/a.tex');
+        expect(errorKind(() => store.resolve(saved.grantId, 'project'))).toBe('forbiddenPath');
+    });
+
+    it('eine wieder gewährte Kennung verfällt zuletzt; verfallene Pfade bekommen eine neue', () => {
+        const store = new GrantStore({ platform: MACOS_PATHS, createId: sequentialIds(), maxGrants: 2 });
+        store.grant('/a', 'pickedFile');
+        store.grant('/b', 'pickedFile');
+        store.grant('/a', 'pickedFile');
+        store.grant('/c', 'pickedFile');
+        expect(store.resolve('grant-0', 'pickedFile')).toBe('/a');
+        expect(errorKind(() => store.resolve('grant-1', 'pickedFile'))).toBe('forbiddenPath');
+        expect(store.grant('/b', 'pickedFile').grantId).toBe('grant-3');
     });
 });

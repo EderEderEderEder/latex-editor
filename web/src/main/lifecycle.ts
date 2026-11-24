@@ -84,3 +84,78 @@ export function bringToFront(window: WindowLike | null): void {
     window.show();
     window.focus();
 }
+
+// ---------- Nachfrage beim Schließen mit Ungespeichertem (K1) ----------
+
+export interface ClosableWindow {
+    isDestroyed(): boolean;
+    close(): void;
+    destroy(): void;
+}
+
+export interface CloseGuardOptions {
+    // Schickt `app:closeRequested` an den Renderer; `false`, wenn er nicht antworten kann (lädt noch, abgestürzt,
+    // Stub-Preload ohne IPC): dann schließt das Fenster ohne Nachfrage, statt sich nie schließen zu lassen.
+    readonly requestConfirmation: () => boolean;
+    readonly log: (message: string) => void;
+}
+
+// open: nichts angefragt; asking: der Renderer fragt nach (oder hat abgebrochen, das erfährt der Main nicht);
+// confirmed: der Renderer hat bestätigt, Fenster und Beenden laufen ohne neue Nachfrage durch.
+export type ClosePhase = 'open' | 'asking' | 'confirmed';
+
+// Zustandsmaschine „Schließen angefragt → bestätigt“ ohne Electron. `index.ts` hängt `onWindowClose` an
+// `win.on('close')`, `interceptQuit` vor das Aufräumen in `before-quit` und `confirm` an `app:confirmClose`.
+export class CloseGuard {
+    private current: ClosePhase = 'open';
+
+    constructor(private readonly options: CloseGuardOptions) {}
+
+    get phase(): ClosePhase {
+        return this.current;
+    }
+
+    // Für `win.on('close')`: aufhalten und den Renderer fragen; ein erneutes Schließen fragt erneut an
+    // (der Renderer zeigt die Nachfrage nur einmal).
+    onWindowClose(event: PreventableEvent): void {
+        if (this.current === 'confirmed') return;
+        if (!this.options.requestConfirmation()) {
+            this.current = 'confirmed';
+            return;
+        }
+        event.preventDefault();
+        this.current = 'asking';
+    }
+
+    // Für `app:confirmClose`: nur nach einer Anfrage; zerstört das Fenster (`destroy` löst kein `close` aus).
+    confirm(window: ClosableWindow | null): void {
+        if (this.current !== 'asking') {
+            this.options.log('Schließen bestätigt, ohne dass gefragt wurde: ignoriert');
+            return;
+        }
+        this.current = 'confirmed';
+        if (window !== null && !window.isDestroyed()) window.destroy();
+    }
+
+    // Für `before-quit` (⌘Q, Dock, `app.quit()`): Solange das Fenster offen und nicht bestätigt ist, wird das
+    // Beenden aufgehalten und stattdessen das Fenster geschlossen; nach der Bestätigung beendet
+    // `window-all-closed` die App erneut. `true` heißt: aufgehalten, das Aufräumen wartet.
+    interceptQuit(event: PreventableEvent, window: ClosableWindow | null): boolean {
+        if (this.current === 'confirmed' || window === null || window.isDestroyed()) return false;
+        event.preventDefault();
+        window.close();
+        return true;
+    }
+}
+
+// `before-quit` mit Nachfrage: erst die Nachfrage (CloseGuard), danach das Aufräumen (`createBeforeQuitHandler`).
+export function createGuardedQuitHandler(
+    guard: CloseGuard,
+    window: () => ClosableWindow | null,
+    cleanup: (event: PreventableEvent) => void,
+): (event: PreventableEvent) => void {
+    return (event) => {
+        if (guard.interceptQuit(event, window())) return;
+        cleanup(event);
+    };
+}

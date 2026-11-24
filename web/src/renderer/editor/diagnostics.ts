@@ -324,9 +324,19 @@ function severityColor(severity: Severity): string {
     return `var(--editor-diagnostic-${severity}, currentColor)`;
 }
 
-/** Strichpunktiert: 4 px Strich, Lücke, 1 px Punkt, Lücke (Periode 9 px) */
+// Strichpunktiert: Strich, Lücke, Punkt, Lücke (Periode 9 px)
+const DASH_LENGTH_PX = 4;
+const DOT_LENGTH_PX = 1;
+const PATTERN_GAP_PX = 2;
+const WARNING_LINE_THICKNESS_PX = 1.5;
+const WARNING_LINE_OFFSET_PX = 1;
+
 function dashDotGradient(color: string): string {
-    return `repeating-linear-gradient(to right, ${color} 0 4px, transparent 4px 6px, ${color} 6px 7px, transparent 7px 9px)`;
+    const dotStart = DASH_LENGTH_PX + PATTERN_GAP_PX;
+    const dotEnd = dotStart + DOT_LENGTH_PX;
+    const period = dotEnd + PATTERN_GAP_PX;
+    return `repeating-linear-gradient(to right, ${color} 0 ${DASH_LENGTH_PX}px, transparent ${DASH_LENGTH_PX}px ${dotStart}px, `
+        + `${color} ${dotStart}px ${dotEnd}px, transparent ${dotEnd}px ${period}px)`;
 }
 
 /**
@@ -343,8 +353,8 @@ const diagnosticsBaseTheme = EditorView.baseTheme({
         textDecoration: 'none',
         backgroundImage: dashDotGradient(severityColor('warning')),
         backgroundRepeat: 'no-repeat',
-        backgroundSize: '100% 1.5px',
-        backgroundPosition: '0 calc(100% - 1px)',
+        backgroundSize: `100% ${WARNING_LINE_THICKNESS_PX}px`,
+        backgroundPosition: `0 calc(100% - ${WARNING_LINE_OFFSET_PX}px)`,
     },
 });
 
@@ -364,7 +374,7 @@ export interface DiagnosticsOptions {
  * nur LaTeX.
  */
 export function diagnosticsExtension(context: FeatureContext, options: DiagnosticsOptions = {}): Extension {
-    if (languageFromPath(context.path) !== 'latex') return [];
+    if (languageFromPath(context.name ?? context.path) !== 'latex') return [];
     const createSettings = (): DiagnosticsDriverSettings => ({
         docId: context.path,
         hub: options.hub ?? sharedDiagnosticsHub(),

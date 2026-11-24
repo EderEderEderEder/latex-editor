@@ -10,7 +10,7 @@ import type { EditorStore } from '../../src/renderer/stores/editor';
 const path = (name: string): string => `/p/${name}.tex`;
 
 function file(name: string): TextFile {
-    return { path: path(name), text: `Inhalt ${name}\n`, encoding: 'utf8', eol: 'lf', hash: `hash-${name}`, mtime: 1 };
+    return { path: path(name), name: `${name}.tex`, text: `Inhalt ${name}\n`, encoding: 'utf8', eol: 'lf', hash: `hash-${name}`, mtime: 1 };
 }
 
 function makeStore(): { store: EditorStore; registry: SessionRegistry } {

@@ -9,19 +9,19 @@ import {
 } from '../../src/renderer/editor/appearance';
 import { createAppearanceUpdater, connectAppearance } from '../../src/renderer/editor/appearanceController';
 import type { AppearanceHost, SettingsSource } from '../../src/renderer/editor/appearanceController';
-import { EditorSession } from '../../src/renderer/editor/session';
+import { EditorSession, fileNameOfPath } from '../../src/renderer/editor/session';
 import { typingSettings } from '../../src/renderer/editor/typing';
 import {
     selectColorScheme, selectThemeMode, syntaxCssFor, themeCompartment,
 } from '../../src/renderer/editor/themeController';
 import { TOKEN_CLASS_BY_KIND } from '../../src/renderer/editor/language';
-import { defaultSettings } from '../../src/renderer/stores/settingsSchema';
-import type { EditorSettingsValues } from '../../src/renderer/stores/settingsSchema';
+import { defaultSettings } from '../../src/shared/settingsSchema';
+import type { EditorSettingsValues } from '../../src/shared/settingsSchema';
 
 const settings = (changes: Partial<EditorSettingsValues> = {}): EditorSettingsValues => ({ ...defaultSettings(), ...changes });
 
 function file(path: string, text: string): TextFile {
-    return { path, text, encoding: 'utf8', eol: 'lf', hash: 'h', mtime: 0 };
+    return { path, name: fileNameOfPath(path), text, encoding: 'utf8', eol: 'lf', hash: 'h', mtime: 0 };
 }
 
 afterEach(() => {

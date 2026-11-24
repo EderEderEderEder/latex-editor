@@ -46,8 +46,8 @@ export type EditorSettingsValues = {
     -readonly [K in SettingKey]: (typeof SETTING_SPECS)[K]['default'] extends boolean
         ? boolean
         : (typeof SETTING_SPECS)[K]['default'] extends number
-          ? number
-          : string;
+            ? number
+            : string;
 };
 
 const SPEC_BY_KEY: ReadonlyMap<string, SettingSpec> = new Map(Object.entries(SETTING_SPECS));

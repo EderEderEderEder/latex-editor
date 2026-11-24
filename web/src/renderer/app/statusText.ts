@@ -39,7 +39,8 @@ export function fileNameOf(path: string): string {
 }
 
 export interface StatusBarInput {
-    readonly path: string | null;
+    /** Anzeigename der aktiven Datei (nie der Sitzungsschlüssel); `null` ohne Datei */
+    readonly name: string | null;
     readonly encoding: TextEncoding;
     readonly eol: LineEnding;
     readonly position: CursorPosition | null;
@@ -54,9 +55,9 @@ export interface StatusBarTexts {
 }
 
 export function buildStatusBarTexts(input: StatusBarInput): StatusBarTexts {
-    if (input.path === null) return { fileName: NO_FILE_TEXT, format: '', position: '' };
+    if (input.name === null) return { fileName: NO_FILE_TEXT, format: '', position: '' };
     return {
-        fileName: fileNameOf(input.path),
+        fileName: input.name,
         format: formatFormat(input.encoding, input.eol),
         position: input.position === null ? '' : formatPosition(input.position),
     };

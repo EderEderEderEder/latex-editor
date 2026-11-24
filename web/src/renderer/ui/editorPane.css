@@ -70,3 +70,12 @@ main { height: 100%; display: flex; flex-direction: column; }
 .status-position { min-width: 11em; }
 .status-message { margin-left: auto; overflow: hidden; text-overflow: ellipsis; }
 .status-message.is-error { color: var(--chrome-error); font-weight: 600; }
+
+.close-confirm {
+    background: var(--chrome-active); color: var(--chrome-text); border: 1px solid var(--chrome-border);
+    border-radius: 8px; padding: 1.2em 1.4em; max-width: 32em;
+}
+.close-confirm::backdrop { background: rgb(0 0 0 / 30%); }
+.close-confirm h2 { margin: 0 0 0.5em; font-size: 1.1em; }
+.close-confirm p { margin: 0 0 1em; overflow-wrap: anywhere; }
+.close-confirm-buttons { display: flex; justify-content: flex-end; gap: 0.5em; }

@@ -1,6 +1,6 @@
 import { EditorState } from '@codemirror/state';
 import { describe, expect, it } from 'vitest';
-import { gutterExtension, gutterMarksOf, gutterTooltipOf, setGutterMarks } from '../../src/renderer/editor/gutter';
+import { gutterExtension, gutterMarksField, gutterMarksOf, gutterTooltipOf, setGutterMarks } from '../../src/renderer/editor/gutter';
 import type { GutterMark } from '../../src/renderer/editor/gutter';
 
 const THREE_LINES = 'eins\nzwei\ndrei';
@@ -62,6 +62,31 @@ describe('gutter marks', () => {
         const state = stateWith(THREE_LINES, [{ line: 2, kind: 'error' }]);
         const next = state.update({ changes: { from: 5, insert: '\n' } }).state;
         expect(gutterMarksOf(next).map((mark) => mark.line)).toEqual([3]);
+    });
+});
+
+describe('gutter Marken bei Änderungen', () => {
+    const marksOf = (state: EditorState): unknown => state.field(gutterMarksField);
+
+    it('ohne Marken bleibt dasselbe Array stehen', () => {
+        const state = stateWith(THREE_LINES);
+        const before = marksOf(state);
+        const next = state.update({ changes: { from: 0, insert: 'x' } }).state;
+        expect(marksOf(next)).toBe(before);
+    });
+
+    it('Tippen ohne Verschiebung der Marke legt kein neues Array an', () => {
+        const state = stateWith(THREE_LINES, [{ line: 1, kind: 'error' }]);
+        const before = marksOf(state);
+        const next = state.update({ changes: { from: 10, insert: 'abc' } }).state;
+        expect(marksOf(next)).toBe(before);
+    });
+
+    it('echte Verschiebung legt ein neues Array an', () => {
+        const state = stateWith(THREE_LINES, [{ line: 2, kind: 'error' }]);
+        const before = marksOf(state);
+        const next = state.update({ changes: { from: 0, insert: 'neu\n' } }).state;
+        expect(marksOf(next)).not.toBe(before);
     });
 });
 

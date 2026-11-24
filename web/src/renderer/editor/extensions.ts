@@ -7,8 +7,10 @@ import { typingExtension } from './typing';
 
 /** Was eine Editor-Funktion über die Sitzung wissen darf */
 export interface FeatureContext {
-    /** Pfad der Datei der Sitzung (Kennung für Analysen) */
+    /** Schlüssel der Sitzung (Projektpfad oder `GrantId`; Kennung für Analysen) */
     readonly path: string;
+    /** Anzeigename mit Endung; bestimmt die Sprache (ohne Angabe gilt `path`) */
+    readonly name?: string;
 }
 
 /** Alle Editor-Funktionen, die jede Sitzung bekommt (eine Datei je Funktion, hier nur die Liste) */

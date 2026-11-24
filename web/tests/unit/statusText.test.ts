@@ -38,9 +38,9 @@ describe('Statusleiste: Datei und Format', () => {
 
     it('baut die drei Texte; ohne Datei bleiben Format und Position leer', () => {
         expect(
-            buildStatusBarTexts({ path: '/p/a.tex', encoding: 'utf8', eol: 'crlf', position: { line: 2, column: 5 } }),
+            buildStatusBarTexts({ name: 'a.tex', encoding: 'utf8', eol: 'crlf', position: { line: 2, column: 5 } }),
         ).toEqual({ fileName: 'a.tex', format: 'UTF-8 · CRLF', position: 'Zeile 2, Spalte 5' });
-        expect(buildStatusBarTexts({ path: null, encoding: 'utf8', eol: 'lf', position: null })).toEqual({
+        expect(buildStatusBarTexts({ name: null, encoding: 'utf8', eol: 'lf', position: null })).toEqual({
             fileName: 'Keine Datei geöffnet', format: '', position: '',
         });
     });

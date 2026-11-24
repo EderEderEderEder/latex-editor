@@ -1,6 +1,6 @@
 import { EditorState } from '@codemirror/state';
 import { describe, expect, it } from 'vitest';
-import { GERMAN_SEARCH_PHRASES, searchExtension } from '../../src/renderer/editor/search';
+import { GERMAN_SEARCH_PHRASES, SEARCH_KEYS, searchExtension } from '../../src/renderer/editor/search';
 
 describe('Suche in der Datei', () => {
     it('übersetzt die Beschriftungen der Suchleiste ins Deutsche', () => {
@@ -16,5 +16,11 @@ describe('Suche in der Datei', () => {
             expect(german.length, english).toBeGreaterThan(0);
             expect(german, english).not.toBe(english);
         }
+    });
+
+    it('Ersetzen: Strg+H, unter macOS nicht ⌘H (Ausblenden) sondern ⌥⌘F', () => {
+        const replace = SEARCH_KEYS.find((binding) => binding.key === 'Mod-h');
+        expect(replace?.mac).toBe('Alt-Mod-f');
+        expect(SEARCH_KEYS.filter((binding) => (binding.mac ?? binding.key) === 'Mod-h')).toHaveLength(0);
     });
 });

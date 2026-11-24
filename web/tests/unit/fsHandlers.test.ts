@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -117,6 +117,7 @@ describe('Gewährte Einzeldateien (Kennung statt Pfad)', () => {
         const { grantId } = grants.grant(file, 'pickedFile');
         const loaded = await handlers['fs:readText'](grantId);
         expect(loaded.path).toBe(grantId);
+        expect(loaded.name).toBe('brief.tex');
         expect(JSON.stringify(loaded)).not.toContain(outside);
         await handlers['fs:writeText'](grantId, `${loaded.text}neu\n`, loaded.encoding, loaded.eol, loaded.hash);
         expect(await readFile(file)).toEqual(Buffer.concat([LATIN1_CRLF, Buffer.from('neu\r\n', 'latin1')]));
@@ -142,12 +143,48 @@ describe('Gewährte Einzeldateien (Kennung statt Pfad)', () => {
     });
 });
 
+describe('Symlinks beim Schreiben (N2)', () => {
+    it('eine gewählte Datei, die ein Symlink ist, bleibt ein Symlink; geschrieben wird das Ziel', async () => {
+        const target = join(outside, 'echt.tex');
+        const link = join(outside, 'verweis.tex');
+        await writeFile(target, 'alt\n');
+        await symlink(target, link);
+        const { grantId } = grants.grant(link, 'pickedFile');
+        const loaded = await handlers['fs:readText'](grantId);
+        expect(loaded.name).toBe('verweis.tex');
+        await handlers['fs:writeText'](grantId, 'neu\n', loaded.encoding, loaded.eol, loaded.hash);
+        expect((await lstat(link)).isSymbolicLink()).toBe(true);
+        expect(await readFile(target, 'utf8')).toBe('neu\n');
+    });
+
+    it('ein Symlink im Projekt, der hinaus zeigt, bleibt verboten (Prüfung unverändert)', async () => {
+        const secret = join(outside, 'geheim.tex');
+        await writeFile(secret, 'x');
+        await symlink(secret, join(project, 'hinaus.tex'));
+        expect(await errorKind(() => handlers['fs:writeText'](join(project, 'hinaus.tex'), 'y', 'utf8', 'lf'))).toBe('forbiddenPath');
+        expect(await readFile(secret, 'utf8')).toBe('x');
+    });
+
+    it('ein Symlink im Projekt auf eine Projektdatei bleibt beim Speichern ein Symlink', async () => {
+        const real = join(project, 'kapitel.tex');
+        const link = join(project, 'kurz.tex');
+        await writeFile(real, 'a\n');
+        await symlink(real, link);
+        const loaded = await handlers['fs:readText'](link);
+        expect(loaded).toMatchObject({ path: link, name: 'kurz.tex' });
+        await handlers['fs:writeText'](link, 'b\n', loaded.encoding, loaded.eol, loaded.hash);
+        expect((await lstat(link)).isSymbolicLink()).toBe(true);
+        expect(await readFile(real, 'utf8')).toBe('b\n');
+    });
+});
+
 describe('fs:readMany', () => {
     it('liefert je Ziel ein eigenes Ergebnis in der gegebenen Reihenfolge', async () => {
         const inside = join(project, 'a.tex');
         await writeFile(inside, 'a');
         const items = await handlers['fs:readMany']([inside, join(outside, 'x.tex'), join(project, 'fehlt.tex')]);
         expect(items.map((item) => item.path)).toEqual([inside, join(outside, 'x.tex'), join(project, 'fehlt.tex')]);
+        expect(items.map((item) => item.name)).toEqual(['a.tex', 'x.tex', 'fehlt.tex']);
         expect(items.map((item) => (item.result.ok ? 'ok' : item.result.error.kind))).toEqual([
             'ok',
             'forbiddenPath',

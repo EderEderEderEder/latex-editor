@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createSettingsStore } from '../../src/renderer/stores/settings';
-import { MAX_ZOOM_PERCENT, MIN_ZOOM_PERCENT } from '../../src/renderer/stores/settingsSchema';
+import { MAX_ZOOM_PERCENT, MIN_ZOOM_PERCENT } from '../../src/shared/settingsSchema';
 import { ZOOM_STEPS, changeEditorZoom, clampZoom, nextZoom } from '../../src/renderer/app/zoom';
 import { IpcFailure } from '../../src/shared/ipcResult';
 import { createPreloadStub } from '../support/preloadStub';

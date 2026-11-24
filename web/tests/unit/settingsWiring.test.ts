@@ -8,7 +8,7 @@ import { QuitTasks } from '../../src/main/lifecycle';
 import { MACOS_PATHS } from '../../src/main/paths';
 import { SETTINGS_FILE_NAME } from '../../src/main/settings';
 import { IpcFailure } from '../../src/shared/ipcResult';
-import { defaultSettings } from '../../src/renderer/stores/settingsSchema';
+import { defaultSettings } from '../../src/shared/settingsSchema';
 
 let userData: string;
 
@@ -27,11 +27,20 @@ function setup() {
     };
     const quitTasks = new QuitTasks();
     const log = vi.fn();
-    const app = createAppHandlers({ userDataDir: userData, dialog, window: () => ({}), platform: MACOS_PATHS, quitTasks, log });
-    return { ...app, quitTasks, log };
+    const confirmClose = vi.fn();
+    const app = createAppHandlers({
+        userDataDir: userData, dialog, window: () => ({}), platform: MACOS_PATHS, quitTasks, log, confirmClose,
+    });
+    return { ...app, quitTasks, log, confirmClose };
 }
 
 describe('Verdrahtung der echten Handler', () => {
+    it('app:confirmClose reicht die Bestätigung an den Main weiter (K1)', async () => {
+        const { handlers, confirmClose } = setup();
+        await handlers['app:confirmClose']();
+        expect(confirmClose).toHaveBeenCalledTimes(1);
+    });
+
     it('settings:get und settings:set sind echt, nicht Platzhalter', async () => {
         const { handlers } = setup();
         expect(await handlers['settings:get']()).toEqual(defaultSettings());

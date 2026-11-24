@@ -139,8 +139,11 @@ export type TextEncoding = 'utf8' | 'latin1';
 export type LineEnding = 'lf' | 'crlf';
 export type CreateKind = 'file' | 'directory';
 
+// `path` ist das Ziel, das der Renderer geschickt hat (Schlüssel der Sitzung, bei Dialog-Dateien die `GrantId`);
+// `name` ist der Anzeigename mit Endung (Tab-Titel, Statusleiste, Sprache), nie ein Pfad.
 export interface TextFile {
     readonly path: FileTarget;
+    readonly name: string;
     readonly text: string;
     readonly encoding: TextEncoding;
     readonly eol: LineEnding;
@@ -150,6 +153,7 @@ export interface TextFile {
 
 export interface ReadManyItem {
     readonly path: FileTarget;
+    readonly name: string;
     readonly result: IpcResult<TextFile>;
 }
 
@@ -300,6 +304,8 @@ interface Request<Args extends readonly unknown[], Result> {
 
 export interface IpcRequests {
     'app:ping': Request<[], 'pong'>;
+    // Antwort auf `app:closeRequested`: Der Renderer hat Ungespeichertes geklärt, der Main schließt das Fenster.
+    'app:confirmClose': Request<[], void>;
     'tools:detect': Request<[], ToolsInfo>;
     'project:open': Request<[projectGrant: GrantId], ProjectInfo>;
     'project:recent': Request<[], RecentProject[]>;
@@ -389,6 +395,7 @@ export type EventChannel = keyof IpcEvents;
 
 const REQUEST_CHANNEL_TABLE: Readonly<Record<RequestChannel, true>> = {
     'app:ping': true,
+    'app:confirmClose': true,
     'tools:detect': true,
     'project:open': true,
     'project:recent': true,

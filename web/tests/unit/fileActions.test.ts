@@ -13,7 +13,7 @@ const PATH = '/stub/projekt/a.tex';
 const HASH_AT_READ = 'hash-beim-lesen';
 
 function textFile(path: string, text: string): TextFile {
-    return { path, text, encoding: 'latin1', eol: 'crlf', hash: HASH_AT_READ, mtime: 1 };
+    return { path, name: path.split('/').at(-1) ?? path, text, encoding: 'latin1', eol: 'crlf', hash: HASH_AT_READ, mtime: 1 };
 }
 
 function setup(text = 'Hallo') {
@@ -96,6 +96,42 @@ describe('Speichern', () => {
         expect(writes()).toHaveLength(1);
     });
 
+    it('Strg+S während des Schreibens merkt ein Nachspeichern vor, das den neuesten Stand schreibt (N3)', async () => {
+        const { store, deps, type, stub, writes } = setup();
+        let release: () => void = () => undefined;
+        const gate = new Promise<void>((resolve) => (release = resolve));
+        let call = 0;
+        stub.respond('fs:writeText', async () => {
+            call++;
+            if (call === 1) await gate;
+            return { hash: `h${call}`, mtime: call };
+        });
+        type('1');
+        const first = saveFile(deps, PATH);
+        await Promise.resolve();
+        type('2');
+        const second = saveFile(deps, PATH);
+        const third = saveFile(deps, PATH);
+        expect(third).toBe(second);
+        release();
+        expect(await first).toBe('saved');
+        expect(await second).toBe('saved');
+        expect(writes().map((entry) => entry.args[1])).toEqual(['1Hallo', '21Hallo']);
+        expect(writes()[1]!.args[4]).toBe('h1');
+        expect(store.getState().files[PATH]?.isDirty).toBe(false);
+    });
+
+    it('vorgemerktes Nachspeichern ohne neue Änderung schreibt nichts und meldet nichts', async () => {
+        const { deps, type, writes, messages } = setup();
+        type('1');
+        const first = saveFile(deps, PATH);
+        const second = saveFile(deps, PATH);
+        expect(await first).toBe('saved');
+        expect(await second).toBe('unchanged');
+        expect(writes()).toHaveLength(1);
+        expect(messages.at(-1)?.text).toBe(SAVE_TEXTS.saved('a.tex'));
+    });
+
     it('Text, der während des Schreibens getippt wird, bleibt ungespeichert', async () => {
         const { store, deps, type, stub } = setup();
         stub.respond('fs:writeText', async () => {
@@ -115,12 +151,24 @@ describe('Datei öffnen', () => {
             { grantId: 'g1', name: 'b.tex' },
             { grantId: 'g2', name: 'c.bib' },
         ]);
-        stub.respond('fs:readText', (path) => textFile(`/stub/projekt/${path === 'g1' ? 'b.tex' : 'c.bib'}`, `Inhalt ${path}`));
+        // Wie der Main: `path` ist die Kennung, `name` der Anzeigename.
+        stub.respond('fs:readText', (target) => ({ ...textFile(target, `Inhalt ${target}`), name: target === 'g1' ? 'b.tex' : 'c.bib' }));
         await openFilesFromDialog(deps);
-        expect(store.getState().tabs.items).toEqual([PATH, '/stub/projekt/b.tex', '/stub/projekt/c.bib']);
-        expect(store.getState().tabs.active).toBe('/stub/projekt/c.bib');
+        expect(store.getState().tabs.items).toEqual([PATH, 'g1', 'g2']);
+        expect(store.getState().tabs.active).toBe('g2');
         expect(store.getState().tabs.preview).toBeNull();
-        expect(store.getState().session('/stub/projekt/b.tex')?.state.doc.toString()).toBe('Inhalt g1');
+        expect(store.getState().session('g1')?.state.doc.toString()).toBe('Inhalt g1');
+        expect(store.getState().files.g2?.title).toBe('c.bib');
+        expect(store.getState().session('g2')?.language).toBe('bibtex');
+    });
+
+    it('dieselbe Datei zweimal geöffnet (gleiche Kennung) ergibt einen Tab', async () => {
+        const { store, deps, stub } = setup();
+        stub.respond('dialog:pickFiles', () => [{ grantId: 'g1', name: 'b.tex' }]);
+        stub.respond('fs:readText', (target) => ({ ...textFile(target, 'b'), name: 'b.tex' }));
+        await openFilesFromDialog(deps);
+        await openFilesFromDialog(deps);
+        expect(store.getState().tabs.items).toEqual([PATH, 'g1']);
     });
 
     it('ein abgebrochener Dialog ändert nichts', async () => {
@@ -157,23 +205,34 @@ describe('Datei öffnen', () => {
 });
 
 describe('Speichern unter', () => {
-    const TARGET = '/stub/projekt/neu.tex';
+    const TARGET = 'ziel';
 
     function setupSaveAs() {
         const env = setup();
-        env.stub.respond('dialog:saveAs', () => ({ grantId: 'ziel', name: 'neu.tex' }));
+        env.stub.respond('dialog:saveAs', () => ({ grantId: TARGET, name: 'neu.bib' }));
         env.stub.respond('fs:writeText', () => ({ hash: 'ziel-hash', mtime: 5 }));
-        env.stub.respond('fs:readText', () => textFile(TARGET, ''));
         return env;
     }
 
-    it('schreibt über die Gewährung und zieht den Tab auf die neue Datei um', async () => {
-        const { store, deps, type, writes } = setupSaveAs();
+    it('schreibt über die Gewährung und zieht den Tab auf die neue Datei um (Titel und Sprache aus dem Namen)', async () => {
+        const { store, deps, type, writes, messages } = setupSaveAs();
         type('Neu ');
         expect(await saveActiveFileAs(deps)).toBe('saved');
-        expect(writes()[0]!.args).toEqual(['ziel', 'Neu Hallo', 'latin1', 'crlf']);
+        expect(writes()[0]!.args).toEqual([TARGET, 'Neu Hallo', 'latin1', 'crlf']);
         expect(store.getState().tabs.items).toEqual([TARGET]);
-        expect(store.getState().files[TARGET]).toMatchObject({ isDirty: false, hash: 'ziel-hash' });
+        expect(store.getState().files[TARGET]).toMatchObject({ isDirty: false, hash: 'ziel-hash', title: 'neu.bib' });
+        expect(store.getState().session(TARGET)?.language).toBe('bibtex');
+        expect(messages.at(-1)).toEqual({ text: SAVE_TEXTS.saved('neu.bib'), kind: 'info' });
+    });
+
+    it('schlägt bei einer Dialog-Datei den Namen vor, nie die Kennung; bei Projektdateien den Pfad', async () => {
+        const { store, deps, stub } = setupSaveAs();
+        stub.respond('dialog:saveAs', () => null);
+        await saveFileAs(deps, PATH);
+        store.getState().open({ ...textFile('g7', 'x'), name: 'brief.tex' });
+        await saveFileAs(deps, 'g7');
+        const suggestions = stub.calls.filter((call) => call.channel === 'dialog:saveAs').map((call) => call.args[0]);
+        expect(suggestions).toMatchObject([{ defaultPath: PATH }, { defaultPath: 'brief.tex' }]);
     });
 
     it('bricht ohne Auswahl still ab', async () => {
@@ -196,9 +255,9 @@ describe('Speichern unter', () => {
 
     it('lässt den Tab stehen, wenn das Ziel schon in einem anderen Tab offen ist', async () => {
         const { store, deps, messages } = setupSaveAs();
-        store.getState().open(textFile(TARGET, 'anderes'), { asPreview: false });
+        store.getState().open({ ...textFile(TARGET, 'anderes'), name: 'neu.bib' }, { asPreview: false });
         expect(await saveFileAs(deps, PATH)).toBe('failed');
         expect(store.getState().tabs.items).toEqual([PATH, TARGET]);
-        expect(messages.at(-1)).toEqual({ text: SAVE_TEXTS.alreadyOpen('neu.tex'), kind: 'error' });
+        expect(messages.at(-1)).toEqual({ text: SAVE_TEXTS.alreadyOpen('neu.bib'), kind: 'error' });
     });
 });

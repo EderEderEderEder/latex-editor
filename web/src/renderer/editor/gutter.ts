@@ -95,18 +95,32 @@ function isLineDeleted(transaction: Transaction, pos: number): boolean {
     return deleted;
 }
 
-function mapMarks(marks: readonly StoredMark[], transaction: Transaction): StoredMark[] {
-    const newDoc = transaction.newDoc;
-    const mapped: StoredMark[] = [];
-    for (const mark of marks) {
-        if (isLineDeleted(transaction, mark.pos)) continue;
-        const pos = transaction.changes.mapPos(mark.pos, 1, MapMode.Simple) ?? mark.pos;
-        mapped.push({ ...mark, pos: newDoc.lineAt(pos).from });
-    }
-    return mapped.sort(compareMarks);
+/** Neue Position der Marke (Zeilenanfang) oder `null`, wenn ihre Zeile gelöscht wurde */
+function mappedPosition(mark: StoredMark, transaction: Transaction): number | null {
+    if (isLineDeleted(transaction, mark.pos)) return null;
+    const pos = transaction.changes.mapPos(mark.pos, 1, MapMode.Simple) ?? mark.pos;
+    return transaction.newDoc.lineAt(pos).from;
 }
 
-const gutterMarksField = StateField.define<readonly StoredMark[]>({
+/** Dasselbe Array, solange sich keine Marke verschiebt oder entfällt (die Markierungsspalte zeichnet dann nicht neu) */
+function mapMarks(marks: readonly StoredMark[], transaction: Transaction): readonly StoredMark[] {
+    if (marks.length === 0) return marks;
+    const mapped: StoredMark[] = [];
+    let isUnchanged = true;
+    for (const mark of marks) {
+        const pos = mappedPosition(mark, transaction);
+        if (pos === null) {
+            isUnchanged = false;
+            continue;
+        }
+        if (pos !== mark.pos) isUnchanged = false;
+        mapped.push(pos === mark.pos ? mark : { ...mark, pos });
+    }
+    return isUnchanged ? marks : mapped.sort(compareMarks);
+}
+
+/** Nur für Tests exportiert (Prüfung, dass unveränderte Marken dasselbe Array bleiben) */
+export const gutterMarksField = StateField.define<readonly StoredMark[]>({
     create: () => [],
     update(marks, transaction) {
         let current = transaction.docChanged ? mapMarks(marks, transaction) : marks;

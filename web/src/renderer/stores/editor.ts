@@ -39,7 +39,8 @@ export interface EditorStoreState {
     activateNext(): void;
     activatePrevious(): void;
     move(path: AbsolutePath, onto: AbsolutePath): void;
-    relocate(from: AbsolutePath, to: AbsolutePath): void;
+    /** Zieht Tabs um; `name` ist der neue Anzeigename von `from` (bei „Speichern unter“ der Name der Gewährung) */
+    relocate(from: AbsolutePath, to: AbsolutePath, name?: string): void;
     markSaved(path: AbsolutePath, snapshot: SaveSnapshot, result: WriteResult): void;
     session(path: AbsolutePath): EditorSession | undefined;
     activeSession(): EditorSession | null;
@@ -50,15 +51,10 @@ export type EditorStore = StoreApi<EditorStoreState>;
 type SetState = EditorStore['setState'];
 type GetState = EditorStore['getState'];
 
-const PATH_SEPARATOR = /[\\/]/;
-
-function titleOf(path: AbsolutePath): string {
-    return path.split(PATH_SEPARATOR).at(-1) ?? path;
-}
-
+/** Titel ist der Anzeigename der Datei, nie der Schlüssel (bei Dialog-Dateien eine `GrantId`) */
 function tabInfo(file: SessionFileInfo, isDirty: boolean): TabInfo {
-    const { path, encoding, eol, hash, mtime } = file;
-    return { path, title: titleOf(path), isDirty, encoding, eol, hash, mtime };
+    const { path, name, encoding, eol, hash, mtime } = file;
+    return { path, title: name, isDirty, encoding, eol, hash, mtime };
 }
 
 function sameInfo(a: TabInfo | undefined, b: TabInfo): boolean {
@@ -131,12 +127,12 @@ function openAction(set: SetState, get: GetState, registry: SessionRegistry) {
 
 function fileActions(set: SetState, get: GetState, registry: SessionRegistry) {
     return {
-        relocate: (from: AbsolutePath, to: AbsolutePath): void => {
+        relocate: (from: AbsolutePath, to: AbsolutePath, name?: string): void => {
             const { tabs, mapping } = relocateTabs(get().tabs, from, to);
             if (mapping.size === 0) return;
             let files = withoutPaths(get().files, [...mapping.keys()]);
             for (const [oldPath, newPath] of mapping) {
-                registry.relocate(oldPath, newPath);
+                registry.relocate(oldPath, newPath, oldPath === from ? name : undefined);
                 const session = registry.get(newPath);
                 if (session) files = withInfo(files, tabInfo(session.file, session.isDirty));
             }

@@ -10,7 +10,7 @@ import {
     validateSettingChange,
 } from '../../src/main/settings';
 import { IpcFailure } from '../../src/shared/ipcResult';
-import { defaultSettings, SETTING_KEYS } from '../../src/renderer/stores/settingsSchema';
+import { defaultSettings, SETTING_KEYS } from '../../src/shared/settingsSchema';
 
 let dir: string;
 

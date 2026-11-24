@@ -13,6 +13,7 @@ import { getApi } from '../ipc/api';
 import { editorStore, useEditorStore } from '../stores/editor';
 import { useSettingsStore } from '../stores/settings';
 import { statusStore } from '../stores/status';
+import { CloseConfirmDialog } from './CloseConfirmDialog';
 import { EditorTabs } from './EditorTabs';
 import { EditorToolbar } from './EditorToolbar';
 import { StatusBar } from './StatusBar';
@@ -76,6 +77,7 @@ export function EditorPane({ heading }: { readonly heading: ReactNode }) {
             <EditorTabs />
             <EditorHost onSessionView={setSessionView} />
             <StatusBar sessionView={sessionView} />
+            <CloseConfirmDialog />
         </section>
     );
 }

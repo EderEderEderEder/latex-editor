@@ -4,12 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 // Tippen im echten Editor (W1-10b): echte Tastatureingaben über `page.keyboard`.
-// Voraussetzung: Build mit Testzugang (`RENDERER_VITE_EDITOR_TEST_API=1 npm run build`, siehe `session.spec.ts`).
+// Voraussetzung: Build mit Testzugang (`npm run build:e2e`, siehe `session.spec.ts`).
 
 const WEB_DIR = join(__dirname, '../..');
 const STUB_PRELOAD_ENV = 'LATEXEDITOR_STUB_PRELOAD';
 const DEV_SERVER_ENV = 'ELECTRON_RENDERER_URL';
-const MISSING_TEST_API = 'window.__editorTestApi fehlt: vorher RENDERER_VITE_EDITOR_TEST_API=1 npm run build';
+const MISSING_TEST_API = 'window.__editorTestApi fehlt: vorher npm run build:e2e';
 const MODIFIER = 'ControlOrMeta';
 
 let app: ElectronApplication;

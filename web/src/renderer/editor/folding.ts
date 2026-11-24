@@ -576,7 +576,7 @@ const foldTheme = EditorView.baseTheme({
 
 /** Einklappen für LaTeX-Dateien; .bib bekommt nichts (wie Swift: dort gibt es nichts zuzuklappen) */
 export function foldingExtension(context: FeatureContext, options: FoldScanOptions = {}): Extension {
-    if (languageFromPath(context.path) !== 'latex') return [];
+    if (languageFromPath(context.name ?? context.path) !== 'latex') return [];
     return [
         foldField,
         keepSelectionOutOfFolds,

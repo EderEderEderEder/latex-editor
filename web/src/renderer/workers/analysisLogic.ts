@@ -9,28 +9,28 @@ import { checkSyntax, type TextMark } from '../../shared/core/latex/syntaxChecke
 export type AnalysisRequest =
     | { readonly kind: 'check'; readonly docId: string; readonly version: number; readonly text: string }
     | {
-          readonly kind: 'labels';
-          readonly docId: string;
-          readonly version: number;
-          readonly text: string;
-          readonly file: string;
-      }
+        readonly kind: 'labels';
+        readonly docId: string;
+        readonly version: number;
+        readonly text: string;
+        readonly file: string;
+    }
     | {
-          readonly kind: 'duplicates';
-          readonly docId: string;
-          readonly version: number;
-          readonly entries: readonly LabelEntry[];
-      };
+        readonly kind: 'duplicates';
+        readonly docId: string;
+        readonly version: number;
+        readonly entries: readonly LabelEntry[];
+    };
 
 export type AnalysisResponse =
     | { readonly kind: 'check'; readonly docId: string; readonly version: number; readonly marks: TextMark[] }
     | {
-          readonly kind: 'labels';
-          readonly docId: string;
-          readonly version: number;
-          readonly file: string;
-          readonly entries: LabelEntry[];
-      }
+        readonly kind: 'labels';
+        readonly docId: string;
+        readonly version: number;
+        readonly file: string;
+        readonly entries: LabelEntry[];
+    }
     | { readonly kind: 'duplicates'; readonly docId: string; readonly version: number; readonly entries: LabelEntry[] }
     | { readonly kind: 'error'; readonly docId: string; readonly version: number; readonly message: string };
 

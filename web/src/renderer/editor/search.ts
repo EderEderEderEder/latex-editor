@@ -26,17 +26,20 @@ export const GERMAN_SEARCH_PHRASES: Readonly<Record<string, string>> = {
 
 const SEARCH_SCOPE = 'editor search-panel';
 const REPLACE_FIELD_SELECTOR = 'input[name=replace]';
+/** Ersetzen: Strg+H; unter macOS ist ⌘H „Ausblenden“, dort gilt ⌥⌘F */
+const REPLACE_KEY = 'Mod-h';
+const REPLACE_KEY_MAC = 'Alt-Mod-f';
 
-/** Strg+H: Suchleiste öffnen und in das Ersetzen-Feld springen (die Leiste hat beide Felder immer) */
+/** Strg+H (macOS ⌥⌘F): Suchleiste öffnen und in das Ersetzen-Feld springen (die Leiste hat beide Felder immer) */
 export const openReplacePanel: Command = (view) => {
     openSearchPanel(view);
     (view.dom.querySelector(REPLACE_FIELD_SELECTOR) as { focus(): void } | null)?.focus();
     return true;
 };
 
-const SEARCH_KEYS = [
+export const SEARCH_KEYS = [
     { key: 'Mod-f', run: openSearchPanel, scope: SEARCH_SCOPE, preventDefault: true },
-    { key: 'Mod-h', run: openReplacePanel, scope: SEARCH_SCOPE, preventDefault: true },
+    { key: REPLACE_KEY, mac: REPLACE_KEY_MAC, run: openReplacePanel, scope: SEARCH_SCOPE, preventDefault: true },
     { key: 'F3', run: findNext, shift: findPrevious, scope: SEARCH_SCOPE, preventDefault: true },
     { key: 'Mod-g', run: findNext, shift: findPrevious, scope: SEARCH_SCOPE, preventDefault: true },
     { key: 'Escape', run: closeSearchPanel, scope: SEARCH_SCOPE },

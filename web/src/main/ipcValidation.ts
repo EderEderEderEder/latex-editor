@@ -109,6 +109,7 @@ const isRecoveryEntry = objectOf({
 
 export const ARG_SCHEMAS: ArgSchemas = {
     'app:ping': [],
+    'app:confirmClose': [],
     'tools:detect': [],
     'project:open': [isGrantId],
     'project:recent': [],

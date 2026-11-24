@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { IpcFailure } from '../../src/shared/ipcResult';
 import { createSettingsStore, mergeSettings } from '../../src/renderer/stores/settings';
-import { defaultSettings } from '../../src/renderer/stores/settingsSchema';
+import { defaultSettings } from '../../src/shared/settingsSchema';
 import { createPreloadStub } from '../support/preloadStub';
 
 function setup(stored: Record<string, unknown> = {}) {

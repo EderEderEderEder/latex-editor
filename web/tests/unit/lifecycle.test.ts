@@ -1,5 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { bringToFront, createBeforeQuitHandler, QuitTasks, type WindowLike } from '../../src/main/lifecycle';
+import {
+    bringToFront,
+    CloseGuard,
+    type ClosableWindow,
+    createBeforeQuitHandler,
+    createGuardedQuitHandler,
+    QuitTasks,
+    type WindowLike,
+} from '../../src/main/lifecycle';
 
 const SHORT_TIMEOUT_MS = 20;
 
@@ -89,5 +97,103 @@ describe('bringToFront (zweite Instanz)', () => {
         bringToFront(destroyed);
         bringToFront(null);
         expect(destroyed.calls).toEqual([]);
+    });
+});
+
+function closableWindow(): ClosableWindow & { calls: string[] } {
+    const calls: string[] = [];
+    let destroyed = false;
+    return {
+        calls,
+        isDestroyed: () => destroyed,
+        close: () => calls.push('close'),
+        destroy: () => {
+            destroyed = true;
+            calls.push('destroy');
+        },
+    };
+}
+
+function guardWith(canAsk = true) {
+    const requestConfirmation = vi.fn(() => canAsk);
+    const log = vi.fn();
+    return { guard: new CloseGuard({ requestConfirmation, log }), requestConfirmation, log };
+}
+
+describe('CloseGuard (K1: Schließen angefragt → bestätigt)', () => {
+    it('hält das Schließen auf und fragt den Renderer; erst die Bestätigung zerstört das Fenster', () => {
+        const { guard, requestConfirmation } = guardWith();
+        const window = closableWindow();
+        const close = preventable();
+        guard.onWindowClose(close);
+        expect(close.preventDefault).toHaveBeenCalled();
+        expect(requestConfirmation).toHaveBeenCalledTimes(1);
+        expect(guard.phase).toBe('asking');
+        guard.confirm(window);
+        expect(guard.phase).toBe('confirmed');
+        expect(window.calls).toEqual(['destroy']);
+        const after = preventable();
+        guard.onWindowClose(after);
+        expect(after.preventDefault).not.toHaveBeenCalled();
+    });
+
+    it('nach „Abbrechen“ fragt ein erneutes Schließen wieder nach', () => {
+        const { guard, requestConfirmation } = guardWith();
+        guard.onWindowClose(preventable());
+        const again = preventable();
+        guard.onWindowClose(again);
+        expect(again.preventDefault).toHaveBeenCalled();
+        expect(requestConfirmation).toHaveBeenCalledTimes(2);
+    });
+
+    it('eine Bestätigung ohne Anfrage wird ignoriert', () => {
+        const { guard, log } = guardWith();
+        const window = closableWindow();
+        guard.confirm(window);
+        expect(window.calls).toEqual([]);
+        expect(guard.phase).toBe('open');
+        expect(log).toHaveBeenCalled();
+    });
+
+    it('kann der Renderer nicht antworten (lädt, abgestürzt, Stub), schließt das Fenster ohne Nachfrage', () => {
+        const { guard } = guardWith(false);
+        const close = preventable();
+        guard.onWindowClose(close);
+        expect(close.preventDefault).not.toHaveBeenCalled();
+        expect(guard.phase).toBe('confirmed');
+    });
+});
+
+describe('createGuardedQuitHandler (⌘Q, Dock, app.quit)', () => {
+    it('Beenden mit offenem Fenster: erst die Nachfrage, das Aufräumen läuft noch nicht', () => {
+        const { guard } = guardWith();
+        const window = closableWindow();
+        const cleanup = vi.fn();
+        const handler = createGuardedQuitHandler(guard, () => window, cleanup);
+        const quit = preventable();
+        handler(quit);
+        expect(quit.preventDefault).toHaveBeenCalled();
+        expect(window.calls).toEqual(['close']);
+        expect(cleanup).not.toHaveBeenCalled();
+    });
+
+    it('nach der Bestätigung (Fenster zerstört) räumt das erneute Beenden auf', () => {
+        const { guard } = guardWith();
+        const window = closableWindow();
+        const cleanup = vi.fn();
+        const handler = createGuardedQuitHandler(guard, () => window, cleanup);
+        guard.onWindowClose(preventable());
+        guard.confirm(window);
+        const quit = preventable();
+        handler(quit);
+        expect(cleanup).toHaveBeenCalledWith(quit);
+        expect(quit.preventDefault).not.toHaveBeenCalled();
+    });
+
+    it('ohne Fenster wird sofort aufgeräumt', () => {
+        const { guard } = guardWith();
+        const cleanup = vi.fn();
+        createGuardedQuitHandler(guard, () => null, cleanup)(preventable());
+        expect(cleanup).toHaveBeenCalledTimes(1);
     });
 });

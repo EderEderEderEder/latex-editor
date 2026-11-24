@@ -1,6 +1,9 @@
+// `ipc/api.ts` greift auf `window.api` zu (DOM-Typen und `global.d.ts` gehören sonst nur zum Renderer-Projekt).
+/// <reference lib="dom" />
+/// <reference path="../../src/renderer/global.d.ts" />
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createPreloadStub } from '../../../tests/support/preloadStub';
-import { onMainEvent } from './events';
+import { createPreloadStub } from '../support/preloadStub';
+import { onMainEvent } from '../../src/renderer/ipc/events';
 
 // Läuft in Vitest ohne DOM: `window` wird nur für diesen Test durch den Preload-Stub ersetzt.
 afterEach(() => {

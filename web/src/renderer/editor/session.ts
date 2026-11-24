@@ -16,9 +16,13 @@ import type { AppearanceValues } from './appearance';
 import { syntaxHighlightingForPath } from './language';
 import { featureExtensions } from './extensions';
 
-/** Datei-Angaben einer Sitzung ohne Text */
+/**
+ * Datei-Angaben einer Sitzung ohne Text. `path` ist der Schlüssel (Projektpfad oder `GrantId` einer Dialog-Datei),
+ * `name` der Anzeigename mit Endung; Titel und Sprache kommen immer aus `name`.
+ */
 export interface SessionFileInfo {
     readonly path: AbsolutePath;
+    readonly name: string;
     readonly encoding: TextEncoding;
     readonly eol: LineEnding;
     readonly hash: ContentHash;
@@ -47,6 +51,7 @@ const LINE_SEPARATOR_BY_EOL: Readonly<Record<LineEnding, string>> = { lf: '\n', 
 const NORMALIZED_LINE_BREAK = '\n';
 const FOREIGN_LINE_BREAK = /\r\n|\r|\n/g;
 const CARRIAGE_RETURN = '\r';
+const PATH_SEPARATOR = /[\\/]/;
 const LINE_BREAK_TEXT = Text.of(['', '']);
 const EXTERNAL_CHANGE_EVENT = 'input.replace.external';
 const FIRST_REVISION = 0;
@@ -133,6 +138,11 @@ const normalizeInsertedLineBreaks = EditorState.transactionFilter.of((tr) => {
 
 // ---------- Hilfen ----------
 
+/** Letzter Teil eines Pfads (Anzeigename, wenn ein Projektpfad umzieht) */
+export function fileNameOfPath(path: string): string {
+    return path.split(PATH_SEPARATOR).at(-1) ?? path;
+}
+
 /** Klemmt eine gemerkte Auswahl auf die Textlänge (lange → kurze Datei ohne Fehler). */
 export function clampSelection(selection: SelectionSnapshot, length: number): EditorSelection {
     const clamp = (position: number): number => Math.min(Math.max(Math.trunc(position) || 0, 0), length);
@@ -206,7 +216,7 @@ export class EditorSession {
     }
 
     get language(): SyntaxLanguage {
-        return languageFromPath(this.info.path);
+        return languageFromPath(this.info.name);
     }
 
     /** Aktueller Zustand: im sichtbaren View dessen Zustand, sonst der gemerkte */
@@ -283,12 +293,12 @@ export class EditorSession {
         this.markRevisionSaved(revisionOf(this.state), file);
     }
 
-    /** Umbenennen oder Verschieben; wechselt die Endung die Sprache, wird die Einfärbung getauscht */
-    relocate(newPath: AbsolutePath): void {
-        const languageChanged = languageFromPath(newPath) !== this.language;
-        this.info = { ...this.info, path: newPath };
+    /** Umbenennen, Verschieben, „Speichern unter“; wechselt die Endung die Sprache, wird die Einfärbung getauscht */
+    relocate(newPath: AbsolutePath, newName: string = fileNameOfPath(newPath)): void {
+        const languageChanged = languageFromPath(newName) !== this.language;
+        this.info = { ...this.info, path: newPath, name: newName };
         if (!languageChanged) return;
-        this.dispatch({ effects: languageCompartment.reconfigure(syntaxHighlightingForPath(newPath)) });
+        this.dispatch({ effects: languageCompartment.reconfigure(syntaxHighlightingForPath(newName)) });
     }
 
     /**
@@ -337,8 +347,8 @@ export class EditorSession {
             keymap.of([...defaultKeymap, ...historyKeymap]),
             lineSeparatorCompartment.of(lineSeparatorFor(this.info.eol)),
             normalizeInsertedLineBreaks,
-            languageCompartment.of(syntaxHighlightingForPath(this.info.path)),
-            featureExtensions({ path: this.info.path }),
+            languageCompartment.of(syntaxHighlightingForPath(this.info.name)),
+            featureExtensions({ path: this.info.path, name: this.info.name }),
             appearanceExtensions(this.appliedAppearance),
             EditorView.updateListener.of((update) => this.handleViewUpdate(update)),
         ];
@@ -389,11 +399,11 @@ export class SessionRegistry {
         this.sessions.delete(path);
     }
 
-    relocate(from: AbsolutePath, to: AbsolutePath): void {
+    relocate(from: AbsolutePath, to: AbsolutePath, name?: string): void {
         const session = this.sessions.get(from);
         if (session === undefined || from === to) return;
         this.sessions.delete(from);
-        session.relocate(to);
+        session.relocate(to, name);
         this.sessions.set(to, session);
     }
 }

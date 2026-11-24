@@ -9,7 +9,7 @@ import {
     SETTING_SPECS,
     type EditorSettingsValues,
     type SettingKey,
-} from './settingsSchema';
+} from '../../shared/settingsSchema';
 
 // Einstellungs-Store: Standardwerte bis zum Laden; geschrieben wird nur bei echter Änderung
 // (gleicher Wert → gleicher Zustand, damit Selektoren nicht neu auslösen). Gespeichert wird im Main.

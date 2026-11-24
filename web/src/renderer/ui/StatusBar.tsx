@@ -19,15 +19,14 @@ function useMessageTimeout(): void {
 
 export function StatusBar({ sessionView }: { readonly sessionView: SessionView | null }) {
     const position = useCursorPosition(sessionView);
-    const active = useEditorStore((state) => state.tabs.active);
     const info = useEditorStore((state) => (state.tabs.active === null ? undefined : state.files[state.tabs.active]));
     const message = useStatusStore((state) => state.message);
     useMessageTimeout();
     const texts = buildStatusBarTexts({
-        path: active,
+        name: info?.title ?? null,
         encoding: info?.encoding ?? 'utf8',
         eol: info?.eol ?? 'lf',
-        position: active === null ? null : position,
+        position: info === undefined ? null : position,
     });
     return (
         <footer className="status-bar" aria-label="Statusleiste">

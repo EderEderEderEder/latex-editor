@@ -12,7 +12,7 @@ import { domAppearanceHost } from './domAppearanceHost';
 import { notifyCursorActivity } from './cursorEvents';
 import { setGutterMarks } from './gutter';
 import type { GutterMark } from './gutter';
-import { SessionView, emptyEditorState } from './session';
+import { SessionView, emptyEditorState, fileNameOfPath } from './session';
 import type { SelectionSnapshot } from './session';
 
 declare global {
@@ -49,8 +49,10 @@ const HOST_STYLE = '.editor-host .cm-editor { height: 100%; }';
 function createTestApi(store: EditorStore, sessionView: SessionView): EditorTestApi {
     const state = () => store.getState();
     return {
-        open: (path, text, eol = 'lf', asPreview = false) =>
-            state().open({ path, text, encoding: 'utf8', eol, hash: TEST_HASH, mtime: TEST_MTIME }, { asPreview }),
+        open: (path, text, eol = 'lf', asPreview = false) => {
+            const name = fileNameOfPath(path);
+            state().open({ path, name, text, encoding: 'utf8', eol, hash: TEST_HASH, mtime: TEST_MTIME }, { asPreview });
+        },
         activate: (path) => state().activate(path),
         close: (path) => state().close(path),
         activePath: () => state().tabs.active,

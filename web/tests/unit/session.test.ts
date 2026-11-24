@@ -4,7 +4,7 @@ import type { EditorState, TransactionSpec } from '@codemirror/state';
 import type { LineEnding, TextFile } from '../../src/shared/contract';
 import { syntaxHighlighting } from '../../src/renderer/editor/language';
 import {
-    EditorSession, SessionRegistry, clampSelection, highlightingOf, minimalReplacement,
+    EditorSession, SessionRegistry, clampSelection, fileNameOfPath, highlightingOf, minimalReplacement,
 } from '../../src/renderer/editor/session';
 
 // Sitzungen ohne DOM: nur `EditorState`, Befehle über `dispatch` der Sitzung.
@@ -13,7 +13,7 @@ const LONG_LINE_COUNT = 2_000;
 const SAVED = { hash: 'gespeichert', mtime: 1 } as const;
 
 function file(path: string, text: string, eol: LineEnding = 'lf'): TextFile {
-    return { path, text, encoding: 'utf8', eol, hash: 'h', mtime: 0 };
+    return { path, name: fileNameOfPath(path), text, encoding: 'utf8', eol, hash: 'h', mtime: 0 };
 }
 
 function run(session: EditorSession, command: typeof undo): boolean {

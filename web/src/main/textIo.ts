@@ -64,7 +64,13 @@ function decodeBytes(bytes: Buffer): DecodedText {
     }
 }
 
-// Mehrheit entscheidet (CRLF gegen einzelnes LF), bei Gleichstand LF; einzelnes CR zählt nicht.
+// Regel für Zeilenenden (N1):
+// - Lesen: Die Mehrheit entscheidet `eol` (CRLF gegen einzelnes LF), bei Gleichstand LF; ein einzelnes CR ist kein
+//   Zeilenende und bleibt als Zeichen im Text. Nur echte Paare `\r\n` werden zu LF (`"\r\r\n"` → `"\r\n"`, also
+//   ein CR als Zeichen plus Umbruch).
+// - Schreiben: Der Renderer schickt LF-Text; jedes LF wird zu `eol`, sonst bleibt der Text unverändert. So kommt
+//   `"\r\r\n"` in einer CRLF-Datei byte-gleich zurück.
+// - Gemischte Dateien werden beim Speichern auf die Mehrheit vereinheitlicht (bewusst: eine Datei, ein `eol`).
 function detectLineEnding(text: string): LineEnding {
     const crlf = text.match(/\r\n/g)?.length ?? 0;
     const lf = (text.match(/\n/g)?.length ?? 0) - crlf;
@@ -76,8 +82,7 @@ function normalizeToLf(text: string): string {
 }
 
 function applyLineEnding(text: string, eol: LineEnding): string {
-    const normalized = normalizeToLf(text);
-    return eol === 'crlf' ? normalized.replace(/\n/g, '\r\n') : normalized;
+    return eol === 'crlf' ? text.replace(/\n/g, '\r\n') : text;
 }
 
 function encodeText(text: string, encoding: TextEncoding): Buffer {
@@ -100,7 +105,7 @@ export async function readTextFile(path: AbsolutePath): Promise<TextFile> {
         const { bytes, mtime } = await readCheckedBytes(path);
         const { text, encoding } = decodeBytes(bytes);
         const eol = detectLineEnding(text);
-        return { path, text: normalizeToLf(text), encoding, eol, hash: hashBytes(bytes), mtime };
+        return { path, name: basename(path), text: normalizeToLf(text), encoding, eol, hash: hashBytes(bytes), mtime };
     } catch (error) {
         throw mapFsError(error, path);
     }

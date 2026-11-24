@@ -55,6 +55,20 @@ describe('readTextFile', () => {
         expect(await roundTrip(path)).toEqual(bytes);
     });
 
+    it('einzelnes CR vor CRLF bleibt erhalten: "\\r\\r\\n" kommt byte-gleich zurück (N1)', async () => {
+        const bytes = Buffer.from('a\r\r\nb\r\nc\rd\r\n');
+        const path = await fileWith('cr.tex', bytes);
+        const file = await readTextFile(path);
+        expect(file.eol).toBe('crlf');
+        expect(file.text).toBe('a\r\nb\nc\rd\n');
+        expect(await roundTrip(path)).toEqual(bytes);
+    });
+
+    it('liefert den Dateinamen als Anzeigenamen', async () => {
+        const path = await fileWith('quellen.bib', '@book{x}\n');
+        expect((await readTextFile(path)).name).toBe('quellen.bib');
+    });
+
     it('gemischte Zeilenenden: Mehrheit gewinnt', async () => {
         const path = await fileWith('mixed.tex', 'a\r\nb\r\nc\nd');
         expect((await readTextFile(path)).eol).toBe('crlf');

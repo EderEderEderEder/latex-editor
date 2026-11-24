@@ -1,5 +1,5 @@
 // Zoom in Stufen (Vorbild: `InterfaceZoom.steps` der Swift-Version), ohne DOM.
-import { MAX_ZOOM_PERCENT, MIN_ZOOM_PERCENT } from '../stores/settingsSchema';
+import { MAX_ZOOM_PERCENT, MIN_ZOOM_PERCENT } from '../../shared/settingsSchema';
 
 export const DEFAULT_ZOOM_PERCENT = 100;
 export const ZOOM_STEPS: readonly number[] = [MIN_ZOOM_PERCENT, 100, 115, 130, 150, 175, MAX_ZOOM_PERCENT];

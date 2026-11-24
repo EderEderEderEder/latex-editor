@@ -5,7 +5,7 @@ import { indentUnit } from '@codemirror/language';
 import { Compartment, EditorState } from '@codemirror/state';
 import type { Extension, StateEffect } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
-import type { EditorSettingsValues } from '../stores/settingsSchema';
+import type { EditorSettingsValues } from '../../shared/settingsSchema';
 import { typingSettings } from './typing';
 import { selectColorScheme, selectThemeMode, themeCompartment, themeExtension } from './themeController';
 import type { ColorSchemeId, ThemeMode } from './theme';

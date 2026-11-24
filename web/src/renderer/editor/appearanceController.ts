@@ -1,6 +1,6 @@
 // Verbindet Einstellungen und Systemfarbschema mit dem Editor (W1-12b): berechnet bei jeder Änderung die
 // Darstellung und gibt nur Geändertes weiter (Syntax-`<style>`, CSS-Variablen, Sitzung des sichtbaren Views).
-import type { EditorSettingsValues } from '../stores/settingsSchema';
+import type { EditorSettingsValues } from '../../shared/settingsSchema';
 import { appearanceCssVariables, appearanceFromSettings, setCurrentAppearance } from './appearance';
 import { syntaxCssFor } from './themeController';
 

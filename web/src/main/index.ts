@@ -1,8 +1,8 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, session } from 'electron';
 import { join } from 'node:path';
 import { createAppHandlers } from './handlers/appHandlers';
-import { registerIpcHandlers } from './ipc';
-import { bringToFront, createBeforeQuitHandler, QuitTasks } from './lifecycle';
+import { createEventSender, registerIpcHandlers } from './ipc';
+import { bringToFront, CloseGuard, createBeforeQuitHandler, createGuardedQuitHandler, QuitTasks } from './lifecycle';
 import { currentPathPlatform, pathToFileUrl } from './paths';
 import { choosePreloadPath } from './preloadChoice';
 import { applySessionSecurity, lockNavigation, type RendererLocation } from './security';
@@ -17,6 +17,9 @@ const DEV_SERVER_ENV = 'ELECTRON_RENDERER_URL';
 let mainWindow: BrowserWindow | null = null;
 // Aufräumen beim Beenden; W2-10 trägt hier den Build-Abbruch ein (`quitTasks.add(() => runner.cancel())`).
 const quitTasks = new QuitTasks();
+let stubPreloadActive = false;
+const sendEvent = createEventSender(() => liveMainWindow()?.webContents ?? null);
+const closeGuard = new CloseGuard({ requestConfirmation: requestCloseConfirmation, log: logLifecycle });
 
 function logSecurity(message: string): void {
     console.warn(`[Sicherheit] ${message}`);
@@ -33,6 +36,16 @@ function logSettings(message: string): void {
 function liveMainWindow(): BrowserWindow | null {
     if (mainWindow === null || mainWindow.isDestroyed()) return null;
     return mainWindow;
+}
+
+// Der Stub-Preload hört nicht auf den Main; ein Renderer, der lädt oder abgestürzt ist, kann nicht antworten.
+function requestCloseConfirmation(): boolean {
+    const window = liveMainWindow();
+    if (window === null || stubPreloadActive) return false;
+    const contents = window.webContents;
+    if (contents.isCrashed() || contents.isLoadingMainFrame()) return false;
+    sendEvent('app:closeRequested', null);
+    return true;
 }
 
 function getRendererLocation(): RendererLocation {
@@ -53,7 +66,8 @@ function resolvePreloadPath(): string {
         realPath: REAL_PRELOAD_PATH,
         stubPath: STUB_PRELOAD_PATH,
     });
-    if (preload === STUB_PRELOAD_PATH) logSecurity('Stub-Preload aktiv (nur Tests): window.api liefert gefälschte Antworten');
+    stubPreloadActive = preload === STUB_PRELOAD_PATH;
+    if (stubPreloadActive) logSecurity('Stub-Preload aktiv (nur Tests): window.api liefert gefälschte Antworten');
     return preload;
 }
 
@@ -72,6 +86,7 @@ function createWindow(location: RendererLocation): BrowserWindow {
             devTools: !app.isPackaged,
         },
     });
+    window.on('close', (event) => closeGuard.onWindowClose(event));
     window.on('closed', () => {
         mainWindow = null;
     });
@@ -97,6 +112,7 @@ async function start(): Promise<void> {
         platform,
         quitTasks,
         log: logSettings,
+        confirmClose: () => closeGuard.confirm(liveMainWindow()),
     });
     registerIpcHandlers(ipcMain, {
         handlers,
@@ -111,7 +127,9 @@ if (!app.requestSingleInstanceLock()) {
     app.quit();
 } else {
     app.on('second-instance', () => bringToFront(mainWindow));
-    app.on('before-quit', createBeforeQuitHandler({ tasks: quitTasks, quit: () => app.quit(), log: logLifecycle }));
+    // Erst die Nachfrage bei Ungespeichertem (K1), dann das Aufräumen (Einstellungen sichern, später Build-Abbruch).
+    const cleanup = createBeforeQuitHandler({ tasks: quitTasks, quit: () => app.quit(), log: logLifecycle });
+    app.on('before-quit', createGuardedQuitHandler(closeGuard, liveMainWindow, cleanup));
     // Jedes webContents (auch künftige Fenster und die DevTools) bekommt die Navigationssperre.
     app.on('web-contents-created', (_event, contents) => lockNavigation(contents, logSecurity));
     app.on('window-all-closed', () => app.quit());

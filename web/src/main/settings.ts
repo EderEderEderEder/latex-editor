@@ -13,7 +13,7 @@ import {
     SETTING_SPECS,
     type EditorSettingsValues,
     type SettingKey,
-} from '../renderer/stores/settingsSchema';
+} from '../shared/settingsSchema';
 import { readTextFile, writeTextFile } from './textIo';
 
 export const SETTINGS_FILE_NAME = 'settings.json';

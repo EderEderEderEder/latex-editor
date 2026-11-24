@@ -41,8 +41,10 @@ export interface StubControl {
     prepareFile(name: string, text: string): void;
     /** Lässt `fs:writeText` mit diesem Fehler antworten; `null` schaltet es wieder aus */
     failWrites(kind: GeneralErrorKind | null, message?: string): void;
-    /** Zuletzt geschriebener Text je Pfad */
+    /** Zuletzt geschriebener Text je Ziel (Kennung oder Pfad) */
     writtenText(path: string): string | null;
+    /** Schickt ein Ereignis wie der Main (z. B. `app:closeRequested` beim Schließen des Fensters) */
+    emit(event: EventChannel, payload: unknown): void;
 }
 
 export interface PreloadStub {
@@ -69,8 +71,11 @@ const STUB_TREE = {
 } as const;
 
 const fileOp = (path: string) => ({ path, undoToken: STUB_UNDO });
-const textFile = (path: string): TextFile => ({
+const baseName = (path: string): string => path.split(PATH_SEPARATOR).at(-1) ?? path;
+/** Wie der Main: `path` ist das Ziel der Anfrage, `name` der Anzeigename */
+const textFile = (path: string, name = baseName(path)): TextFile => ({
     path,
+    name,
     text: '',
     encoding: 'utf8',
     eol: 'lf',
@@ -78,11 +83,11 @@ const textFile = (path: string): TextFile => ({
     mtime: STUB_TIME,
 });
 const nothing = (): void => undefined;
-const baseName = (path: string): string => path.split(PATH_SEPARATOR).at(-1) ?? path;
 const stubGrant = (path: string, index: number) => ({ grantId: `stub-grant-${index}`, name: baseName(path) });
 
 export const DEFAULT_STUB_RESPONSES: StubResponders = {
     'app:ping': () => 'pong',
+    'app:confirmClose': nothing,
     'tools:detect': () => ({ latexmk: null, git: null, synctexRef: null, distro: null, problems: [] }),
     'project:open': () => ({ root: STUB_ROOT, mainFile: STUB_MAIN, tree: STUB_TREE }),
     'project:recent': () => [],
@@ -91,7 +96,7 @@ export const DEFAULT_STUB_RESPONSES: StubResponders = {
     'dialog:saveAs': () => null,
     'drop:grant': (paths) => ({ granted: paths.map(stubGrant), rejected: [] }),
     'fs:readText': (path) => textFile(path),
-    'fs:readMany': (paths) => paths.map((path) => ({ path, result: ok(textFile(path)) })),
+    'fs:readMany': (paths) => paths.map((path) => ({ path, name: baseName(path), result: ok(textFile(path)) })),
     'fs:writeText': () => ({ hash: STUB_HASH, mtime: STUB_TIME }),
     'fs:create': (parentDir, name) => fileOp(`${parentDir}/${name}`),
     'fs:rename': (path) => fileOp(path),
@@ -158,9 +163,12 @@ class VirtualFiles implements Pick<StubControl, 'prepareFile' | 'failWrites' | '
     private pending: VirtualFile[] = [];
     private writeFailure: { kind: GeneralErrorKind; message: string } | null = null;
 
+    /** Derselbe Name ergibt dieselbe Kennung (wie `GrantStore.grant` im Main) */
     prepareFile(name: string, text: string): void {
         const path = `${VIRTUAL_FILE_DIRECTORY}${name}`;
-        const file: VirtualFile = { grant: stubGrant(path, this.files.size), path, text };
+        const existing = this.files.get(path);
+        const file: VirtualFile = existing ?? { grant: stubGrant(path, this.files.size), path, text };
+        file.text = text;
         this.files.set(file.grant.grantId, file);
         this.files.set(path, file);
         this.pending.push(file);
@@ -174,16 +182,23 @@ class VirtualFiles implements Pick<StubControl, 'prepareFile' | 'failWrites' | '
         return this.files.get(path)?.text ?? null;
     }
 
-    readonly responders: Pick<StubResponders, 'dialog:pickFiles' | 'fs:readText' | 'fs:writeText'> = {
+    private readText(target: string): TextFile {
+        const file = this.files.get(target);
+        return file === undefined ? textFile(target) : { ...textFile(target, file.grant.name), text: file.text };
+    }
+
+    readonly responders: Pick<StubResponders, 'dialog:pickFiles' | 'fs:readText' | 'fs:readMany' | 'fs:writeText'> = {
         'dialog:pickFiles': () => {
             const picked = this.pending.map((file) => file.grant);
             this.pending = [];
             return picked.length === 0 ? null : picked;
         },
-        'fs:readText': (path) => {
-            const file = this.files.get(path);
-            return file === undefined ? textFile(path) : { ...textFile(file.path), text: file.text };
-        },
+        'fs:readText': (target) => this.readText(target),
+        'fs:readMany': (targets) =>
+            targets.map((target) => {
+                const file = this.readText(target);
+                return { path: target, name: file.name, result: ok(file) };
+            }),
         'fs:writeText': (path, text) => {
             if (this.writeFailure !== null) throw new IpcFailure(this.writeFailure);
             const file = this.files.get(path);
@@ -211,6 +226,7 @@ export function createPreloadStub(overrides: Partial<StubResponders> = {}): Prel
         prepareFile: (name, text) => virtualFiles.prepareFile(name, text),
         failWrites: (kind, message) => virtualFiles.failWrites(kind, message),
         writtenText: (path) => virtualFiles.writtenText(path),
+        emit: (event, payload) => emitEvent(listeners, event, payload),
         calls: () => calls.map((call) => ({ channel: call.channel, args: [...call.args] })),
         clearCalls: () => {
             calls.length = 0;
@@ -223,10 +239,14 @@ export function createPreloadStub(overrides: Partial<StubResponders> = {}): Prel
         respond: (channel, responder) => {
             responders[channel] = responder;
         },
-        emit: (event, payload) => listeners.get(event)?.forEach((listener) => listener(payload)),
+        emit: (event, payload) => emitEvent(listeners, event, payload),
         listenerCount: (event) => listeners.get(event)?.size ?? 0,
         setPathForFile: (file, path) => filePaths.set(file, path),
     };
+}
+
+function emitEvent(listeners: Map<EventChannel, Set<AnyListener>>, event: EventChannel, payload: unknown): void {
+    listeners.get(event)?.forEach((listener) => listener(payload));
 }
 
 function subscribe(

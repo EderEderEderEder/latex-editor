@@ -12,7 +12,8 @@ const STUB_PRELOAD_ENV = 'LATEXEDITOR_STUB_PRELOAD';
 const DEV_SERVER_ENV = 'ELECTRON_RENDERER_URL';
 const MODIFIER = 'ControlOrMeta';
 const FILE_NAME = 'beispiel.tex';
-const FILE_PATH = `/stub/projekt/${FILE_NAME}`;
+// Wie der Main: Dialog-Dateien heißen im Renderer nur nach ihrer Kennung (erste Kennung des Stubs).
+const FILE_TARGET = 'stub-grant-0';
 const FILE_TEXT = 'Hallo Welt\n';
 const DEFAULT_FONT_SIZE_PX = 13;
 const ZOOMED_FONT_SIZE_PX = 14.95;
@@ -93,7 +94,7 @@ test('Tippen setzt den Punkt am Tab, Strg+S schreibt den Text und nimmt den Punk
     await expect(page.locator('.tab-dirty')).toHaveCount(0);
     const writes = await stubCalls('fs:writeText');
     expect(writes).toHaveLength(1);
-    expect(writes[0]!.args.slice(0, 4)).toEqual([FILE_PATH, `X${FILE_TEXT}`, 'utf8', 'lf']);
+    expect(writes[0]!.args.slice(0, 4)).toEqual([FILE_TARGET, `X${FILE_TEXT}`, 'utf8', 'lf']);
     await expect(page.locator('.status-message')).toContainText(`Gespeichert: ${FILE_NAME}`);
 });
 
@@ -120,7 +121,8 @@ test('Strg+F öffnet die deutsche Suchleiste, Escape schließt sie', async () =>
     await page.keyboard.press('Escape');
     await expect(page.locator('.cm-search')).toHaveCount(0);
 
-    await page.keyboard.press(`${MODIFIER}+h`);
+    // Ersetzen: Strg+H; unter macOS ⌥⌘F (⌘H ist dort „Ausblenden“), siehe `editor/search.ts`
+    await page.keyboard.press(process.platform === 'darwin' ? 'Alt+Meta+f' : 'Control+h');
     await expect(page.locator('.cm-search input[name=replace]')).toBeFocused();
     await page.keyboard.press('Escape');
 });

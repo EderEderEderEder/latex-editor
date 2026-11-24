@@ -13,8 +13,8 @@
         "test:e2e": "node scripts/test-run.mjs --e2e",
         "test:perf": "node scripts/test-run.mjs --perf",
         "test:raw": "vitest run",
-        "build:e2e": "RENDERER_VITE_EDITOR_TEST_API=1 electron-vite build",
-        "package": "electron-vite build && electron-builder"
+        "build:e2e": "electron-vite build --mode e2e",
+        "package": "electron-vite build && node scripts/checkNoTestApi.mjs && electron-builder"
     },
     "dependencies": {
         "@codemirror/autocomplete": "6.20.4",

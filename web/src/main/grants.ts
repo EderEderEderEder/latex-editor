@@ -4,6 +4,7 @@ import type { DropGrantResult, GrantedPath, GrantId } from '../shared/contract';
 import { IpcFailure } from '../shared/ipcResult';
 import {
     assertInsideProject,
+    comparisonKey,
     isUncPath,
     normalizeAbsolutePath,
     type PathPlatform,
@@ -20,9 +21,13 @@ import {
 // ausgesuchte Datei (lesen und zurückschreiben, z. B. Einzeldatei ohne Projekt).
 export type GrantKind = 'project' | 'importSource' | 'saveTarget' | 'pickedFile';
 
+// Eine Kennung je Pfad: Wer denselben Pfad mehrfach gewährt bekommt (zweimal geöffnet, „Speichern unter“ auf
+// eine offene Datei), erhält dieselbe Kennung, damit der Renderer „schon offen“ erkennt. Die Arten sammeln sich;
+// jede davon hat der Main für genau diesen Pfad selbst vergeben.
 interface Grant {
-    readonly kind: GrantKind;
+    readonly kinds: Set<GrantKind>;
     readonly path: string;
+    readonly key: string;
 }
 
 export interface GrantStoreOptions {
@@ -45,8 +50,9 @@ function forbidden(message: string): IpcFailure {
 
 export class GrantStore {
     private readonly grants = new Map<GrantId, Grant>();
+    private readonly idsByKey = new Map<string, GrantId>();
     private projectRoot: string | null = null;
-    private readonly platform: PathPlatform;
+    readonly platform: PathPlatform;
     private readonly createId: () => GrantId;
     private readonly maxGrants: number;
 
@@ -59,23 +65,27 @@ export class GrantStore {
     // Nur Main-Code ruft das auf, mit Pfaden aus Dialogen, der Liste „Zuletzt geöffnet“ oder geprüften Drops.
     grant(input: string, kind: GrantKind): GrantedPath {
         const path = normalizeAbsolutePath(input, this.platform);
-        const grantId = this.createId();
-        this.grants.set(grantId, { kind, path });
+        const key = comparisonKey(path, this.platform);
+        const grantId = this.idsByKey.get(key) ?? this.createId();
+        const kinds = this.grants.get(grantId)?.kinds ?? new Set<GrantKind>();
+        kinds.add(kind);
+        // Neu einreihen: eine wieder gewährte Kennung verfällt als letzte.
+        this.grants.delete(grantId);
+        this.grants.set(grantId, { kinds, path, key });
+        this.idsByKey.set(key, grantId);
         this.dropOldest();
         return { grantId, name: this.platform.path.basename(path) || path };
     }
 
     // Liefert den gewährten Pfad, aber nur für die passende Art; sonst `forbiddenPath`.
     resolve(grantId: GrantId, kind: GrantKind): string {
-        const grant = this.grants.get(grantId);
-        if (grant === undefined || grant.kind !== kind) throw forbidden(GRANT_MESSAGES.unknownGrant);
-        return grant.path;
+        return this.resolveOneOf(grantId, [kind]);
     }
 
     // Wie `resolve`, aber für eine von mehreren zulässigen Arten (z. B. Lesen aus Dialog oder Drop).
     resolveOneOf(grantId: GrantId, kinds: readonly GrantKind[]): string {
         const grant = this.grants.get(grantId);
-        if (grant === undefined || !kinds.includes(grant.kind)) throw forbidden(GRANT_MESSAGES.unknownGrant);
+        if (grant === undefined || !kinds.some((kind) => grant.kinds.has(kind))) throw forbidden(GRANT_MESSAGES.unknownGrant);
         return grant.path;
     }
 
@@ -106,9 +116,10 @@ export class GrantStore {
 
     private dropOldest(): void {
         while (this.grants.size > this.maxGrants) {
-            const oldest = this.grants.keys().next().value;
+            const oldest = this.grants.entries().next().value;
             if (oldest === undefined) return;
-            this.grants.delete(oldest);
+            this.grants.delete(oldest[0]);
+            this.idsByKey.delete(oldest[1].key);
         }
     }
 }

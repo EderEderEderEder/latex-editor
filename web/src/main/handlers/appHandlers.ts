@@ -16,6 +16,8 @@ export interface AppHandlerOptions<W> {
     readonly platform: PathPlatform;
     readonly quitTasks: QuitTasks;
     readonly log: (message: string) => void;
+    // `app:confirmClose`: Der Renderer hat Ungespeichertes geklärt (K1, `CloseGuard.confirm`).
+    readonly confirmClose: () => void;
 }
 
 export interface AppHandlers {
@@ -37,6 +39,7 @@ export function createAppHandlers<W>(options: AppHandlerOptions<W>): AppHandlers
     });
     options.quitTasks.add(() => settings.flush());
     const handlers = createHandlerRegistry({
+        'app:confirmClose': () => Promise.resolve(options.confirmClose()),
         ...createSettingsHandlers(settings),
         ...createDialogHandlers({ dialog, grants, window, platform }),
         ...createFsHandlers({ grants }),

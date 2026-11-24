@@ -89,9 +89,13 @@ describe('CSS und Theme-Erzeugung', () => {
         }
     });
 
-    it('enthält Unterstreichungen für Hinweis, Warnung und Fehler', () => {
-        const css = buildSyntaxCss(resolvePalette('standard', 'light'));
-        for (const severity of ['hint', 'warning', 'error']) expect(css).toContain(`.cm-diagnostic-${severity} {`);
+    it('liefert nur die Farben der Unterstreichungen; die Form steht allein in diagnostics.ts', () => {
+        const palette = resolvePalette('standard', 'light');
+        const css = buildSyntaxCss(palette);
+        for (const severity of ['hint', 'warning', 'error'] as const) {
+            expect(css).toContain(`--editor-diagnostic-${severity}: ${palette.diagnostics[severity]};`);
+            expect(css).not.toContain(`.cm-diagnostic-${severity}`);
+        }
     });
 
     it('baut eine CodeMirror-Erweiterung je Schema und Modus', () => {

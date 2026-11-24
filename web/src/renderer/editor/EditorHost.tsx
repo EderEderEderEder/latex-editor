@@ -5,6 +5,8 @@ import { EditorView } from '@codemirror/view';
 import type { LineEnding } from '../../shared/contract';
 import { editorStore } from '../stores/editor';
 import type { EditorStore } from '../stores/editor';
+import { setGutterMarks } from './gutter';
+import type { GutterMark } from './gutter';
 import { SessionView, emptyEditorState } from './session';
 import type { SelectionSnapshot } from './session';
 
@@ -31,6 +33,7 @@ export interface EditorTestApi {
     selection(): SelectionSnapshot;
     select(anchor: number, head: number): void;
     isDirty(path: string): boolean;
+    setGutterMarks(marks: readonly GutterMark[]): void;
 }
 
 const TEST_API_ENABLED = '1';
@@ -56,6 +59,7 @@ function createTestApi(store: EditorStore, sessionView: SessionView): EditorTest
             sessionView.view.focus();
         },
         isDirty: (path) => state().files[path]?.isDirty ?? false,
+        setGutterMarks: (marks) => sessionView.view.dispatch({ effects: setGutterMarks(marks) }),
     };
 }
 

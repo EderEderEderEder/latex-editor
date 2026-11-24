@@ -12,6 +12,7 @@ import type {
     AbsolutePath, ContentHash, EpochMillis, LineEnding, TextEncoding, TextFile, WriteResult,
 } from '../../shared/contract';
 import { syntaxHighlightingForPath } from './language';
+import { featureExtensions } from './extensions';
 
 /** Datei-Angaben einer Sitzung ohne Text */
 export interface SessionFileInfo {
@@ -321,6 +322,7 @@ export class EditorSession {
             lineSeparatorCompartment.of(lineSeparatorFor(this.info.eol)),
             normalizeInsertedLineBreaks,
             languageCompartment.of(syntaxHighlightingForPath(this.info.path)),
+            featureExtensions({ path: this.info.path }),
             EditorView.updateListener.of((update) => this.handleViewUpdate(update)),
         ];
     }

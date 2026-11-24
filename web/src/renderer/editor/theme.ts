@@ -202,21 +202,15 @@ function variableBlock(palette: ThemePalette): string {
     return lines.map((line) => `    ${line}`).join('\n');
 }
 
-/** Unterstreichungsstile wie in Swift: Hinweis gepunktet, Warnung gestrichelt, Fehler durchgehend gewellt */
-function diagnosticRules(): string {
-    const styles = { hint: 'dotted', warning: 'dashed', error: 'wavy' } as const;
-    return Object.entries(styles)
-        .map(([severity, style]) => (
-            `.cm-diagnostic-${severity} {\n    text-decoration: underline ${style} var(--editor-diagnostic-${severity});\n}`
-        ))
-        .join('\n');
-}
-
-/** CSS-Text mit Variablen auf `:root` und einer Regel je `cm-syntax-*`-Klasse (per `<style>` setzbar) */
+/**
+ * CSS-Text mit Variablen auf `:root` und einer Regel je `cm-syntax-*`-Klasse (per `<style>` setzbar). Die Form der
+ * Unterstreichungen (wie Swift: Fehler gestrichelt, Warnung strichpunktiert, Hinweis gepunktet) steht nur in
+ * `diagnostics.ts`; von hier kommen dafür nur die Farben `--editor-diagnostic-*`.
+ */
 export function buildSyntaxCss(palette: ThemePalette): string {
     const rules = Object.entries(TOKEN_CLASS_BY_KIND)
         .map(([kind, className]) => `.${className} {\n    color: var(${syntaxVariable(kind)});\n}`);
-    return [`:root {\n${variableBlock(palette)}\n}`, ...rules, diagnosticRules()].join('\n');
+    return [`:root {\n${variableBlock(palette)}\n}`, ...rules].join('\n');
 }
 
 /** CodeMirror-Theme: Hintergrund, Text, Cursor, Auswahl, aktive Zeile und Gutter */

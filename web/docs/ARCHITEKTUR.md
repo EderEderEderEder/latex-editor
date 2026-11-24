@@ -94,6 +94,69 @@ Alle Zahlen und Tabellen: `spikes/watch/ERGEBNIS.md`.
 
 Review durch einen Opus-Agenten (W0-R, 2026-11-23): Befunde H1–N12 mit Stand der Einarbeitung und die Liste der nötigen Plan-Änderungen in `REVIEW-M0.md`. Wichtigste Folgen für die Architektur: Der Main hält die Pfad-Gewährungen (Renderer kann keine Pfadherkunft behaupten, H1), `main/pdfProtocol.ts` und das Protokoll `latexeditor:` entfallen, `file:` nur unter dem App-Ordner, DevTools nur unverpackt, Single-Instance-Lock, S2 unter CSP und mit Hauptthread-Rendern nachmessen (H2, W3-3a). Eingearbeitet in `shared/PLAN-WEBUI.md` und `shared/FEATURES.md`.
 
+## M1 Editor-Kern
+
+Stand 2026-11-24 (W1-D). Dateien unter `src/renderer/editor/` (CodeMirror), `src/renderer/stores/`, `src/shared/core/` (reine Logik), Vertrag in `src/shared/contract.ts`. Befunde und Stand der Einarbeitung: `REVIEW-M1.md`.
+
+### Sitzungen (`editor/session.ts`, `stores/editor.ts`)
+
+| Thema | Regel |
+|---|---|
+| Text | lebt nur im `EditorState` der `EditorSession`; im Store stehen Pfad (Schlüssel), Name, Kodierung, `eol`, `hash`, `isDirty`. Ganzer Text entsteht nur beim Speichern (`snapshotForSave`, danach `markSaved`) |
+| Ein View | `SessionView` hält den einen sichtbaren `EditorView` und tauscht beim Tabwechsel mit `view.setState(session.state)`; Undo, Auswahl und Scrollposition bleiben in der Sitzung. Folge: `setState` baut alle ViewPlugins neu, also je Tabwechsel ein neuer `LineStateCache` (offen: Cache je Sitzung halten, REVIEW-M1 M1) |
+| `isDirty` | Änderungszähler (`revisionField`): jede Textänderung bekommt eine neue Nummer; Rückgängig/Wiederholen stellen sie über `invertedEffects` wieder her. „Geändert“ = aktuelle Nummer ≠ Nummer beim letzten Speichern. Rückgängig bis zum gespeicherten Stand macht den Tab also wieder „sauber“ |
+| Externe Änderung | `reloadFromDisk(file)` → `replaceText` mit `minimalReplacement`: nur der Teil zwischen gemeinsamem Anfang und Ende wird ersetzt (ein eigener Undo-Schritt), Auswahl und Scrollposition bleiben; danach gilt der Stand als gespeichert |
+| Zeilenenden | `EditorState.lineSeparator` je Datei aus `eol` (Compartment); Eingefügtes mit fremden Zeilenenden wird in echte Umbrüche verwandelt. Der Renderer hält immer LF-Text |
+| Umbenennen | `relocate(newPath, newName)` tauscht Schlüssel, Namen und die Einfärbung (Endung `.bib` ↔ `.tex`); Einklappen und Diagnose bleiben bei alter Sprache und `docId` (offen: `featureExtensions` in ein Compartment, REVIEW-M1 N5) |
+| Schlüssel | `path` ist ein `FileTarget` (Projektpfad oder `GrantId`); Titel, Statusleiste, Sprache und Diagnose nutzen `name` (REVIEW-M1 H1) |
+
+### Einfärbung (`editor/language.ts`, `editor/lineStateCache.ts`)
+
+`LineStateCache` (ohne DOM, Vitest `lineStateCache`) hält den Tokenizer-Endzustand je Zeile und rechnet nach einer Änderung (`LineSplice`) nur bis zur Zustandskonvergenz neu. `language.ts` ist das `ViewPlugin` darüber: Dekorationen (nur CSS-Klassen `cm-syntax-*`, Farben aus dem Schema) entstehen nur für den sichtbaren Bereich; synchron wird höchstens `SYNC_MARGIN_LINES` = 200 Zeilen hinter den Sichtbereich nachgerechnet, der Rest im Leerlauf (`IDLE_CHUNK_LINES` 500, Frist 200 ms, Handle bei `destroy` freigegeben). Sprache nach Endung (`core/language.ts`: `.bib` → BibTeX, sonst LaTeX), im selben Mechanismus.
+
+### Einklappen (`editor/folding.ts`, `core/latex/foldRegions.ts`)
+
+Eigenes `StateField` mit `FoldState` (Bereiche wandern mit Änderungen, Bearbeitung im Zugeklappten klappt auf, `adjustedSelection`, `generation`) und `Decoration.replace` (Platzhalter „⋯“) statt `codeFolding`/`foldService`; eigene Gutter-Spalte (Pfeile ▸/▾). Der Text bleibt unverändert. Scan 300 ms nach der letzten Änderung auf dem Hauptthread (`FOLD_SCAN_DELAY_MS`; gemessen 5,6 ms bei 10.000 Zeilen, Worker-Anschluss `FoldScanOptions.scan` falls nötig, M2). Tasten: macOS ⌥⌘←/→ (mit ⇧ alles), sonst Akkord Strg+K, dann Strg+←/→ bzw. Strg+0 / Strg+J.
+
+### Zeilenleiste (`editor/gutter.ts`)
+
+Zeilennummern, aktuelle Zeile, Markierungsspalte mit Formen (Kreis Fehler, Dreieck Warnung, Raute Hinweis, Git-Streifen) und Tooltip. Marken liegen als Dokumentpositionen im `StateField` und wandern per Änderungsabbildung mit; die Breite hängt nie vom Scrollstand ab (feste Spalte, `overflow: hidden`).
+
+### Diagnose (`editor/diagnostics.ts`, `workers/analysis*.ts`)
+
+`diagnosticsField` hält Version und Dekorationen im `EditorState` der Sitzung. `DiagnosticsDriver` entprellt **in der Erweiterung** 0,6 s (`ANALYSIS_DEBOUNCE_MS`, bevor der Text als Zeichenkette entsteht; der Client selbst bekommt `debounceMs: 0`) und fragt über den geteilten `DiagnosticsHub` den `AnalysisClient` an; der `analysis.worker.ts` führt `analysisLogic.ts` aus (Syntaxprüfer, doppelte Labels). Antworten mit veralteter Version werden verworfen. Ohne offene Sitzung beendet der Hub den Worker nach 30 s. Darstellung: rot gestrichelt (Fehler), orange strichpunktiert (Warnung, per `repeating-linear-gradient`-Farbverlauf), blau gepunktet (Hinweis); Meldung als Tooltip. Offen: Hub reicht Worker-Fehler nicht an die Oberfläche (REVIEW-M1 N6).
+
+### Tippen (`editor/typing.ts`, `core/textEditing.ts`)
+
+Die Logik liefert ein `TextEdit`, angewendet als genau eine Transaktion (ein Undo-Schritt, `userEvent` je Art; nur Tippen und Rückschritt verbinden sich mit Nachbarn). Sie sieht nur ein **Fenster um die Auswahl** (`WindowProfile`: z. B. Zeilenblock 1 davor/2 danach, Enter mit 50.000 Zeichen Vorschau), nie das ganze Dokument. **IME-Schutz:** bei laufender Komposition (`isImeActive`) greift nichts ein. Tasten (`Mod` = Strg, macOS ⌘; ohne Strg+Alt wegen AltGr): Backspace, Enter, Tab/⇧Tab, Strg+/ Kommentar, Alt+↑/↓ verschieben, ⇧Alt+↑/↓ doppeln, ⇧Strg+K Zeilen löschen, ⇧Strg+B fett, Strg+I kursiv, ⇧Strg+M Schreibmaschine. Ein-/Ausrücken: Strg+]/[ (macOS ⌘]/⌘[) über den CodeMirror-Standard `indentMore/Less`, `typingCommands.indent` hat keine eigene Taste.
+
+### Einstellungen (`shared/settingsSchema.ts`, `main/settings.ts`, `stores/settings.ts`)
+
+Schema (Schlüssel, Standard, Bereich) liegt in `shared`, damit Main (Prüfung) und Renderer (Standardwerte bis zum Laden) es teilen. `SettingsService` im Main: JSON im `userData`-Ordner, je Schlüssel validiert (Fehlendes/Ungültiges → Standard), unlesbare/neuere Datei beiseitegelegt, atomar und entprellt gespeichert; `settings:set` lehnt Schlüssel wie `__proto__` ab. Der Store (`createSettingsStore`) lädt per `settings:get`. `appearanceController` berechnet daraus Darstellung und schickt nur Geändertes als `reconfigure` an die Compartments (`themeCompartment`, `wrapCompartment`, `displayCompartment`, `typingCompartment`); ein Wechsel baut keine Sitzung neu auf.
+
+### Farbschemata (`editor/theme.ts`, `themeController.ts`)
+
+Vier Schemata (`standard`, `classic`, `solarized`, `highContrast`) je hell/dunkel nach `prefers-color-scheme`; Syntaxfarben als `<style>` mit `cm-syntax-*`-Regeln und CSS-Variablen, CodeMirror-Theme über das Compartment. Kontrast als Vitest-Test (`theme.test.ts`).
+
+### Gewährungen und Dateizugriff (`main/grants.ts`, `handlers/`)
+
+Der Renderer kann dem Main nie eine Pfadherkunft behaupten (REVIEW-M0 H1): Dialoge (`dialog:pickFiles`, `dialog:saveAs`, `dialog:openProject`) liefern `GrantedPath {grantId, name}`; `GrantStore` vergibt eine Kennung je normalisiertem Pfad (Arten sammeln sich: `pickedFile`, `saveTarget`, `importSource`). `fs:readText/readMany/writeText` nehmen ein `FileTarget` (Projektpfad oder `GrantId`; beide überschneiden sich nicht) und antworten mit dem geschickten Ziel in `path` und dem Anzeigenamen in `name`. Gewährte Ziele werden vor dem Schreiben per `resolveRealPath` aufgelöst (Symlink bleibt erhalten). Die Handler stehen in `main/handlers/*` und werden in `appHandlers.ts` verdrahtet; alle übrigen Kanäle bleiben Platzhalter.
+
+### Schließen-Schutz (`main/lifecycle.ts`, `app/closeFlow.ts`, `ui/CloseConfirmDialog.tsx`)
+
+`CloseGuard` (Zustände `open` → `asking` → `confirmed`): `win.on('close')` und `before-quit` (⌘Q, Dock-Beenden) rufen `preventDefault` und senden `app:closeRequested`. Der Renderer (`closeFlow`) bestätigt sofort ohne Ungespeichertes, sonst fragt der Dialog „Speichern / Nicht speichern / Abbrechen“; erst `app:confirmClose` lässt den Main `destroy()` aufrufen. „Abbrechen“ lässt das Fenster offen (der Main erfährt es nicht, ein erneutes Schließen fragt wieder). Ohne Fenster, bei abgestürztem oder noch ladendem Renderer und mit Stub-Preload fragt der Main nicht (`requestCloseConfirmation` liefert `false`, gilt als bestätigt). Offen: Wiederherstellungsdaten beim „Nicht speichern“ (W2-14).
+
+### Zeilenenden, BOM, Kodierung (Regel aus `main/textIo.ts`)
+
+- Lesen: UTF-8 strikt, sonst Latin-1; ein BOM bleibt als U+FEFF am Textanfang (`ignoreBOM`) und wird beim Speichern mitgeschrieben. `eol` entscheidet die Mehrheit (CRLF gegen einzelnes LF, bei Gleichstand LF). Ein einzelnes CR ist kein Zeilenende und bleibt Zeichen; nur echte Paare `\r\n` werden zu LF (`"\r\r\n"` → CR als Zeichen plus Umbruch).
+- Schreiben: Der Renderer schickt LF-Text, jedes LF wird zu `eol`. Gemischte Dateien werden damit auf die Mehrheit vereinheitlicht (bewusst: eine Datei, ein `eol`). Atomar (Temp + `rename`, Wiederholung bei `EBUSY`/`EPERM`/`EACCES`), Konflikt bei fremdem `expectedHash`.
+- Text, der in Latin-1 nicht darstellbar ist, wird beim Speichern abgelehnt (`notRepresentable`).
+
+### Testzugang und Stub-Preload
+
+- `window.__editorTestApi` (`EditorHost.tsx`: `open`, `activate`, `close`, `text`, `selection`, `select`, `isDirty`, `setGutterMarks`) entsteht nur im Build `--mode e2e` (`.env.e2e`, `RENDERER_VITE_EDITOR_TEST_API=1`); `electron.vite.config.ts` entfernt die Variable in jedem anderen Modus, `scripts/checkNoTestApi.mjs` bricht `npm run package` ab, wenn die Zuweisung im Renderer-Build steht.
+- Der Stub-Preload (`preload/stub.ts`, Antworten aus `tests/support/preloadStub.ts`) wird nur unverpackt und nur mit `LATEXEDITOR_STUB_PRELOAD=1` gewählt (`main/preloadChoice.ts`); `stubContract.test.ts` prüft, dass Stub und Main gleich geformt antworten.
+
 ## Performance-Budgets M1
 
 Stand 2026-11-24 (W1-13). Gemessen am fertigen Editor mit allen Erweiterungen (Syntaxfarben, Gutter, Einklappen, Diagnose mit Worker, Tippen, Suche) und 10.000 Zeilen synthetischem LaTeX (`tests/perf/syntheticDocument.ts`, fester Seed, ohne Inhalt aus der Thesis; Absätze, Formeln, Umgebungen, Kommentare, Abschnitte, ein doppeltes Label und eine nicht geschlossene Klammer für die Diagnose). Rechner: Intel-Mac (i9, 8 Kerne, 2,3 GHz, 16 GB), macOS 26.7.1, Electron 45.4.1, Stub-Preload, Fenster nicht verdeckt.

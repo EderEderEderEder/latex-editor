@@ -11,7 +11,7 @@ Review durch einen Opus-Agenten, nur lesend, Befunde am Code belegt. Spalte „S
 | M1 | Mittel | `session.ts` (`view.setState`), `language.ts` | `setState` baut alle ViewPlugins neu: bei jedem Tabwechsel neuer `LineStateCache` (O(Zeilen)); bei gescrollter 10.000-Zeilen-Datei tokenisiert `ensureValid` fast die ganze Datei synchron | Cache je Sitzung halten (Facet oder `WeakMap`), Plugin übernimmt ihn bei gleichem `doc`; Budget „Tabwechsel zu gescrollter 10.000-Zeilen-Datei“ in W1-13 | offen |
 | M2 | Mittel | `folding.ts`, `foldRegions.ts` | Einklapp-Scan im UI-Thread (ganzer `doc.toString()` 300 ms nach Tipp-Pause) | im Perf-Test messen; bei > ~8 ms über den Analyse-Worker | offen (Messung W1-13) |
 | M3 | Mittel | `package.json` (`build:e2e`, `package`), `electron-builder.yml`, `EditorHost.tsx` | Der aktuelle `out/` kann den Testzugang eingeschaltet enthalten; `electron-builder` ohne Neubau würde ihn ausliefern; `build:e2e` mit POSIX-Zuweisung geht unter Windows nicht | `electron-vite build --mode e2e` mit `.env.e2e`; im Paketlauf Variable leeren und vor `electron-builder` prüfen, dass `out/renderer` kein `__editorTestApi = ` enthält | erledigt (Build-Prüfung steht aus) |
-| N1 | Niedrig | `textIo.ts`, `session.ts` | gemischte Zeilenenden werden auf die Mehrheit umgeschrieben (undokumentiert); `"\r\r\n"` verliert ein CR | Regel in ARCHITEKTUR; beim Lesen nur echte Paare normalisieren; Test mit `\r\r\n` | erledigt: Regel im Kommentar `textIo.ts`, Schreiben normalisiert nicht mehr; Test `\r\r\n` (ARCHITEKTUR offen) |
+| N1 | Niedrig | `textIo.ts`, `session.ts` | gemischte Zeilenenden werden auf die Mehrheit umgeschrieben (undokumentiert); `"\r\r\n"` verliert ein CR | Regel in ARCHITEKTUR; beim Lesen nur echte Paare normalisieren; Test mit `\r\r\n` | erledigt: Regel im Kommentar `textIo.ts`, Schreiben normalisiert nicht mehr; Test `\r\r\n`; Regel in ARCHITEKTUR „M1 Editor-Kern“ (Zeilenenden, BOM, Kodierung) |
 | N2 | Niedrig | `textIo.ts`, `grants.ts` | atomares `rename` ersetzt einen Symlink durch eine normale Datei | Ziel vor dem Schreiben per `realpath` auflösen | erledigt: gewährte Ziele vor dem Schreiben per `resolveRealPath` (Projektpfade schon durch `assertInProject`); Tests |
 | N3 | Niedrig | `fileActions.ts` | Strg+S während eines laufenden Speicherns wird stumm verworfen | Nachspeichern vormerken | erledigt: Nachspeichern je Datei vorgemerkt (`saveFile`); Tests |
 | N4 | Niedrig | `gutter.ts` | `mapMarks` legt bei jeder Änderung ein neues Array an, auch ohne Marken | bei leerer Liste dasselbe Array zurückgeben | erledigt |
@@ -25,11 +25,11 @@ Review durch einen Opus-Agenten, nur lesend, Befunde am Code belegt. Spalte „S
 
 | Thema | Swift | Web | Dokumentiert? |
 |---|---|---|---|
-| Zoom | ⌘+/⌘−, Original ⌥⌘0, Editor und Oberfläche (`InterfaceZoom`) | Mod+0 ohne Alt; nur `editorZoom`, `--ui-scale` unverändert | nein; FEATURES verspricht „Editor + Oberfläche“ |
-| Schreibmaschine | ⇧⌘T | `Shift-Mod-m` | nein |
-| Ein-/Ausrücken | ⌘]/⌘[ → `indentLines` | `typingCommands.indent` ohne Taste; ⌘]/⌘[ über CodeMirror `indentMore/Less` | nein |
-| Beenden mit Ungespeichertem | fragt nach | nichts (K1) | Plan W2-14 |
-| Tab schließen ⌘W, Alle speichern ⌥⌘S | vorhanden | fehlen | nein (W2-16) |
+| Zoom | ⌘+/⌘−, Original ⌥⌘0, Editor und Oberfläche (`InterfaceZoom`) | Mod+0 ohne Alt; nur `editorZoom`, `--ui-scale` unverändert | ja (FEATURES, 2026-11-24) |
+| Schreibmaschine | ⇧⌘T | `Shift-Mod-m` | ja (FEATURES, ARCHITEKTUR) |
+| Ein-/Ausrücken | ⌘]/⌘[ → `indentLines` | `typingCommands.indent` ohne Taste; ⌘]/⌘[ über CodeMirror `indentMore/Less` | ja (FEATURES, ARCHITEKTUR) |
+| Beenden mit Ungespeichertem | fragt nach | fragt nach (K1 erledigt: `CloseGuard`); Wiederherstellungsdaten beim „Nicht speichern“ offen | Plan W1-12c, W2-14 |
+| Tab schließen ⌘W, Alle speichern ⌥⌘S | vorhanden | fehlen | ja (Plan W2-16, `web/CLAUDE.md`) |
 
 Gleich: Diagnose-Muster, Einklapp-Tasten unter macOS, Breite der Zeilennummern, Latin-1 als ISO-8859-1.
 
@@ -38,6 +38,8 @@ Stil (Stichprobe): über 30 Zeilen nur `ui/EditorTabs.tsx:12-49` (JSX); Zahlen i
 ## Nötige Plan-/Doku-Änderungen
 
 Wurzel-`CLAUDE.md` (M1 funktional fertig); `web/CLAUDE.md` (Titel, Landkarte: Handler, `renderer/{app,editor,stores,ui,workers}`, `main/handlers/*`, `preloadChoice.ts`, `preload/stub.ts`, `tests/perf/`, `build:e2e` geht nicht unter Windows); `web/docs/ARCHITEKTUR.md` (Abschnitt M1: Sitzungen/`isDirty`, `LineStateCache`, Einklappen als `StateField`, Diagnose-Hub/Worker, `FileTarget`/Gewährungen, Testzugang, Regel für Zeilenenden/BOM); `web/TESTING.md` (Handtest W-H15: `.tex`/`.bib` öffnen, bearbeiten, speichern; Latin-1/CRLF byte-gleich; Speichern unter; Konflikt; Fenster schließen mit Ungespeichertem); `shared/FEATURES.md` (strichpunktiert per Farbverlauf; Zoom-Umfang/Tasten; ⌘E; Schreibmaschine/Einrücken); PLAN §2 Ordnerbaum/IPC-Tabelle (echte Dateien, `FileTarget`, `dialogHandlers`, `app:confirmClose`); K1 als W1-12c in M1 vorziehen; W1-13 um Tabwechsel-Budget ergänzen, 1000-ms-Budgets für Frame/Fold-Scan sind kein echtes Budget (Plan verlangt ~3-fachen Puffer).
+
+**Stand Doku (W1-D, 2026-11-24): eingearbeitet** in Wurzel-`CLAUDE.md`, `web/CLAUDE.md`, `web/docs/ARCHITEKTUR.md` (Abschnitt „M1 Editor-Kern“), `web/TESTING.md` (W-H15), `shared/FEATURES.md` (Spalte „Stand“, Korrekturen; ⌘E ist nicht umgesetzt), `shared/PLAN-WEBUI.md` (Statuszeile, §2, W1-12c, Aufgaben W2-17 bis W2-20). K1 steht als W1-12c im Plan; Tabwechsel-Budget in W2-17.
 
 ## Was gut ist
 

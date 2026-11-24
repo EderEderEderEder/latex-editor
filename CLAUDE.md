@@ -1,13 +1,13 @@
 # LaTeX-Editor (Repo-Wurzel)
 
-Lokaler LaTeX-Editor in zwei Versionen: `swift/` (nativ macOS, fertig und im Einsatz) und `web/` (Electron + TypeScript, für Windows und andere Plattformen; **im Aufbau**: Meilenstein M0 fast fertig, Gerüst, IPC-Vertrag und Spikes stehen, Editor ab M1; Plan: `shared/PLAN-WEBUI.md`). Gemeinsames liegt in `shared/`.
+Lokaler LaTeX-Editor in zwei Versionen: `swift/` (nativ macOS, fertig und im Einsatz) und `web/` (Electron + TypeScript, für Windows und andere Plattformen; **im Aufbau**: M0 (Gerüst, IPC-Vertrag, Spikes) und M1 (Editor-Kern: `.tex`/`.bib` öffnen, bearbeiten, speichern) fertig, nächster Meilenstein M2 (Projekt, Dateien, Kompilieren); Plan: `shared/PLAN-WEBUI.md`). Gemeinsames liegt in `shared/`.
 
 ## Ordner
 
 | Ordner | Inhalt |
 |---|---|
 | `swift/` | Swift-App: `Package.swift`, `Sources/`, `Tests/`, `scripts/`, `TESTING.md` (Handtests), `docs/ARCHITEKTUR.md`; eigene `CLAUDE.md` mit Befehlen und Konventionen. Alle Swift-Befehle von hier aus starten (`cd swift`). |
-| `web/` | Web-UI-Version (Electron, nur TypeScript: Node im Main-Prozess, React, CodeMirror 6, pdf.js); eigene `CLAUDE.md` (Befehle, Landkarte), `docs/ARCHITEKTUR.md` (Spike-Entscheidungen), `docs/REVIEW-M0.md`, `TESTING.md` (Handtests W-H…), `spikes/`. Alle Web-Befehle von hier aus starten (`cd web`). |
+| `web/` | Web-UI-Version (Electron, nur TypeScript: Node im Main-Prozess, React, CodeMirror 6, pdf.js); eigene `CLAUDE.md` (Befehle, Landkarte), `docs/ARCHITEKTUR.md` (Spike-Entscheidungen, Editor-Kern M1, Performance-Budgets), `docs/REVIEW-M0.md`, `docs/REVIEW-M1.md`, `TESTING.md` (Handtests W-H…), `spikes/`, `tests/` (unit, e2e, perf). Alle Web-Befehle von hier aus starten (`cd web`). |
 | `shared/` | Für beide Plattformen: `SUBAGENTS.md` (Arbeiten mit Subagents), `PLAN-WEBUI.md` (Plan und Aufgabenliste der Web-Version), `FEATURES.md` (Feature-Parität), `VERLAUF.md` (Verlauf, Ideenspeicher, Lehren), `Testdaten/` (Demo-Projekt `HgbDemo`, gitignored, nur lokal), `spec/` (sprachunabhängige Testvektoren als JSON, `README.md`, `schema.json`; die Swift-Gegenprobe `SpecVectorTests` besteht). |
 
 ## Harte Regeln (beide Versionen)

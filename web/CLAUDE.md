@@ -1,6 +1,6 @@
-# web/ (Web-UI-Version, Gerüst steht)
+# web/ (Web-UI-Version: Electron, M0 und M1 fertig)
 
-Hier entsteht die Electron-Version (nur TypeScript, Node im Main-Prozess) des LaTeX-Editors für Windows (und macOS/Linux). Plan, Meilensteine und Aufgaben mit Subagent-Zuweisung: `../shared/PLAN-WEBUI.md`. Regeln für Subagents: `../shared/SUBAGENTS.md`. Verhalten der fertigen Swift-Version als Vorlage: `../swift/docs/ARCHITEKTUR.md`, `../shared/FEATURES.md`.
+Electron-Version (nur TypeScript, Node im Main-Prozess) des LaTeX-Editors für Windows (und macOS/Linux). Stand: M1 (Editor-Kern: `.tex`/`.bib` öffnen, bearbeiten, speichern, Tabs, Suche, Zoom, Farbschemata, Einklappen, Diagnose, Tippen) fertig; Projekt, Dateibaum, Kompilieren und PDF kommen ab M2. Plan, Meilensteine und Aufgaben mit Subagent-Zuweisung: `../shared/PLAN-WEBUI.md`. Regeln für Subagents: `../shared/SUBAGENTS.md`. Verhalten der Swift-Version als Vorlage: `../swift/docs/ARCHITEKTUR.md`, `../shared/FEATURES.md`.
 
 Regeln (Thesis, Prozesse, Subagents, Code-Stil): `../CLAUDE.md`, nicht doppelt hier.
 
@@ -11,30 +11,86 @@ Regeln (Thesis, Prozesse, Subagents, Code-Stil): `../CLAUDE.md`, nicht doppelt h
 | Entwickeln (öffnet ein Fenster, Hot Reload) | `npm run dev` |
 | Typprüfung (Main/Preload/Tests und Renderer) | `npm run typecheck` |
 | Tests mit Zusammenfassung, Hänger-Wächter, Log `.test-logs/last.log` (immer so, nicht direkt `vitest`) | `npm test` (= `node scripts/test-run.mjs`) |
-| Nur schnelle Tests / einzelne Tests / mit E2E | `npm run test:fast`, `node scripts/test-run.mjs --filter <Dateimuster>` oder `--name <Testname>`, `--e2e` |
+| Nur schnelle Tests / einzelne Tests | `npm run test:fast`, `node scripts/test-run.mjs --filter <Dateimuster>` oder `--name <Testname>` |
 | Roher Vitest-Lauf (nur zum Debuggen) | `npm run test:raw` |
-| Build mit Testzugang für Playwright-Sitzungstests (`window.__editorTestApi`, nie im normalen Build; Windows-tauglich: `electron-vite build --mode e2e` liest `.env.e2e`) | `npm run build:e2e`, danach `node scripts/test-run.mjs --e2e` (ohne Bash-Sandbox), danach wieder `npm run build` |
-| Bauen nach `out/` | `npm run build` |
-| Installer nach `dist/` (NSIS, dmg, AppImage); baut neu, bricht ab, wenn `out/renderer` den Testzugang enthält (`scripts/checkNoTestApi.mjs`) | `npm run package` |
+| Bauen nach `out/` (ohne Testzugang) | `npm run build` |
+| Build **mit** Testzugang `window.__editorTestApi` für Playwright (`electron-vite build --mode e2e`, liest `.env.e2e`, Windows-tauglich) | `npm run build:e2e` |
+| Playwright-Sitzungstests (Electron, Stub-Preload; Voraussetzung `build:e2e`) | `node scripts/test-run.mjs --e2e` (= `npm run test:e2e`) |
+| Leistungsmessung, 5 frische Electron-Läufe, Budgets aus `tests/perf/budgets.ts` (Voraussetzung `build:e2e`) | `npm run test:perf` (= `node scripts/test-run.mjs --perf`) |
+| Prüfung, dass `out/renderer` keinen Testzugang enthält | `node scripts/checkNoTestApi.mjs` |
+| Installer nach `dist/` (NSIS, dmg, AppImage): baut neu, prüft mit `checkNoTestApi`, dann `electron-builder` | `npm run package` |
 
-`scripts/test-run.mjs` beendet bei Stillstand (60 s ohne Ausgabe) oder nach 300 s nur den eigenen Prozessbaum (Exit 2); E2E (`--e2e`, Playwright mit Electron, kein Browserdownload) wird ohne `tests/e2e/*.spec.ts` übersprungen. Nie in Schleifen auf Tests warten.
+**Playwright-Ablauf (immer so):** `npm run build:e2e` → `node scripts/test-run.mjs --e2e` (außerhalb der Bash-Sandbox) → danach wieder `npm run build`, damit `out/` den Testzugang nicht behält. `npm run test:perf` läuft ohne Vitest und ohne den normalen `--e2e`-Lauf (eigene Konfiguration `tests/perf/playwright.perf.config.ts`, Muster `*.perf.spec.ts`); nichts anderes parallel laufen lassen.
+
+`scripts/test-run.mjs` beendet bei Stillstand (60 s ohne Ausgabe; Perf 120 s) oder nach 300 s (Perf 900 s) nur den eigenen Prozessbaum (Exit 2); `--e2e` ohne `tests/e2e/*.spec.ts` wird übersprungen. Nie in Schleifen auf Tests warten.
 
 ## Landkarte
 
-- `src/shared/contract.ts`: IPC-Vertrag (`IpcRequests`, `IpcEvents`, Allow-Listen); `apiBuilder.ts` baut daraus `window.api.<bereich>.<methode>` (Preload und Test-Stub gleich), `ipcResult.ts` (`{ok, value}` / `IpcError`, `GitError`).
-- `src/main/`: `index.ts` (Fenster, Single-Instance; nur hier und im Preload wird `electron` zur Laufzeit importiert, `ipc.ts`/`security.ts` nur Typen), `ipc.ts` + `ipcHandlers.ts` + `ipcValidation.ts` (Handler-Register, Absenderprüfung, Eingabeprüfung; Fachhandler sind noch Platzhalter „nicht implementiert“), `lifecycle.ts` (Beenden: `QuitTasks`, `before-quit`, Fenster nach vorn bei zweiter Instanz; W2-10 trägt dort das Abbrechen des Builds ein), `grants.ts` (Pfad-Gewährungen: der Main vergibt `GrantId`s für Dialog-, „Zuletzt geöffnet“- und Drop-Pfade; der Renderer kann keine Pfadherkunft behaupten, kein `projectRoot` in Kanälen, noch nicht in `index.ts` verdrahtet bis zu den ersten echten Handlern), `security.ts` (Navigation, `webRequest`-Filter, Berechtigungen, CSP-Header), `paths.ts` (Pfadnormalisierung, „liegt im Projekt“, Projekt-Hash), `tools.ts` (TeX/Git finden, S4), `build.ts` (`BuildRunner`: latexmk starten und abbrechen, S4), `synctex.ts` + `workers/synctex.worker.ts` (SyncTeX-Parser und Index im `worker_threads`-Worker, S3).
-- `src/preload/index.ts`: `contextBridge` mit `window.api` und `webUtils.getPathForFile` (`dragDrop`, löst Drop-Pfade über `drop:grant` in Gewährungen auf).
-- `src/renderer/`: `index.html` (strikte CSP), `main.tsx`, `App.tsx`, `ipc/` (dünner Zugriff auf `window.api`), `global.d.ts`.
-- `tests/unit/` Vitest (`*.test.ts`), `tests/support/preloadStub.ts` (Stub für `window.api`), `tests/support/fakeLatexmk.mjs` (Fake-latexmk für `build`-Tests), später `tests/e2e/*.spec.ts`, langsame Tests in `tests/slow/` oder `*.slow.*`.
-- `spikes/`: Wegwerfcode und Messungen der Spikes S1–S10 (Ergebnisse in `docs/ARCHITEKTUR.md`, Abschnitt „Entscheidungen aus den Spikes“; Rohdaten `spikes/*/ERGEBNIS.md`).
-- Abhängigkeiten und Lizenzen: `docs/ABHAENGIGKEITEN.md`. Review M0 mit offenen Befunden: `docs/REVIEW-M0.md`. Handtests: `TESTING.md`.
-- Geplant, noch nicht angelegt: `renderer/editor/lineStateCache.ts` und `language.ts` (ViewPlugin, W1-4), `core/` unter `src/shared/` (Logik nach `shared/spec`), `main/watch.ts`, `fsOps.ts`, `textIo.ts` usw. (siehe Plan §2).
+### `src/shared/` (Main, Preload und Renderer; kein DOM, kein Node)
+
+| Datei / Ordner | Inhalt |
+|---|---|
+| `contract.ts` | IPC-Vertrag (`IpcRequests`, `IpcEvents`, Allow-Listen, `FileTarget`, `GrantId`, `TextFile` mit `name`) |
+| `apiBuilder.ts`, `ipcResult.ts` | baut `window.api.<bereich>.<methode>` (Preload und Stub gleich); `{ok, value}` / `IpcError`, `IpcFailure` |
+| `settingsSchema.ts` | Einstellungsschlüssel, Standardwerte, Wertebereiche (Main prüft, Renderer nutzt Standardwerte) |
+| `core/language.ts` | Sprache nach Dateiendung (`.bib` = BibTeX, sonst LaTeX) |
+| `core/latex/` | `tokenizer`, `comments`, `masking`, `environments`, `foldRegions` (`FoldState`), `syntaxChecker`, `duplicateLabels` |
+| `core/bib/tokenizer.ts` | BibTeX-Tokenizer |
+| `core/tabs.ts`, `core/textEditing.ts` | Tab-Logik (Vorschau/fest, Reihenfolge); Tipp-Logik (Klammern, Enter, Kommentar, Einrücken, Zeilen, Formatierung) |
+
+### `src/main/` (Node; nur `index.ts` und der Preload importieren `electron` zur Laufzeit)
+
+| Datei / Ordner | Inhalt |
+|---|---|
+| `index.ts` | Fenster, Single-Instance, `Menu.setApplicationMenu(null)`, Verdrahtung der Handler, `CloseGuard` |
+| `ipc.ts`, `ipcHandlers.ts`, `ipcValidation.ts` | Handler-Register mit Absenderprüfung, Platzhalter „nicht implementiert“ für noch fehlende Kanäle, Eingabeprüfung (`isGrantId`) |
+| `handlers/appHandlers.ts`, `dialogHandlers.ts`, `fsHandlers.ts` | Verdrahtung je App-Lauf (`createAppHandlers`, `app:confirmClose`); Dialoge mit Gewährungen; `fs:readText/readMany/writeText` mit `FileTarget` (Projektpfad oder `GrantId`) |
+| `grants.ts` | `GrantStore`: Pfad-Gewährungen (`GrantId`) für Dialog-, „Zuletzt geöffnet“- und Drop-Pfade, eine Kennung je Pfad |
+| `textIo.ts` | UTF-8 strikt / Latin-1, BOM, Zeilenenden, Hash, atomares Schreiben mit Wiederholung, Konflikt per Hash |
+| `settings.ts` | `SettingsService`: JSON im `userData`-Ordner, validiert, entprellt, atomar; Handler `settings:get/set` |
+| `lifecycle.ts` | `QuitTasks` (Aufräumen beim Beenden), `CloseGuard` (Schließen anfragen → `app:confirmClose`), zweite Instanz nach vorn |
+| `security.ts`, `paths.ts`, `preloadChoice.ts` | Navigation, `webRequest`-Filter, Berechtigungen, CSP-Header; Pfadnormalisierung und „liegt im Projekt“; Wahl Stub- oder echter Preload |
+| `tools.ts`, `build.ts`, `synctex.ts`, `workers/synctex.worker.ts` | noch ohne UI (M2/M3): TeX/Git finden, `BuildRunner` (latexmk, Abbruch), SyncTeX-Parser im `worker_threads`-Worker |
+
+### `src/preload/`
+
+`index.ts`: `contextBridge` mit `window.api` und `webUtils.getPathForFile` (`dragDrop`, Drop-Pfade über `drop:grant` in Gewährungen). `stub.ts`: Stub-Preload für Playwright (Antworten aus `tests/support/preloadStub.ts`).
+
+### `src/renderer/`
+
+| Ordner / Datei | Inhalt |
+|---|---|
+| `index.html`, `main.tsx`, `App.tsx`, `global.d.ts`, `css.d.ts` | Einstieg (strikte CSP), Rahmen |
+| `ipc/` | `api.ts` (dünner Zugriff auf `window.api`), `events.ts` |
+| `app/` | `fileActions.ts` (Öffnen, Speichern, Speichern unter, Nachspeichern), `closeFlow.ts` (Nachfrage beim Schließen), `shortcuts.ts` (Strg+O/S/⇧S, Zoom), `zoom.ts`, `startup.ts`, `statusText.ts`, `tabBarData.ts`, `useCursorPosition.ts`, `debounce.ts` |
+| `editor/` | `EditorHost.tsx` (ein `EditorView`, Testzugang im E2E-Modus), `session.ts` (`EditorSession`, `SessionRegistry`, `SessionView`), `extensions.ts` (Liste aller Funktionen), `language.ts` + `lineStateCache.ts` (Einfärbung), `folding.ts`, `gutter.ts`, `diagnostics.ts`, `typing.ts`, `search.ts`, `cursorEvents.ts`, `theme.ts`, `themeController.ts`, `appearance.ts`, `appearanceController.ts`, `domAppearanceHost.ts` (Farbschema, Einstellungen als Compartments) |
+| `stores/` | `editor.ts` (Tabs, `isDirty`; nie Text), `settings.ts`, `status.ts` |
+| `ui/` | `EditorPane.tsx`, `EditorTabs.tsx`, `EditorToolbar.tsx`, `StatusBar.tsx`, `CloseConfirmDialog.tsx`, `editorPane.css` |
+| `workers/` | `analysis.worker.ts` + `analysisLogic.ts` (Syntaxprüfung, doppelte Labels), `analysisClient.ts` (entprellt 0,6 s) |
+
+### Tests, Skripte, Spikes
+
+| Ordner | Inhalt |
+|---|---|
+| `tests/unit/` | Vitest `*.test.ts` (System-Node, ohne Electron) |
+| `tests/e2e/` | Playwright mit Electron und Stub-Preload: `stub-smoke`, `editor-basic`, `session`, `gutter`, `folding`, `diagnostics`, `typing`, `closeConfirm` |
+| `tests/perf/` | Leistungsmessung: `editorPerf.perf.spec.ts`, `budgets.ts`, `measureRun.ts`, `pageProbe.ts`, `stats.ts`, `syntheticDocument.ts`, `playwright.perf.config.ts` |
+| `tests/support/` | `preloadStub.ts` (gefälschte `window.api`), `fakeLatexmk.mjs`, `specVectors.ts`, `synctexWorkerClient.ts` |
+| `tests/slow/`, `tests/smoke.test.ts` | langsame Tests (`*.slow.test.ts`, nur ohne `--fast`); Rauchtest |
+| `scripts/` | `test-run.mjs` (Testläufer mit Wächter), `checkNoTestApi.mjs` |
+| `spikes/` | Wegwerfcode und Messungen S1–S10 (`cm-perf`, `pdf-text`, `synctex`, `build`, `electron-check`, `watch`); Ergebnisse in `docs/ARCHITEKTUR.md`, Rohdaten `spikes/*/ERGEBNIS.md` |
+
+Weiteres: Abhängigkeiten und Lizenzen `docs/ABHAENGIGKEITEN.md`; Reviews `docs/REVIEW-M0.md`, `docs/REVIEW-M1.md`; Handtests `TESTING.md`; Architektur Editor-Kern `docs/ARCHITEKTUR.md` Abschnitt „M1 Editor-Kern“.
+
+Noch nicht angelegt (M2 ff., siehe Plan §2): `main/project.ts`, `watch.ts`, `fsOps.ts`, `logParser.ts`, `menu.ts`, `recovery.ts`, `renderer/pdf/`, `core/completion/` usw.
 
 ## Stolpersteine
 
 - Das Electron-Programm lädt `npm install` nicht; es kommt beim ersten Start (`npm run dev`) aus dem Netz.
 - Das Paket ist CommonJS (kein `"type": "module"`), weil ein Sandbox-Preload kein ESM sein darf.
-- `fs.watch` (`EMFILE`) und Electron-Starts laufen nicht in der Claude-Sandbox; solche Tests außerhalb der Sandbox ausführen.
-- DevTools gibt es nur unverpackt (`devTools: !app.isPackaged`); bis W2-16 hat die App kein eigenes Menü.
+- **Electron-Starts (Playwright, `npm run dev`, `test:perf`) und `fs.watch` (`EMFILE`) laufen nicht in der Claude-/Bash-Sandbox**; solche Läufe außerhalb der Sandbox ausführen.
+- **Testzugang nur im E2E-Modus:** `window.__editorTestApi` entsteht nur bei `RENDERER_VITE_EDITOR_TEST_API=1` aus `.env.e2e` (`--mode e2e`); `electron.vite.config.ts` löscht die Variable in jedem anderen Modus. Nach einem Playwright-Lauf wieder `npm run build`; `npm run package` bricht ab, wenn `scripts/checkNoTestApi.mjs` die Zuweisung in `out/renderer` findet.
+- **Stub-Preload nur unverpackt:** `LATEXEDITOR_STUB_PRELOAD=1` lässt den Main `out/preload/stub.js` statt des echten Preloads laden (`choosePreloadPath` in `main/preloadChoice.ts`); im Paket wirkungslos, `out/preload/stub*` ist per `electron-builder.yml` ausgeschlossen. Sandbox-Preloads dürfen keine Nachbardatei laden, daher baut `electron.vite.config.ts` jeden Preload-Einstieg isoliert (`isolatedEntries`). Mit Stub-Preload schließt das Fenster ohne Nachfrage. E2E-Tests starten die App aus `out/` mit eigenem `--user-data-dir` (sonst blockiert eine laufende App per Single-Instance-Sperre).
+- DevTools gibt es nur unverpackt (`devTools: !app.isPackaged`); bis W2-16 hat die App kein eigenes Menü (`Menu.setApplicationMenu(null)`), also auch kein Tab-Schließen (Strg+W) und kein „Alle speichern“.
 - Im Entwicklungsmodus lockert ein Vite-Plugin die CSP (Inline-Skript für React Refresh, WebSocket); im Build gilt die strikte CSP aus `index.html`.
-- Stub-Preload für Playwright: `LATEXEDITOR_STUB_PRELOAD=1` lässt den Main `out/preload/stub.js` (gefälschte `window.api`-Antworten aus `tests/support/preloadStub.ts`) statt des echten Preloads laden; nur unverpackt (`choosePreloadPath` in `main/preloadChoice.ts`), im Paket wirkungslos und `out/preload/stub*` ist per `electron-builder.yml` ausgeschlossen. Sandbox-Preloads dürfen keine Nachbardatei laden, daher baut `electron.vite.config.ts` jeden Preload-Einstieg isoliert (`isolatedEntries`). E2E-Tests starten die App aus `out/` (vorher `npm run build`), mit eigenem `--user-data-dir` (sonst blockiert eine laufende App per Single-Instance-Sperre).
+- Sitzungsschlüssel einer Dialog-Datei ist die `GrantId`, nie ein Pfad: Titel, Sprache und Dateiendung immer aus `name` (nicht aus `path`) ableiten.

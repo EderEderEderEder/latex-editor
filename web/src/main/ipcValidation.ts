@@ -1,4 +1,5 @@
-import type { JsonValue, RequestArgs, RequestChannel } from '../shared/contract';
+import { TAB_MEMORY_VERSION } from '../shared/contract';
+import type { JsonValue, RequestArgs, RequestChannel, TabMemory } from '../shared/contract';
 
 // Grundprüfung der Argumentform je Kanal. Inhaltliche Prüfungen (Pfad liegt im Projekt,
 // Dateiname erlaubt …) machen die Fachhandler.
@@ -107,6 +108,42 @@ const isRecoveryEntry = objectOf({
     savedAt: isFiniteNumber,
 });
 
+// Pfad relativ zum Projekt mit `/`: nicht absolut (auch kein Laufwerk), keine `..`-Teile, kein Gegenstrich.
+const RELATIVE_PATH_FORBIDDEN_START = /^[/\\]|^[a-zA-Z]:/;
+const PARENT_SEGMENT = '..';
+const MAX_TAB_MEMORY_TABS = 200;
+
+export const isRelativePath: Guard<string> = (value): value is string =>
+    isPath(value) &&
+    !RELATIVE_PATH_FORBIDDEN_START.test(value) &&
+    !value.includes('\\') &&
+    !value.split('/').includes(PARENT_SEGMENT);
+
+const isNonNegativeInteger: Guard<number> = (value): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
+const isNonNegativeNumber: Guard<number> = (value): value is number => isFiniteNumber(value) && value >= 0;
+const isTabMemoryVersion: Guard<typeof TAB_MEMORY_VERSION> = (value): value is typeof TAB_MEMORY_VERSION =>
+    value === TAB_MEMORY_VERSION;
+
+const isTabMemoryEntry = objectOf({
+    path: isRelativePath,
+    isPreview: isBoolean,
+    anchor: isNonNegativeInteger,
+    head: isNonNegativeInteger,
+    scrollTop: isNonNegativeNumber,
+});
+
+const isTabMemoryTabs: Guard<TabMemory['tabs']> = (value): value is TabMemory['tabs'] =>
+    arrayOf(isTabMemoryEntry)(value) && value.length <= MAX_TAB_MEMORY_TABS;
+
+const isNullableRelativePath: Guard<string | null> = (value): value is string | null =>
+    value === null || isRelativePath(value);
+
+export const isTabMemory: Guard<TabMemory> = objectOf({
+    version: isTabMemoryVersion,
+    tabs: isTabMemoryTabs,
+    active: isNullableRelativePath,
+});
+
 export const ARG_SCHEMAS: ArgSchemas = {
     'app:ping': [],
     'app:confirmClose': [],
@@ -153,6 +190,8 @@ export const ARG_SCHEMAS: ArgSchemas = {
     'recovery:delete': [isPath],
     'settings:get': [],
     'settings:set': [isNonEmptyString, isJsonValue],
+    'tabs:memoryLoad': [],
+    'tabs:memorySave': [isTabMemory],
     'image:import': [isGrantId, isPath],
     'pdf:open': [isPath],
 };

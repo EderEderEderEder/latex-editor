@@ -5,6 +5,8 @@ export type ShortcutAction =
     | { readonly kind: 'open' }
     | { readonly kind: 'save' }
     | { readonly kind: 'saveAs' }
+    | { readonly kind: 'nextTab' }
+    | { readonly kind: 'previousTab' }
     | { readonly kind: 'zoom'; readonly direction: ZoomDirection };
 
 export interface KeyInput {
@@ -32,8 +34,16 @@ function zoomAction(key: string): ShortcutAction | null {
     return null;
 }
 
+// Strg+Tab / Strg+Umschalt+Tab wechseln die Tabs (auf allen Systemen mit Strg, auch auf macOS)
+function tabSwitchAction(input: KeyInput): ShortcutAction | null {
+    if (input.key !== 'Tab' || !input.ctrlKey || input.metaKey) return null;
+    return { kind: input.shiftKey ? 'previousTab' : 'nextTab' };
+}
+
 export function matchShortcut(input: KeyInput): ShortcutAction | null {
     if (input.defaultPrevented === true || input.altKey) return null;
+    const tabSwitch = tabSwitchAction(input);
+    if (tabSwitch !== null) return tabSwitch;
     if (input.ctrlKey === input.metaKey) return null;
     return letterAction(input.key.toLowerCase(), input.shiftKey) ?? zoomAction(input.key);
 }

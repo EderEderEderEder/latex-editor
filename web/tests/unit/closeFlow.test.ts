@@ -26,6 +26,24 @@ function setup(choice: CloseChoice = 'cancel') {
     return { stub, store, messages, ask, deps, open, calls, handle: createCloseHandler(deps) };
 }
 
+describe('Schließen des Fensters: Tab-Gedächtnis', () => {
+    it('schreibt das Tab-Gedächtnis vor der Bestätigung; ein Fehler dort hält das Schließen nicht auf', async () => {
+        const { deps } = setup();
+        const order: string[] = [];
+        const beforeConfirm = vi.fn(() => {
+            order.push('gedächtnis');
+            return Promise.reject(new Error('Platte voll'));
+        });
+        const confirmClose = () => {
+            order.push('bestätigt');
+            return Promise.resolve({ ok: true as const, value: undefined });
+        };
+        const api = { ...deps.api, app: { ...deps.api.app, confirmClose } };
+        expect(await createCloseHandler({ ...deps, api, beforeConfirm })()).toBe('closed');
+        expect(order).toEqual(['gedächtnis', 'bestätigt']);
+    });
+});
+
 describe('Schließen des Fensters (K1)', () => {
     it('ohne Ungespeichertes wird sofort bestätigt, ohne Nachfrage', async () => {
         const { open, handle, ask, calls } = setup();

@@ -1,0 +1,27 @@
+/* Gliederungsliste (W2-6). Farben aus den `--chrome-*`-Variablen (Hell/Dunkel), mit Rückfall. */
+.outline-list { display: flex; flex-direction: column; padding: 0.2em 0; color: var(--chrome-text, #1f1f1f); }
+
+.outline-empty { margin: 0; padding: 0.8em; color: var(--chrome-muted, #5c5c5c); }
+
+.outline-item {
+    display: flex; align-items: baseline; gap: 0.3em; padding-top: 0.2em; padding-bottom: 0.2em; padding-right: 0.5em;
+    cursor: pointer; border-radius: 4px; outline-offset: -2px;
+}
+
+.outline-item:hover { background: color-mix(in srgb, var(--chrome-text, #1f1f1f) 8%, transparent); }
+.outline-item:focus-visible { outline: 2px solid var(--chrome-accent, #0b57d0); }
+
+.outline-item.is-current {
+    color: var(--chrome-accent, #0b57d0); font-weight: 600;
+    background: color-mix(in srgb, var(--chrome-accent, #0b57d0) 14%, transparent);
+}
+
+.outline-level-part, .outline-level-chapter { font-weight: 600; }
+
+.outline-toggle { flex: 0 0 1em; text-align: center; color: var(--chrome-muted, #5c5c5c); user-select: none; }
+.outline-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.outline-file {
+    flex: 0 0 auto; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 0.85em; font-weight: 400; color: var(--chrome-muted, #5c5c5c);
+}

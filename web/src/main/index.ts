@@ -15,7 +15,7 @@ const STUB_PRELOAD_PATH = join(__dirname, '../preload/stub.js');
 const DEV_SERVER_ENV = 'ELECTRON_RENDERER_URL';
 
 let mainWindow: BrowserWindow | null = null;
-// Aufräumen beim Beenden; W2-10 trägt hier den Build-Abbruch ein (`quitTasks.add(() => runner.cancel())`).
+// Aufräumen beim Beenden; `createBuildHandlers` trägt den Build-Abbruch ein (`queue.shutdown()`).
 const quitTasks = new QuitTasks();
 let stubPreloadActive = false;
 const sendEvent = createEventSender(() => liveMainWindow()?.webContents ?? null);
@@ -113,6 +113,7 @@ async function start(): Promise<void> {
         quitTasks,
         log: logSettings,
         confirmClose: () => closeGuard.confirm(liveMainWindow()),
+        emit: sendEvent,
     });
     registerIpcHandlers(ipcMain, {
         handlers,
@@ -127,7 +128,7 @@ if (!app.requestSingleInstanceLock()) {
     app.quit();
 } else {
     app.on('second-instance', () => bringToFront(mainWindow));
-    // Erst die Nachfrage bei Ungespeichertem (K1), dann das Aufräumen (Einstellungen sichern, später Build-Abbruch).
+    // Erst die Nachfrage bei Ungespeichertem (K1), dann das Aufräumen (Einstellungen sichern, Build-Abbruch).
     const cleanup = createBeforeQuitHandler({ tasks: quitTasks, quit: () => app.quit(), log: logLifecycle });
     app.on('before-quit', createGuardedQuitHandler(closeGuard, liveMainWindow, cleanup));
     // Jedes webContents (auch künftige Fenster und die DevTools) bekommt die Navigationssperre.

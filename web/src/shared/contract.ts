@@ -83,6 +83,8 @@ export interface FileNode {
     readonly kind: 'file';
     readonly name: string;
     readonly path: AbsolutePath;
+    /** Erzeugte Datei (Build-Ausgabe wie `.aux`, `.log`); der Baum zeigt sie gedämpft */
+    readonly isBuildFile?: boolean;
 }
 
 export interface DirectoryNode {
@@ -98,6 +100,8 @@ export interface ProjectInfo {
     readonly root: AbsolutePath;
     readonly mainFile: AbsolutePath | null;
     readonly tree: DirectoryNode;
+    /** Der Baum wurde wegen der Obergrenze an Einträgen gekürzt */
+    readonly truncated?: boolean;
 }
 
 // Pfad, den der Main gewährt hat: der Renderer bekommt nur Kennung und Anzeigenamen.
@@ -287,6 +291,27 @@ export interface RecoveryEntry {
 
 export type SettingsData = { readonly [key: string]: JsonValue };
 
+// Tab-Gedächtnis je Projekt (W2-4): Der Main legt es im App-Datenordner ab und kennt das Projekt selbst.
+// Pfade sind relativ zur Projektwurzel und haben immer `/` als Trenner; Auswahl und Scrollposition je Tab.
+export const TAB_MEMORY_VERSION = 1;
+
+export interface TabMemoryEntry {
+    readonly path: RelativePath;
+    /** Vorschau-Tab (kursiv) statt festem Tab */
+    readonly isPreview: boolean;
+    readonly anchor: Utf16Offset;
+    readonly head: Utf16Offset;
+    /** Pixel von oben im Editor */
+    readonly scrollTop: number;
+}
+
+export interface TabMemory {
+    readonly version: typeof TAB_MEMORY_VERSION;
+    /** Tabs in Leistenreihenfolge */
+    readonly tabs: readonly TabMemoryEntry[];
+    readonly active: RelativePath | null;
+}
+
 export interface ImageImportResult {
     readonly relPath: RelativePath;
     readonly reused: boolean;
@@ -353,6 +378,9 @@ export interface IpcRequests {
     'recovery:delete': Request<[path: AbsolutePath], void>;
     'settings:get': Request<[], SettingsData>;
     'settings:set': Request<[key: string, value: JsonValue], void>;
+    // Beide gehören zum aktuellen Projekt des Main; ohne Projekt liefert `memoryLoad` `null`, `memorySave` einen Fehler.
+    'tabs:memoryLoad': Request<[], TabMemory | null>;
+    'tabs:memorySave': Request<[memory: TabMemory], void>;
     'image:import': Request<[sourceGrant: GrantId, imagesDir: AbsolutePath], ImageImportResult>;
     'pdf:open': Request<[path: AbsolutePath], PdfSource>;
 }
@@ -439,6 +467,8 @@ const REQUEST_CHANNEL_TABLE: Readonly<Record<RequestChannel, true>> = {
     'recovery:delete': true,
     'settings:get': true,
     'settings:set': true,
+    'tabs:memoryLoad': true,
+    'tabs:memorySave': true,
     'image:import': true,
     'pdf:open': true,
 };

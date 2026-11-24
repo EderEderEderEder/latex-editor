@@ -9,6 +9,7 @@ import type {
     RequestResult,
     GeneralErrorKind,
     GrantedPath,
+    TabMemory,
     TextFile,
     Unsubscribe,
 } from '../../src/shared/contract';
@@ -43,6 +44,10 @@ export interface StubControl {
     failWrites(kind: GeneralErrorKind | null, message?: string): void;
     /** Zuletzt geschriebener Text je Ziel (Kennung oder Pfad) */
     writtenText(path: string): string | null;
+    /** Setzt das Tab-Gedächtnis, das `tabs:memoryLoad` liefert (`null` = keins) */
+    setTabMemory(memory: TabMemory | null): void;
+    /** Zuletzt über `tabs:memorySave` gespeichertes Tab-Gedächtnis (oder das gesetzte) */
+    tabMemory(): TabMemory | null;
     /** Schickt ein Ereignis wie der Main (z. B. `app:closeRequested` beim Schließen des Fensters) */
     emit(event: EventChannel, payload: unknown): void;
 }
@@ -134,6 +139,8 @@ export const DEFAULT_STUB_RESPONSES: StubResponders = {
     'recovery:delete': nothing,
     'settings:get': () => ({}),
     'settings:set': nothing,
+    'tabs:memoryLoad': () => null,
+    'tabs:memorySave': nothing,
     'image:import': () => ({ relPath: 'images/bild.png', reused: false }),
     'pdf:open': () => ({ kind: 'bytes', bytes: new Uint8Array() }),
 };
@@ -208,9 +215,35 @@ class VirtualFiles implements Pick<StubControl, 'prepareFile' | 'failWrites' | '
     };
 }
 
+/** Ein Tab-Gedächtnis im Speicher: `tabs:memorySave` merkt es, `tabs:memoryLoad` liefert es zurück */
+class VirtualTabMemory implements Pick<StubControl, 'setTabMemory' | 'tabMemory'> {
+    private memory: TabMemory | null = null;
+
+    setTabMemory(memory: TabMemory | null): void {
+        this.memory = memory;
+    }
+
+    tabMemory(): TabMemory | null {
+        return this.memory;
+    }
+
+    readonly responders: Pick<StubResponders, 'tabs:memoryLoad' | 'tabs:memorySave'> = {
+        'tabs:memoryLoad': () => this.memory,
+        'tabs:memorySave': (memory) => {
+            this.memory = memory;
+        },
+    };
+}
+
 export function createPreloadStub(overrides: Partial<StubResponders> = {}): PreloadStub {
     const virtualFiles = new VirtualFiles();
-    const responders: Record<string, unknown> = { ...DEFAULT_STUB_RESPONSES, ...virtualFiles.responders, ...overrides };
+    const virtualTabMemory = new VirtualTabMemory();
+    const responders: Record<string, unknown> = {
+        ...DEFAULT_STUB_RESPONSES,
+        ...virtualFiles.responders,
+        ...virtualTabMemory.responders,
+        ...overrides,
+    };
     const calls: StubCall[] = [];
     const listeners = new Map<EventChannel, Set<AnyListener>>();
     const filePaths = new WeakMap<File, string>();
@@ -226,6 +259,8 @@ export function createPreloadStub(overrides: Partial<StubResponders> = {}): Prel
         prepareFile: (name, text) => virtualFiles.prepareFile(name, text),
         failWrites: (kind, message) => virtualFiles.failWrites(kind, message),
         writtenText: (path) => virtualFiles.writtenText(path),
+        setTabMemory: (memory) => virtualTabMemory.setTabMemory(memory),
+        tabMemory: () => virtualTabMemory.tabMemory(),
         emit: (event, payload) => emitEvent(listeners, event, payload),
         calls: () => calls.map((call) => ({ channel: call.channel, args: [...call.args] })),
         clearCalls: () => {

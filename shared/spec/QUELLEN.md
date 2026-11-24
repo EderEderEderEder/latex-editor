@@ -78,3 +78,7 @@ Zeitbudget, Zufall, Fenster, Pixel, Prozesse: PerformanceTests, RobustnessTests,
 ## Zusätzliche Vektordateien neben denen aus dem Plan
 
 `positions.json` (TextPositions, LineIndex), `usages.json` (UsageFinder), `marks.json` (MarkResolver-Logik, MarkStorage, ChangeMarks), `project.json` (ProjectLoading, ProjectSearch, SearchActions) — jeweils nach dem Zuschnitt der Aufgabe W0-11/12 oder später in M4/M5.
+
+## Status W2-5 (2026-11-24)
+
+`latex-log.json` (LatexLogParserTests, 12 Fälle aus 10 Tests) und `misc.json` (10 Dateien, 148 Fälle, 20 übersprungen) sind umgesetzt; Swift-Gegenprobe offen.

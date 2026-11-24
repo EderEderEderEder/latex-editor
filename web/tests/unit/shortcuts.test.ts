@@ -24,6 +24,15 @@ describe('Tastenkürzel', () => {
         expect(matchShortcut(ctrl('0'))).toEqual({ kind: 'zoom', direction: 'reset' });
     });
 
+    it('Strg+Tab und Strg+Umschalt+Tab wechseln die Tabs, auch auf macOS nur mit Strg', () => {
+        expect(matchShortcut(ctrl('Tab'))).toEqual({ kind: 'nextTab' });
+        expect(matchShortcut(ctrl('Tab', { shiftKey: true }))).toEqual({ kind: 'previousTab' });
+        expect(matchShortcut(ctrl('Tab', { ctrlKey: false, metaKey: true }))).toBeNull();
+        expect(matchShortcut(ctrl('Tab', { ctrlKey: false }))).toBeNull();
+        expect(matchShortcut(ctrl('Tab', { altKey: true }))).toBeNull();
+        expect(matchShortcut(ctrl('Tab', { defaultPrevented: true }))).toBeNull();
+    });
+
     it('ignoriert Tasten ohne Strg, mit Alt oder schon behandelte', () => {
         expect(matchShortcut(ctrl('s', { ctrlKey: false }))).toBeNull();
         expect(matchShortcut(ctrl('s', { altKey: true }))).toBeNull();

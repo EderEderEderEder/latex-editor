@@ -51,7 +51,7 @@ describe('Verdrahtung der echten Handler', () => {
 
     it('beim Beenden schreibt flush die ausstehende Änderung sofort', async () => {
         const { handlers, quitTasks, log } = setup();
-        expect(quitTasks.size).toBe(1);
+        expect(quitTasks.size).toBeGreaterThanOrEqual(1);
         await handlers['settings:set']('wrapsLines', false);
         await quitTasks.runAll(log);
         const stored = JSON.parse(await readFile(join(userData, SETTINGS_FILE_NAME), 'utf8'));
@@ -59,12 +59,13 @@ describe('Verdrahtung der echten Handler', () => {
         expect(log).not.toHaveBeenCalled();
     });
 
-    it('Dialog- und Datei-Handler sind verdrahtet, andere Kanäle bleiben Platzhalter', async () => {
+    it('Dialog-, Datei- und Projekt-Handler sind verdrahtet, andere Kanäle bleiben Platzhalter', async () => {
         const { handlers } = setup();
         expect(await handlers['dialog:openProject']()).toBeNull();
         expect(await handlers['dialog:pickFiles']({})).toBeNull();
         await expect(handlers['fs:readText']('/etc/hosts')).rejects.toMatchObject({ error: { kind: 'notFound' } });
-        await expect(handlers['project:open']('grant-1')).rejects.toMatchObject({ error: { kind: 'notImplemented' } });
+        await expect(handlers['project:open']('grant-1')).rejects.toMatchObject({ error: { kind: 'forbiddenPath' } });
+        await expect(handlers['git:status']()).rejects.toMatchObject({ error: { kind: 'notImplemented' } });
     });
 
     it('ein Dialog-Ergebnis gilt im selben Lauf für fs:readText', async () => {

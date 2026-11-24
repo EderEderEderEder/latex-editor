@@ -48,10 +48,13 @@ function forbidden(message: string): IpcFailure {
     return new IpcFailure({ kind: 'forbiddenPath', message });
 }
 
+export type ProjectListener = (root: string | null) => void;
+
 export class GrantStore {
     private readonly grants = new Map<GrantId, Grant>();
     private readonly idsByKey = new Map<string, GrantId>();
     private projectRoot: string | null = null;
+    private readonly projectListeners = new Set<ProjectListener>();
     readonly platform: PathPlatform;
     private readonly createId: () => GrantId;
     private readonly maxGrants: number;
@@ -91,12 +94,27 @@ export class GrantStore {
 
     openProject(grantId: GrantId): string {
         const root = this.resolve(grantId, 'project');
-        this.projectRoot = root;
+        this.setProject(root);
         return root;
     }
 
     closeProject(): void {
-        this.projectRoot = null;
+        this.setProject(null);
+    }
+
+    // Meldet jeden Wechsel des aktuellen Projekts (`null` = geschlossen); erneutes Öffnen desselben Projekts nicht.
+    // Liefert die Abmeldung. Listener dürfen nicht werfen (sie laufen innerhalb von `project:open`).
+    onProjectChanged(listener: ProjectListener): () => void {
+        this.projectListeners.add(listener);
+        return () => {
+            this.projectListeners.delete(listener);
+        };
+    }
+
+    private setProject(root: string | null): void {
+        if (root === this.projectRoot) return;
+        this.projectRoot = root;
+        for (const listener of [...this.projectListeners]) listener(root);
     }
 
     get currentProject(): string | null {

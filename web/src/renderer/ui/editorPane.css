@@ -54,10 +54,19 @@ main { height: 100%; display: flex; flex-direction: column; }
 .editor-pane button:disabled { opacity: 0.5; cursor: default; }
 .editor-pane button:focus-visible { outline: 2px solid var(--chrome-accent); outline-offset: 1px; }
 
-.editor-tabs { display: flex; overflow-x: auto; border-bottom: 1px solid var(--chrome-border); min-height: 2em; }
-.editor-tab { display: flex; align-items: center; gap: 0.2em; padding: 0 0.3em; border-right: 1px solid var(--chrome-border); }
+.editor-tabs {
+    position: relative; display: flex; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin;
+    border-bottom: 1px solid var(--chrome-border); min-height: 2em;
+}
+.editor-tab {
+    display: flex; flex: 0 0 auto; align-items: center; gap: 0.2em; padding: 0 0.3em;
+    border-right: 1px solid var(--chrome-border);
+}
+.editor-tab.is-dragging { opacity: 0.5; }
+.editor-tab.is-drop-target { box-shadow: inset 2px 0 0 var(--chrome-accent); }
 .editor-tab.is-active { background: var(--chrome-active); box-shadow: inset 0 -2px 0 var(--chrome-accent); }
 .editor-pane .editor-tab-title, .editor-pane .editor-tab-close { border: none; padding: 0.3em 0.4em; }
+.editor-pane .editor-tab-title { max-width: 16em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .editor-tab-title.is-preview { font-style: italic; }
 .tab-dirty { width: 0.6em; height: 0.6em; border-radius: 50%; background: var(--chrome-text); flex: none; }
 

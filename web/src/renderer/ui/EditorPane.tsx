@@ -6,6 +6,9 @@ import { saveActiveFile, saveActiveFileAs, openFilesFromDialog } from '../app/fi
 import type { FileActionDeps } from '../app/fileActions';
 import { matchShortcut } from '../app/shortcuts';
 import type { ShortcutAction } from '../app/shortcuts';
+import { scrollMemory } from '../app/scrollMemory';
+import { connectScrollMemory } from '../app/scrollTracking';
+import { installTabMemoryTestApi } from '../app/tabMemoryRuntime';
 import { changeEditorZoom } from '../app/zoom';
 import { EditorHost } from '../editor/EditorHost';
 import type { SessionView } from '../editor/session';
@@ -14,9 +17,9 @@ import { editorStore, useEditorStore } from '../stores/editor';
 import { useSettingsStore } from '../stores/settings';
 import { statusStore } from '../stores/status';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
-import { EditorTabs } from './EditorTabs';
 import { EditorToolbar } from './EditorToolbar';
 import { StatusBar } from './StatusBar';
+import { TabBar } from './TabBar';
 import './editorPane.css';
 
 function fileActionDeps(): FileActionDeps {
@@ -34,6 +37,12 @@ function runShortcut(action: ShortcutAction): void {
             return;
         case 'saveAs':
             void saveActiveFileAs(deps);
+            return;
+        case 'nextTab':
+            editorStore.getState().activateNext();
+            return;
+        case 'previousTab':
+            editorStore.getState().activatePrevious();
             return;
         case 'zoom':
             void changeEditorZoom(useSettingsStore, action.direction, (text) => statusStore.getState().show({ text, kind: 'error' }));
@@ -53,6 +62,14 @@ function useWindowShortcuts(): void {
     }, []);
 }
 
+/** Merkt die Scrollposition des gezeigten Tabs für das Tab-Gedächtnis und stellt eine wiederhergestellte ein */
+function useScrollMemory(sessionView: SessionView | null): void {
+    useEffect(() => {
+        if (sessionView === null) return undefined;
+        return connectScrollMemory({ sessionView, store: editorStore, memory: scrollMemory });
+    }, [sessionView]);
+}
+
 export function EditorPane({ heading }: { readonly heading: ReactNode }) {
     const [sessionView, setSessionView] = useState<SessionView | null>(null);
     const hasActiveTab = useEditorStore((state) => state.tabs.active !== null);
@@ -65,6 +82,8 @@ export function EditorPane({ heading }: { readonly heading: ReactNode }) {
         [],
     );
     useWindowShortcuts();
+    useScrollMemory(sessionView);
+    useEffect(installTabMemoryTestApi, []);
     return (
         <section className="editor-pane" aria-label="Editor">
             <EditorToolbar
@@ -74,7 +93,7 @@ export function EditorPane({ heading }: { readonly heading: ReactNode }) {
                 onSave={actions.save}
                 onSaveAs={actions.saveAs}
             />
-            <EditorTabs />
+            <TabBar />
             <EditorHost onSessionView={setSessionView} />
             <StatusBar sessionView={sessionView} />
             <CloseConfirmDialog />

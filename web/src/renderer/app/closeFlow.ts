@@ -5,6 +5,7 @@ import type { RendererApi } from '../../shared/contract';
 import type { EditorStore } from '../stores/editor';
 import type { StatusMessage } from '../stores/status';
 import { saveFile } from './fileActions';
+import { tabMemoryRuntime } from './tabMemoryRuntime';
 import type { FileActionDeps } from './fileActions';
 
 export type CloseChoice = 'save' | 'discard' | 'cancel';
@@ -17,6 +18,8 @@ export interface CloseFlowDeps {
     readonly report: (message: StatusMessage) => void;
     /** Zeigt die Nachfrage mit den Namen der geänderten Dateien */
     readonly ask: (names: readonly string[]) => Promise<CloseChoice>;
+    /** Läuft vor der Bestätigung (Standard: Tab-Gedächtnis des Projekts schreiben); Fehler halten das Schließen nicht auf */
+    readonly beforeConfirm?: () => Promise<void>;
 }
 
 const NAME_SEPARATOR = ', ';
@@ -60,6 +63,7 @@ async function saveAll(deps: CloseFlowDeps, paths: readonly string[]): Promise<b
 }
 
 async function confirmClose(deps: CloseFlowDeps): Promise<CloseOutcome> {
+    await (deps.beforeConfirm ?? (() => tabMemoryRuntime.flush()))().catch(() => undefined);
     const result = await deps.api.app.confirmClose();
     if (result.ok) return 'closed';
     deps.report({ text: CLOSE_TEXTS.confirmFailed(result.error.message), kind: 'error' });

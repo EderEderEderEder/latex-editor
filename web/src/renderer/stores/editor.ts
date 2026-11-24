@@ -11,7 +11,7 @@ import {
 } from '../../shared/core/tabs';
 import type { TabsState } from '../../shared/core/tabs';
 import { SessionRegistry } from '../editor/session';
-import type { EditorSession, SaveSnapshot, SessionFileInfo } from '../editor/session';
+import type { EditorSession, SaveSnapshot, SelectionSnapshot, SessionFileInfo } from '../editor/session';
 
 export interface TabInfo {
     readonly path: AbsolutePath;
@@ -26,6 +26,8 @@ export interface TabInfo {
 export interface OpenOptions {
     /** Einfachklick öffnet als Vorschau-Tab (Standard), Doppelklick fest */
     readonly asPreview?: boolean;
+    /** Gemerkte Auswahl für eine neue Sitzung (Tab-Gedächtnis); bei bereits offener Datei ohne Wirkung */
+    readonly selection?: SelectionSnapshot;
 }
 
 export interface EditorStoreState {
@@ -117,7 +119,7 @@ function openAction(set: SetState, get: GetState, registry: SessionRegistry) {
         const { tabs, replaced } = openTab(get().tabs, file.path, options.asPreview ?? true);
         let files = get().files;
         if (registry.get(file.path) === undefined) {
-            const session = registry.create(file, { onDirtyChange: handleDirty });
+            const session = registry.create(file, { onDirtyChange: handleDirty, selection: options.selection });
             files = withInfo(files, tabInfo(session.file, false));
         }
         applyChanges(set, get, tabs, replaced === null ? files : withoutPaths(files, [replaced]));

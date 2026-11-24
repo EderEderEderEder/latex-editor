@@ -138,6 +138,46 @@ Jeder Fall beschreibt eine Editieraktion auf Text mit Markierung. `input.marked`
 | `duplicateLines`, `deleteLines` | – | Zeilen der Auswahl verdoppeln bzw. löschen. |
 | `wrap` | `command` | Auswahl mit `\<command>{…}` umschließen; ohne Auswahl leere Klammern; steht die Auswahl schon darin, wird das entfernt. |
 
+### `latex-log.json`
+
+| `op` | `input` | Bedeutung |
+|---|---|---|
+| `parseLog` | `{file \| text, baseDirectory, onlySeverity?}` | LaTeX-Log mit `LatexLogParser.parse(_, baseDirectory:)` auswerten. `file` ist ein Fixture-Pfad relativ zu `shared/spec/` (`fixtures/errors.log`), `text` der Logtext direkt. `onlySeverity` filtert vor der Prüfung auf diese Art. |
+| `parseBiberLog` | `{file, firstID}` | `.blg`-Datei mit `BiberLogParser.parse(_, firstID:)` auswerten. |
+
+`expect` (alle Schlüssel optional): `summary` (vollständige Liste von Zeichenketten `"<severity> <Dateiname oder -><:Zeile oder -> <message>"`; `severity` ist `error`, `warning` oder `badBox`, Dateiname ohne Ordner), `isEmpty` (keine Meldungen), `files` (`{Index: Pfad relativ zu baseDirectory}` der Meldung, Index 0-basiert in der Meldungsliste), `details` (`{Index: detail}`), `fileList`/`lineList` (Datei bzw. Zeile jeder Meldung in Reihenfolge, Pfad relativ zu `baseDirectory`), `firstLine` (Zeile der ersten Meldung), `lastFile`/`lastLine` (der letzten Meldung), `contains` (Liste `{messageContains, line}`; zu jedem Eintrag gibt es mindestens eine Meldung mit diesem Teilstring und dieser Zeile). Bei `parseBiberLog`: `messages` (vollständig), `firstSeverity`, `firstId`. Zeilennummern der Meldungen sind **1-basiert** (wie in Swift). Das Ergebnis `fileURL` kann `null` sein.
+
+### `misc.json`
+
+Pfade sind relativ zur Projektwurzel (`""` = Wurzel), Dateiinhalte stehen als Text im Vektor. Fehlende Erwartungsschlüssel werden nicht geprüft.
+
+| `op` | `input` | `expect` | Bedeutung |
+|---|---|---|---|
+| `tabsScript` | `{tabs: [Name], active?, preview?, steps: [..]}` | `{steps: [..]}` | `EditorTabs`. Aufbau: jeder Name wird nacheinander als dauerhafter Tab geöffnet, dann `preview` als Vorschau-Tab, dann `active` aktiviert. Schritte `{do, name?, onto?, asPreview?}` mit `do` = `open`, `promote`, `activate`, `close`, `closeAllExcept`, `closeAll`, `activateNext`, `activatePrevious`, `move` (`name` auf Platz von `onto`). `expect.steps` hat je Eingabeschritt einen Eintrag (`{}` = nichts prüfen) mit `names` (Tabreihenfolge), `active`, `preview`, `replaced` (Ergebnis von `open`: ersetzter Vorschau-Tab oder `null`), `returned` (Ergebnis von `close`: neu aktiver Tab oder `null`), `isEmpty`, `unchanged` (Zustand gleich dem vor dem Schritt). Namen ohne Pfad und Endung. |
+| `quickOpenRank` | `{files: [{path, isOpen?}], query, limit?}` | `paths` (vollständige Liste), `first`, `contains`, `count` | `QuickOpenMatcher.rank`. |
+| `outline` | `{main, files: {Pfad: Text}}` | `titles`, `levels` (`chapter`, `section`, `subsection`), `lines` (1-basiert), `files`, `includingFileIsEmpty` | `OutlineParser.outline`, folgt `\include`/`\input` in den gegebenen Dateien. |
+| `outlineRefresh` | `{main, files, rewrite: {Pfad: Text}}` | `titlesBefore`, `titlesAfter` | Gliederung mit demselben Parser (Cache) zweimal bilden, dazwischen Dateien ersetzen. |
+| `includeChain` | `{main, files, target}` | `chain: [Pfad]` | `OutlineStore.includeChain` aus der Gliederung der Dateien. |
+| `updateReferences` | `{moving, to, mainFile, graphicsDirectories, texts: {Pfad: Text}}` | `texts: {Pfad: neuer Text}` | `ReferenceUpdater.edits` + `apply` je Datei. |
+| `referenceEdits` | wie `updateReferences` | `lines` (1-basiert), `oldTexts`, `applied` (neuer Text der einzigen Datei) | Die einzelnen Änderungen in Reihenfolge. |
+| `relativePath` | `{path, from}` | `{result}` | `ReferenceUpdater.relativePath(of:from:)`. |
+| `masking` | `{text}` | `{sameUtf16Length}` | wie in `latex-source.json`. |
+| `fileNameValidate` | `{name}` | `{result}` oder `{error}` | `FileOperations.validateName`. `error` ist der Fallname von `FileOperationError` (`emptyName`, `invalidCharacters`, `hiddenName`, `nameTooLong`). |
+| `fileNameNew`, `fileNameRenamed` | `{name}` bzw. `{name, original, originalIsDirectory}` | `{result}` | `newFileName(from:)`, `renamedFileName(from:original:)`. |
+| `jumpTarget` | `{marked}` oder `{text, location}` | `target`, `rangeText` | `JumpTargetFinder.target(at:in:)`. `marked`: `\|` ist die Klickstelle (gehört nicht zum Text). `target`: `null` oder Objekt mit einem Schlüssel `label`, `citation`, `acronym`, `file` und dem Wert. `rangeText`: Text des Zielbereichs. |
+| `linkPreviewViewport` | `{mainViewSize: {width, height}}` | `{width, height}` | `LinkPreviewLayout.viewportSize`. Werte: Zahl, `{constant: "widthRange.lowerBound"}` (Konstante aus `LinkPreviewLayout`) oder `{mainWidthMinusConstant: "widthMargin"}` (Breite der Eingabe minus Konstante); Höhe sonst halbe Eingabehöhe. |
+| `linkPreviewScale` | `{mainScale}` | `{scale}` | `LinkPreviewLayout.scale(forMainScale:)`, Werte wie oben. |
+| `pdfHistory` | `{steps: [..]}` | `{steps: [..]}` | `PDFJumpHistory`. Zustand `{pageIndex, x, y, scale, autoScales}`. Schritte: `push {state}`, `back {from}`, `forward {from}`, `clamp {pageCount}`, `clear`, `inspect`, `pushRange {first, last}` (je Seite ein Zustand mit x 10, y 20, scale 1, autoScales true). Erwartung je Schritt: `returned` (Zustand oder `null`), `canGoBack`, `canGoForward`, `backPageIndex`, `backStack`, `forwardStack` (Zustandslisten), `backStackCount`, `backStackFirstPageIndex`, `maximumDepth`. |
+| `fileTypeSections` | `{files, emptyFolders, hidden}` | `sectionTitles`, `sectionEntries: {Abschnittstitel: [{fileExtension, count?, title?}]}` | `FileTypeCatalog.sections` auf dem aus den Dateipfaden geladenen Baum. Je Eintrag zählen nur die genannten Felder; die Listenlänge ist exakt. |
+| `hideFileTypes` | `{files, emptyFolders, hidden, keeping?}` | `names`, `namesIn: {Ordner: [..]}`, `namesEqualUnfiltered` | `FileNode.hidingFileTypes`. `names`: Kinder der Wurzel, Ordner mit `/` am Ende. `namesEqualUnfiltered`: `names` gleich dem Baum ohne Filter. |
+| `renameOccurrences` | `{kind, name, text, isBibliography?, newName?}` | `count`, `texts` (Teilstrings der Fundstellen), `result` (voller Text nach `Renamer.apply`), `resultContains` (Liste von Teilstrings, alle müssen vorkommen) | `Renamer.occurrences`. `kind`: `label`, `citation`, `acronym`, `command`, `environment`. |
+| `definedNames` | `{kind: "acronym" \| "environment", text}` | `{names}` | `Acronyms.definedKeys`, `EnvironmentNames.definedNames`. |
+| `commandNameAt` | `{text, location}` | `{name}` (`null` = keiner) | `CommandNames.name(at:in:)`. |
+| `environmentPair` | `{text, at}` | `endText`, `endLocation`, `beginLocation`, `pair: null` | `EnvironmentNames.pair(at:in:)`. Ortsangabe `{find, occurrence: "first" \| "last", offset}` = UTF-16-Position des ersten bzw. letzten Vorkommens von `find` plus `offset` (ASCII-Texte); `find: ""` = Textanfang, also absolute Position `offset`. `endText` Text des `end`-Bereichs, `endLocation`/`beginLocation` dessen Position. `pair: null` = kein Paar. |
+| `renameDetect` | `{text, marker, offset, isBibliography?}` | `{candidates: [..]}` | `Renamer.candidates` an der Position des ersten `marker` plus `offset`. Eintrag: `{project: {kind, name}}` oder `{pair: {name}}` (weitere Felder des Paars werden nicht geprüft). |
+| `renameValidate` | `{newName, kind, old, existing: [..]}` | `error: null` / `error: "<Text>"` / `errorPresent: true` | `Renamer.validate`. `errorPresent`: irgendeine Fehlermeldung, Text nicht geprüft. |
+| `renameNormalize` | `{newName, kind}` | `{result}` | `Renamer.normalized`. |
+
 ## Teil-Prüfungen (Schlüssel in `expect`)
 
 Alle Schlüssel sind optional und unabhängig; mehrere in einem Fall müssen alle gelten. Listenelemente sind Token-Objekte `{kind, text}`, sofern nicht anders genannt.
@@ -166,7 +206,7 @@ Bedeutung unklar bzw. aus dem Test abgeleitet: `allTokenKinds` und `tokenizedLin
 
 - **Verbraucher rechnen immer in UTF-16-Einheiten.** TypeScript-Strings sind das bereits (`length`, `charCodeAt`, `slice`), im Renderer wie im Main-Prozess. Nie Byte-Offsets (aus `Buffer`/`Uint8Array`), Codepoint- oder Graphem-Offsets verwenden.
 - In Swift verwenden manche Funktionen **Character-Offsets** statt UTF-16 (bekannt: `LatexComments.commentStart` in `latex-source.json`). Ein Vektor darf nur dann Offsets prüfen, wenn Swift sie in UTF-16 liefert oder der Text rein ASCII ist (dann sind beide gleich).
-- Enthält ein Vektor Text mit Nicht-ASCII (Umlaute, Emoji, `«»`), muss das in `notes` der Datei stehen, mit Fall-ID und dem Hinweis, ob Offsets geprüft werden. Aktuell: `latex-tokenizer.json` (`absoluteUTF16Offsets` mit Umlaut und Emoji, prüft UTF-16-`location`), `latex-source.json` (`masking`, nur Länge/Teilstrings), `bib-tokenizer.json` (`percentComments`, `multilineValue`, ohne Offsets), `text-editing.json` (Markierungen `«»`, ohne Offsets).
+- Enthält ein Vektor Text mit Nicht-ASCII (Umlaute, Emoji, `«»`), muss das in `notes` der Datei stehen, mit Fall-ID und dem Hinweis, ob Offsets geprüft werden. Aktuell: `misc.json` (siehe dessen `notes`, ohne UTF-16-Offsets außer ASCII-Positionen), `latex-tokenizer.json` (`absoluteUTF16Offsets` mit Umlaut und Emoji, prüft UTF-16-`location`), `latex-source.json` (`masking`, nur Länge/Teilstrings), `bib-tokenizer.json` (`percentComments`, `multilineValue`, ohne Offsets), `text-editing.json` (Markierungen `«»`, ohne Offsets).
 
 ## Vektordateien
 
@@ -180,6 +220,8 @@ Stand 2026-11-22. „Fälle“ = Einträge in `cases`, „übersprungen“ = Ein
 | `fold-regions.json` | `FoldingTests.swift` | 14 | 28 | Schema und IDs geprüft, Swift-Gegenprobe offen |
 | `syntax-checker.json` | `SyntaxCheckerTests.swift` | 13 | 4 | Schema und IDs geprüft, Swift-Gegenprobe offen |
 | `text-editing.json` | `TextEditingTests.swift` (Fälle), `TypingTests.swift` (nur übersprungen) | 50 | 8 | Schema und IDs geprüft, Swift-Gegenprobe offen |
+| `latex-log.json` | `LatexLogParserTests.swift` | 12 | 0 | Schema und IDs geprüft, Swift-Gegenprobe offen |
+| `misc.json` | `EditorTabsTests`, `QuickOpenTests`, `OutlineParserTests`, `ReferenceUpdaterTests`, `FileOperationsTests`, `JumpTargetTests`, `LinkPreviewTests`, `PDFJumpHistoryTests`, `FileTypeFilterTests`, `RenamingTests` (alle `.swift`) | 148 | 20 | Schema und IDs geprüft, Swift-Gegenprobe offen |
 | `example.json` | `LatexTokenizerTests.swift` | 3 | 0 | nur Beispiel für das Format (ohne `op`) |
 
 ## Namen der Vektordateien

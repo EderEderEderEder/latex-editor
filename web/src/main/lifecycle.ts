@@ -3,10 +3,11 @@
 
 export type QuitTask = () => Promise<void> | void;
 
-// Höchstens so lange hält das Aufräumen das Beenden auf (Build-Abbruch braucht unter 3 s).
-export const QUIT_CLEANUP_TIMEOUT_MS = 3_000;
+// Höchstens so lange hält das Aufräumen das Beenden auf. Etwas über der Abbruchfrist des Builds
+// (`CANCEL_DEADLINE_MS` = 3 s), damit ein unbestätigter Abbruch noch gemeldet wird, bevor die App endet.
+export const QUIT_CLEANUP_TIMEOUT_MS = 3_500;
 
-// Aufräumarbeiten beim Beenden. W2-10 trägt hier `runner.cancel()` ein, später Wächter und Worker.
+// Aufräumarbeiten beim Beenden: Einstellungen sichern, Build abbrechen (`buildHandlers`), später Wächter und Worker.
 export class QuitTasks {
     private readonly tasks = new Set<QuitTask>();
 

@@ -1,0 +1,904 @@
+{
+  "suite": "insertion",
+  "version": 1,
+  "source": [
+    "swift/Tests/LatexEditorTests/InsertionTests.swift",
+    "swift/Tests/LatexEditorTests/InsertionContextTests.swift",
+    "swift/Tests/LatexEditorTests/InsertionIntegrationTests.swift"
+  ],
+  "notes": "Einfuegen-Fenster (Swift: swift/Sources/LatexEditor/Insertion/). Reine Logik, je Fall steht source (InsertionTests.swift bzw. InsertionContextTests.swift). Alle Texte sind echte Zeichenketten (\\n, \\t sind Steuerzeichen), Ausgaben byte-genau. Einrueckung der Generatoren ist ein Tabulator (TextEditing.indentUnit, Standard der HgbThesis; in den Swift-Tests so eingestellt). Offsets sind UTF-16-Einheiten. Im Swift-Test ablaufende Zustaende (mehrere Aufrufe nacheinander mit demselben Objekt) sind hier als eigene Faelle mit eigenem Anfangszustand abgebildet. Nicht uebernommen sind Dateisystem-Tests, der Kompiliertest (InsertionIntegrationTests: kompiliert alle Bausteine und alle 27 Sprachumgebungen im Demo-Projekt mit latexmk, braucht TeX/MacTeX, ist nur ein Integrationstest) und die zwei SettingsPane-Tests (siehe skipped). Hinweis: Einen Einfuegekontext 'innerhalb Umgebung/Kommentar/Verbatim' gibt es in diesen Swift-Dateien nicht; InsertionContext ist die Vorschau 'an Ort und Stelle' (Ausschnitt um den Cursor, siehe op insertionContext/insertionLines). Die Regel 'ohne .tex vorne nicht einfuegbar' steht nur in InsertStore.blocker (needsTeXMessage 'Zum Einfuegen muss eine .tex-Datei geoeffnet sein.', Quelle ohne Gleich-zitieren braucht keine .tex) und ist durch keinen Swift-Test abgedeckt, daher kein Vektor.\n\nOPERATIONEN (input.op), Eingabe -> Ausgabe in expect:\n\n1) escape {text} -> {text}. LatexEscaping.escape: jedes Zeichen einzeln ersetzen: \\ -> \\textbackslash{}, & -> \\&, % -> \\%, $ -> \\$, # -> \\#, _ -> \\_, { -> \\{, } -> \\}, ~ -> \\textasciitilde{}, ^ -> \\textasciicircum{}. Jeder Zeilenumbruch (\\n, \\r\\n als EIN Zeichen, \\r, U+000B, U+000C, U+0085, U+2028, U+2029) wird zu genau EINEM Leerzeichen. Alles andere (auch Umlaute) bleibt.\n\n2) slug {text} -> {slug} bzw. {slugLength}. LabelNaming.slug: Zeichen durchgehen; ae/oe/ue/ss fuer ae-Umlaute und scharfes s (ae, oe, ue, ss; auch Grossbuchstaben Ae, Oe, Ue werden zu kleinem ae, oe, ue) werden an das aktuelle Wort gehaengt; ASCII-Buchstaben und -Ziffern werden klein an das Wort gehaengt; jedes andere Zeichen beendet ein nicht leeres Wort (sonst nichts). Nicht-ASCII-Buchstaben (z. B. e mit Akzent) zaehlen als Trenner. Danach die ersten 5 Woerter mit '-' verbinden, auf die ersten 40 Zeichen kuerzen, '-' am Anfang und Ende entfernen. Leer, wenn kein Wort entsteht.\n\n3) label {prefix, caption, fallback, existing: [..]} -> {label}. base = prefix + ':' + (slug(caption) wenn nicht leer, sonst fallback). Ist base nicht in existing, ist es das Ergebnis; sonst base-2, base-3, ... das erste nicht vergebene.\n\n4) blockPlacement {block, text, range: {location, length}} -> {result}. BlockPlacement.adjust: range auf 0...text.length klemmen (location und Ende; ungueltig/negativ -> 0). Steht location nicht am Textanfang und ist das Zeichen davor nicht \\n, wird dem Block ein \\n vorangestellt. Ist das Zeichen direkt hinter dem Bereich (Index = Ende) ein \\n und endet das (ggf. verlaengerte) Ergebnis auf \\n, wird dieses letzte \\n entfernt (keine Leerzeile). Ergebnis ist der einzusetzende Text, nicht der neue Gesamttext.\n\n5) Tabellenmodell (settings), fuer table/resize/fillTabSeparated: {rows, columns, hasHeader=true, alignments: [left|center|right], cells: [[Text]], rules: booktabs|grid|none (Standard booktabs), caption='', placement: standard|here|top|bottom|page|forceHere (Standard standard), escapeText=true}. Fehlende Schluessel haben diese Standardwerte; rows, columns, alignments, cells stehen in den Faellen immer. Konstanten: maximumRows 40, maximumColumns 12. Platzierungs-Option in eckigen Klammern hinter dem \\begin: standard keine, here h, top t, bottom b, page p, forceHere H.\n\n6) table {settings, label} -> {output} (exakt) oder die Pruefschluessel startsWith, contains [..], notContains [..], occurrences {Teilstring: Anzahl}. InsertionGenerator.table: Zeilen mit \\n verbinden, am Ende ein \\n. Reihenfolge: '\\begin{table}' + Option; Beschriftungszeilen (7); TAB + '\\centering'; TAB + '\\begin{tabular}{SPEC}'; Tabellenzeilen; TAB + '\\end{tabular}'; '\\end{table}'. SPEC: Buchstaben l/c/r der ersten `columns` Ausrichtungen; grid: '|' + Buchstaben mit '|' verbunden + '|'; booktabs und none: '@{}' + Buchstaben + '@{}'. Zellen: die ersten `rows` Zeilen, je Zeile `columns` Zellen (Zeile kuerzer -> leerer Text); mit escapeText wird jede Zelle mit escape (1) behandelt. Spaltenbreite = laengster Text der Spalte in Zeichen (Codepunkte genuegen). Jede Zelle rechts mit Leerzeichen auf diese Breite auffuellen, Zellen mit ' & ' verbinden, das Ergebnis an den Raendern von Leerzeichen/Tabs befreien, dann ' \\\\' (Leerzeichen, zwei Backslashes) anhaengen und zwei Tabs voranstellen. Dadurch hat die letzte Spalte kein Fuell-Leerzeichen. Linien (Zeilen mit zwei Tabs Einrueckung): booktabs: '\\toprule', alle Zeilen, nach der ersten Zeile '\\midrule' falls hasHeader und mehr als eine Zeile, '\\bottomrule'; grid: '\\hline' vor der ersten und nach jeder Zeile; none: nur die Zeilen.\n\n7) Beschriftung (alle Float-Generatoren): caption wird an den Raendern von Leerzeichen und Zeilenumbruechen befreit. Ist sie nicht leer: Zeile TAB + '\\caption{' + (escapeText ? escape(caption) : caption) + '}', und ist label nicht leer, danach TAB + '\\label{label}'. Ist sie leer, entfallen Caption UND Label.\n\n8) tableResize {settings, rows, columns} -> {rows, columns, cells, alignments, cellRowCount, cellColumnCount}. Neue Groesse auf 1...maximumRows und 1...maximumColumns klemmen; vorhandene Zellen links oben behalten, neue Zellen leer; alignments: vorhandene behalten, neue 'left', auf columns gekuerzt.\n\n9) fillTabSeparated {settings, text} -> {rows, columns, cells, alignments}. Tabelle aus Excel/Numbers: \\r\\n zuerst zu \\n. Zustandsautomat: Tab beendet die Zelle, \\n beendet die Zeile. Ein '\"' am Zellanfang (Zelle noch leer) startet eine Anfuehrungs-Zelle: darin sind Tabs und \\n normaler Text, '\"\"' ergibt ein '\"', ein einzelnes '\"' beendet die Anfuehrung; danach geht es normal weiter. Ein '\"' mitten in einer Zelle ist normaler Text. Am Textende wird eine nicht leere letzte Zelle/Zeile uebernommen. Danach werden alle am Ende stehenden Zeilen entfernt, deren Zellen alle leer sind. Ergebnis leer (z. B. Text '') -> Tabelle bleibt unveraendert. Sonst: cells zuerst leeren, dann auf (Zeilenzahl, laengste Zeile) mit tableResize (8) bringen (also geklemmt, alignments wie dort), dann die Werte eintragen (ueberzaehlige Zeilen/Spalten verworfen, fehlende Zellen leer).\n\n10) widthText {percent} -> {text}. percent auf 1...100 klemmen; 100 -> '\\textwidth'; sonst zweistellig mit fuehrender Null (5 -> '05'), endet das auf '0', wird diese Null entfernt (50 -> '5'), Ergebnis '.' + Ziffern + '\\textwidth'.\n\n11) image {settings: {caption, widthPercent=75, placement=standard, escapeText=true}, reference, label} -> {output}. Zeilen: '\\begin{figure}' + Option; TAB '\\centering'; TAB '\\includegraphics[width=' + widthText + ']{reference}'; Beschriftung (7); '\\end{figure}'; mit \\n verbunden, am Ende \\n.\n\n12) code {settings: {language: <Umgebungsname>, content, asFloat=true, caption, placement=standard, lineNumbers=true, escapeText=true}, label} -> {output}. language ist der environment-Name aus codeLanguages (Standard PythonCode). options = '' bei lineNumbers, sonst '[numbers=none]'. Zeilen: bei asFloat '\\begin{program}' + Option und Beschriftung (7); '\\begin{ENV}' + options; content ohne fuehrende/folgende Zeilenumbrueche (\\n, \\r, U+000B-U+000D, U+0085, U+2028, U+2029), NICHT maskiert, unveraendert eingerueckt (keine Einrueckung); '\\end{ENV}'; bei asFloat '\\end{program}'; mit \\n verbunden, am Ende \\n. Nie lstlisting.\n\n13) codeLanguages {} -> {languages: [{title, environment}], environments, defaultEnvironment, allEndWithCode, unique}. Feste Liste in dieser Reihenfolge (27 Eintraege), Standard ist PythonCode.\n\n14) equation {settings: {kind: equation|equationStar|align|alignStar, content}, label} -> {output} bzw. contains. Umgebungsnamen: equation, equation*, align, align*; nummeriert sind nur equation und align. content an den Raendern von Whitespace/Zeilenumbruechen befreien; leer -> 'a = b'. Zeilen: '\\begin{ENV}'; der Inhalt an \\n gesplittet (leere Teile bleiben), jede Zeile an den Raendern von Leerzeichen/Tabs befreit und mit einem Tab eingerueckt; bei nummerierter Umgebung und nicht leerem label TAB '\\label{label}'; '\\end{ENV}'; mit \\n verbunden, am Ende \\n. (\\r\\n im Inhalt ist in Swift ein einzelnes Zeichen und wird nicht gesplittet; nicht getestet.)\n\n15) list {settings: {kind: itemize|enumerate, items}} -> {output}. '\\begin{KIND}'; je Eintrag TAB + '\\item' und, wenn der an Leerzeichen/Tabs gekuerzte Text nicht leer ist, ' ' + Text; '\\end{KIND}'; mit \\n verbunden, am Ende \\n. listResize {items, count} -> {itemCount, itemsPrefix}: count auf 1...30 klemmen (maximumItems 30), vorhandene Eintraege behalten, neue ''; itemsPrefix sind die ersten Eintraege.\n\n16) reference {label, withPrefix} -> {text}. Leeres label -> '\\ref{}'. Sonst '\\ref{label}'; mit withPrefix und bekanntem Vorsatz davor 'Vorsatz~'. Vorsatz = Teil des Labels vor dem ersten ':' (Teilung ohne leere Teile) in der Tabelle fig Abbildung, tab Tabelle, prog Programm, sec Abschnitt, chap Kapitel, eq Gleichung; unbekannt -> ohne Vorsatz. citation {keys, note} -> {text}: '\\cite' + (note an den Raendern von Leerzeichen/Tabs gekuerzt nicht leer ? '[note]' : '') + '{' + keys mit ',' verbunden (ohne Leerzeichen) + '}'.\n\n17) labels {text} -> {entries: [{label, line}]}. ProjectCatalog.labels: Text an \\n splitten (leere Zeilen bleiben, Zeilennummer 1-basiert); je Zeile nur der Teil vor dem Kommentarbeginn (erstes % das nicht durch einen ungeraden Backslash maskiert ist: Backslash maskiert das naechste Zeichen, '\\\\' hebt sich auf; Regel wie latex-source.json op commentStart); darin wiederholt '\\label{' suchen, bis zum ersten '}' lesen, Name an Leerzeichen/Tabs kuerzen, nicht leere Namen in Reihenfolge des Vorkommens aufnehmen, Suche hinter dem '}' fortsetzen. Reihenfolge = Dokumentreihenfolge (keine Sortierung, die macht erst scan).\n\n18) bibEntries {text} -> {entries: [{key, title}]}. ProjectCatalog.bibEntries ruft BibParser.parse und liefert je Eintrag key und title (Titel ohne die Zeichen { und }, an Leerzeichen/Tabs gekuerzt; fehlender Titel -> ''). BibParser (Bibliography.swift): Text zeichenweise lesen; ausserhalb von Eintraegen werden alle Zeichen ausser '@' uebersprungen, ein '%' ueberspringt die Zeile; bei '@': Typ (Buchstaben, Ziffern, _ - : .) klein lesen, Leerraum, dann '{' oder '(' (sonst kein Eintrag; schliessend '}' bzw. ')'). Die Typen comment, string, preamble werden samt ihrer ausbalancierten Klammer uebersprungen. Sonst Leerraum, Schluessel bis ',' oder schliessende Klammer lesen (an Whitespace gekuerzt, leer -> Eintrag verworfen). Danach Felder: je Feld Name (gleiche Zeichenklasse wie Typ, klein), '=' (fehlt es, wird der Versuch ausgelassen), Wert: ein Wert besteht aus '{...}' (verschachtelt, Inhalt ohne aeussere Klammern, innere Klammern bleiben), '\"...\"' (bis zum naechsten '\"' ausserhalb von Klammern) oder einem blossen Wort (bis ',', '#', \\n oder schliessende Klammer, gekuerzt); mit '#' verkettete Teile werden zusammengefuegt; Zeilenumbrueche im Wert werden zu einzelnen Leerzeichen zusammengezogen (Zeilen gekuerzt). Nach jedem Feld wird das Komma uebersprungen, Ende bei der schliessenden Klammer. Eintragsfelder haben zudem author/editor/organization (Kurzform: Nachname, 'A und B', 'A u. a.'), year (erste 4 Zeichen von date oder year) und file/line; getestet sind nur key und title.\n\n19) graphicsDirectories {text} -> {directories}. Erstes '\\graphicspath', dahinter die erste '{' (fehlt eines von beiden -> []). Ab dort Klammertiefe zaehlen: '{' erhoeht; bei Tiefe 2 wird der gesammelte Text neu begonnen; '}' bei Tiefe 2 mit nicht leerem Text uebernimmt ihn (mit abschliessendem '/' falls nicht vorhanden); die Tiefe sinkt, bei 0 Ende; Zeichen bei Tiefe 2 (auch Leerzeichen) werden gesammelt.\n\n20) graphicsReference {file, projectRoot, graphicsDirectories} -> {path}. Pfade normalisieren (POSIX, '.' und '..' aufloesen). Liegt file nicht unter projectRoot + '/', ist das Ergebnis der letzte Pfadbestandteil. Sonst der relative Pfad zum Projekt; beginnt er mit einem der graphicsDirectories (erster Treffer in Listenreihenfolge), wird dieses Praefix entfernt.\n\n21) sanitizedName {filename} -> {name}. ImageImport.sanitizedName: Erweiterung (nach dem letzten '.') klein, Basis = Name ohne Erweiterung. Zeichen der Basis: ae-Umlaute und scharfes s -> ae, oe, ue, ss (Grossbuchstaben Ae, Oe, Ue); ASCII-Buchstaben, Ziffern, '_' und '-' bleiben (Gross-/Kleinschreibung bleibt); jedes andere Zeichen wird zu '-', ausser die Basis endet bereits auf '-'. Am Anfang und Ende '-' und '_' entfernen; leer -> 'bild'. Ergebnis Basis + '.' + Erweiterung (ohne Erweiterung nur die Basis). Zeichen vorher in Normalform NFC bringen (Swift vergleicht kanonisch aequivalent). Unterstuetzte Erweiterungen fuer den Import: png, jpg, jpeg, pdf (nicht getestet ausser ueber skipped).\n\n22) insertionContext {text, selection: {location, length}, fileName} -> {firstLineNumber, excerpt, selection, cursorLineNumber}. InsertionContext.make: selection auf 0...text.length klemmen. Zeilen sind durch \\n getrennt (eine Zeile mehr als \\n; ein Text mit Schluss-\\n hat eine leere letzte Zeile). cursorLine = Zeile (0-basiert) von selection.location, endLine = Zeile von selection.location+length (ein \\n gehoert zu der Zeile, die es beendet). firstLine = max(0, cursorLine-3), lastLine = min(lineCount-1, endLine+3). excerpt = Text vom Anfang von firstLine bis zum Ende von lastLine (ohne deren \\n). selection im Ergebnis = auf den Ausschnitt bezogen (location minus Zeilenanfang von firstLine). firstLineNumber = firstLine+1. cursorLineNumber = firstLineNumber + Anzahl \\n im Ausschnitt vor selection.location.\n\n23) insertionLines {text, selection, fileName, code, isBlock, replacesSelection} -> {lines: [{number, text, isNew}]} (exakt) oder die Pruefschluessel firstNewLineText (Text der ersten Zeile mit isNew), linesContainText (Zeilentext kommt vor), isNewByText {Zeilentext: isNew} (die erste Zeile mit diesem Text). Zuerst insertionContext (22) bilden. range = replacesSelection ? selection : (Ende der Auswahl, Laenge 0), alles bezogen auf den Ausschnitt. inserted = isBlock ? blockPlacement(code, Ausschnitt, range) : code. Ergebnistext = Ausschnitt mit range durch inserted ersetzt. newRange = (range.location, Laenge von inserted in UTF-16). Ergebnistext an \\n in Zeilen teilen; number = firstLineNumber + Zeilenindex; text = Zeile ohne \\n. isNew = newRange.length > 0 UND die Zeile samt ihrem abschliessenden \\n ueberschneidet newRange um mehr als 0 Zeichen UND der Zeilenanfang ist nicht gleich dem Ende von newRange.",
+  "skipped": [
+    {
+      "name": "Import kopiert nach images/, nummeriert bei anderem Inhalt, nutzt gleiche Datei weiter",
+      "reason": "Dateisystem (TemporaryProject, FileManager, Kopieren und Inhaltsvergleich); keine reine Logik",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 298
+    },
+    {
+      "name": "Nicht unterstützte Formate werden abgelehnt, nichts wird kopiert",
+      "reason": "Dateisystem (TemporaryProject, prueft dass images/ nicht angelegt wird); die Fehlerbedingung (Erweiterung nicht png/jpg/jpeg/pdf) steht in notes",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 319
+    },
+    {
+      "name": "Suche findet Bereiche über Titel und Einstellungen, ohne Groß-/Kleinschreibung",
+      "reason": "SettingsPane ist ein SwiftUI-Enum der Einstellungen (Symbol, Farbe), kein Einfuegen-Baustein; Teil der Einstellungs-UI, nicht der Einfuegelogik",
+      "source": "swift/Tests/LatexEditorTests/InsertionContextTests.swift",
+      "sourceLine": 59
+    },
+    {
+      "name": "Jeder Bereich steht in genau einer Gruppe",
+      "reason": "SettingsPane ist ein SwiftUI-Enum der Einstellungen, kein Einfuegen-Baustein; reine Enum-Konsistenzpruefung der UI",
+      "source": "swift/Tests/LatexEditorTests/InsertionContextTests.swift",
+      "sourceLine": 67
+    },
+    {
+      "name": "Alle Bausteine zusammen kompilieren ohne Fehler; Verweise und Zitat lösen auf",
+      "reason": "Kompiliertest mit latexmk/MacTeX im Demo-Projekt (alle 27 Sprachumgebungen), Dateisystem, Prozesse und Bild-Erzeugung mit AppKit; nur mit TeX lauffaehig",
+      "source": "swift/Tests/LatexEditorTests/InsertionIntegrationTests.swift",
+      "sourceLine": 20
+    }
+  ],
+  "cases": [
+    {
+      "id": "escapes-special",
+      "name": "Sonderzeichen werden maskiert, Zeilenumbrüche zu Leerzeichen",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 7,
+      "input": { "op": "escape", "text": "50 % & 5 $ # a_b {x} ~ ^ \\" },
+      "expect": { "text": "50 \\% \\& 5 \\$ \\# a\\_b \\{x\\} \\textasciitilde{} \\textasciicircum{} \\textbackslash{}" }
+    },
+    {
+      "id": "escapes-newlines",
+      "name": "Sonderzeichen werden maskiert, Zeilenumbrüche zu Leerzeichen",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 7,
+      "input": { "op": "escape", "text": "a\nb\r\nc" },
+      "expect": { "text": "a b c" }
+    },
+    {
+      "id": "escapes-umlauts",
+      "name": "Sonderzeichen werden maskiert, Zeilenumbrüche zu Leerzeichen",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 7,
+      "input": { "op": "escape", "text": "Größe ändern" },
+      "expect": { "text": "Größe ändern" }
+    },
+    {
+      "id": "slugs-umlauts",
+      "name": "Label aus Beschriftung: Umlaute, Sonderzeichen, Länge",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 15,
+      "input": { "op": "slug", "text": "Ergebnisse der Größenmessung" },
+      "expect": { "slug": "ergebnisse-der-groessenmessung" }
+    },
+    {
+      "id": "slugs-special-characters",
+      "name": "Label aus Beschriftung: Umlaute, Sonderzeichen, Länge",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 15,
+      "input": { "op": "slug", "text": "  100 % – Äpfel & Birnen!  " },
+      "expect": { "slug": "100-aepfel-birnen" }
+    },
+    {
+      "id": "slugs-max-words",
+      "name": "Label aus Beschriftung: Umlaute, Sonderzeichen, Länge",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 15,
+      "input": { "op": "slug", "text": "eins zwei drei vier fünf sechs sieben" },
+      "expect": { "slug": "eins-zwei-drei-vier-fuenf" }
+    },
+    {
+      "id": "slugs-empty",
+      "name": "Label aus Beschriftung: Umlaute, Sonderzeichen, Länge",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 15,
+      "input": { "op": "slug", "text": "???" },
+      "expect": { "slug": "" }
+    },
+    {
+      "id": "slugs-max-length",
+      "name": "Label aus Beschriftung: Umlaute, Sonderzeichen, Länge",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 15,
+      "input": {
+        "op": "slug",
+        "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "expect": { "slugLength": 40 }
+    },
+    {
+      "id": "uniqueLabels-free",
+      "name": "Label ist eindeutig, Fallback bei leerer Beschriftung",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 24,
+      "input": { "op": "label", "prefix": "tab", "caption": "Ergebnisse", "fallback": "tabelle", "existing": [] },
+      "expect": { "label": "tab:ergebnisse" }
+    },
+    {
+      "id": "uniqueLabels-taken",
+      "name": "Label ist eindeutig, Fallback bei leerer Beschriftung",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 24,
+      "input": { "op": "label", "prefix": "tab", "caption": "Ergebnisse", "fallback": "tabelle", "existing": ["tab:ergebnisse"] },
+      "expect": { "label": "tab:ergebnisse-2" }
+    },
+    {
+      "id": "uniqueLabels-taken-twice",
+      "name": "Label ist eindeutig, Fallback bei leerer Beschriftung",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 24,
+      "input": { "op": "label", "prefix": "tab", "caption": "Ergebnisse", "fallback": "tabelle", "existing": ["tab:ergebnisse", "tab:ergebnisse-2"] },
+      "expect": { "label": "tab:ergebnisse-3" }
+    },
+    {
+      "id": "uniqueLabels-fallback",
+      "name": "Label ist eindeutig, Fallback bei leerer Beschriftung",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 24,
+      "input": { "op": "label", "prefix": "fig", "caption": "", "fallback": "bild", "existing": [] },
+      "expect": { "label": "fig:bild" }
+    },
+    {
+      "id": "blockPlacement-line-start",
+      "name": "Block steht in eigenen Zeilen, ohne Leerzeile vor vorhandenem Umbruch",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 34,
+      "input": { "op": "blockPlacement", "block": "\\begin{x}\n\\end{x}\n", "text": "Anfang Ende\nzweite Zeile", "range": { "location": 0, "length": 0 } },
+      "expect": { "result": "\\begin{x}\n\\end{x}\n" }
+    },
+    {
+      "id": "blockPlacement-mid-line",
+      "name": "Block steht in eigenen Zeilen, ohne Leerzeile vor vorhandenem Umbruch",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 34,
+      "input": { "op": "blockPlacement", "block": "\\begin{x}\n\\end{x}\n", "text": "Anfang Ende\nzweite Zeile", "range": { "location": 7, "length": 0 } },
+      "expect": { "result": "\n\\begin{x}\n\\end{x}\n" }
+    },
+    {
+      "id": "blockPlacement-empty-line",
+      "name": "Block steht in eigenen Zeilen, ohne Leerzeile vor vorhandenem Umbruch",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 34,
+      "input": { "op": "blockPlacement", "block": "\\begin{x}\n\\end{x}\n", "text": "a\n\nb", "range": { "location": 2, "length": 0 } },
+      "expect": { "result": "\\begin{x}\n\\end{x}" }
+    },
+    {
+      "id": "blockPlacement-text-end",
+      "name": "Block steht in eigenen Zeilen, ohne Leerzeile vor vorhandenem Umbruch",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 34,
+      "input": { "op": "blockPlacement", "block": "\\begin{x}\n\\end{x}\n", "text": "abc", "range": { "location": 3, "length": 0 } },
+      "expect": { "result": "\n\\begin{x}\n\\end{x}\n" }
+    },
+    {
+      "id": "blockPlacement-clamped",
+      "name": "Block steht in eigenen Zeilen, ohne Leerzeile vor vorhandenem Umbruch",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 34,
+      "input": { "op": "blockPlacement", "block": "\\begin{x}\n\\end{x}\n", "text": "", "range": { "location": 99, "length": 5 } },
+      "expect": { "result": "\\begin{x}\n\\end{x}\n" }
+    },
+    {
+      "id": "booktabsTable",
+      "name": "Tabelle mit booktabs wie im Tutorial: Beschriftung vor Label, @{} an den Rändern",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 58,
+      "input": {
+        "op": "table",
+        "settings": {
+          "rows": 3,
+          "columns": 3,
+          "alignments": ["left", "left", "right"],
+          "cells": [["Sprache", "Typ", "Jahr"], ["C++", "Kompiliert", "1985"], ["Python", "Interpretiert", "1991"]],
+          "caption": "Programmiersprachen im Überblick."
+        },
+        "label": "tab:programmiersprachen"
+      },
+      "expect": {
+        "output": "\\begin{table}\n\t\\caption{Programmiersprachen im Überblick.}\n\t\\label{tab:programmiersprachen}\n\t\\centering\n\t\\begin{tabular}{@{}llr@{}}\n\t\t\\toprule\n\t\tSprache & Typ           & Jahr \\\\\n\t\t\\midrule\n\t\tC++     & Kompiliert    & 1985 \\\\\n\t\tPython  & Interpretiert & 1991 \\\\\n\t\t\\bottomrule\n\t\\end{tabular}\n\\end{table}\n"
+      }
+    },
+    {
+      "id": "tableVariants",
+      "name": "Tabelle ohne Kopfzeile, mit Platzierung; ohne Beschriftung entfallen Caption und Label",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 81,
+      "input": {
+        "op": "table",
+        "settings": {
+          "rows": 3,
+          "columns": 3,
+          "alignments": ["left", "left", "right"],
+          "cells": [["Sprache", "Typ", "Jahr"], ["C++", "Kompiliert", "1985"], ["Python", "Interpretiert", "1991"]],
+          "hasHeader": false,
+          "placement": "here"
+        },
+        "label": "tab:x"
+      },
+      "expect": {
+        "startsWith": "\\begin{table}[h]\n\t\\centering",
+        "notContains": ["\\midrule", "\\caption", "\\label"]
+      }
+    },
+    {
+      "id": "tableRules-grid",
+      "name": "Alle Linien und keine Linien",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 89,
+      "input": {
+        "op": "table",
+        "settings": {
+          "rows": 3,
+          "columns": 3,
+          "alignments": ["left", "left", "right"],
+          "cells": [["Sprache", "Typ", "Jahr"], ["C++", "Kompiliert", "1985"], ["Python", "Interpretiert", "1991"]],
+          "rules": "grid"
+        },
+        "label": ""
+      },
+      "expect": {
+        "contains": ["\\begin{tabular}{|l|l|r|}"],
+        "occurrences": { "\\hline": 4 }
+      }
+    },
+    {
+      "id": "tableRules-none",
+      "name": "Alle Linien und keine Linien",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 89,
+      "input": {
+        "op": "table",
+        "settings": {
+          "rows": 3,
+          "columns": 3,
+          "alignments": ["left", "left", "right"],
+          "cells": [["Sprache", "Typ", "Jahr"], ["C++", "Kompiliert", "1985"], ["Python", "Interpretiert", "1991"]],
+          "rules": "none"
+        },
+        "label": ""
+      },
+      "expect": { "notContains": ["\\toprule", "\\hline"] }
+    },
+    {
+      "id": "tableEscaping-escaped",
+      "name": "Zellen werden maskiert, außer der Nutzer schaltet das ab",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 98,
+      "input": {
+        "op": "table",
+        "settings": {
+          "rows": 3,
+          "columns": 3,
+          "alignments": ["left", "left", "right"],
+          "cells": [["Sprache", "Typ", "Jahr"], ["50 % & mehr", "Kompiliert", "1985"], ["Python", "Interpretiert", "1991"]]
+        },
+        "label": ""
+      },
+      "expect": { "contains": ["50 \\% \\& mehr"] }
+    },
+    {
+      "id": "tableEscaping-raw",
+      "name": "Zellen werden maskiert, außer der Nutzer schaltet das ab",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 98,
+      "input": {
+        "op": "table",
+        "settings": {
+          "rows": 3,
+          "columns": 3,
+          "alignments": ["left", "left", "right"],
+          "cells": [["Sprache", "Typ", "Jahr"], ["$x^2$", "Kompiliert", "1985"], ["Python", "Interpretiert", "1991"]],
+          "escapeText": false
+        },
+        "label": ""
+      },
+      "expect": { "contains": ["$x^2$"] }
+    },
+    {
+      "id": "resize-5x2",
+      "name": "Größe ändern behält Zellen und Ausrichtung, Grenzen werden eingehalten",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 106,
+      "input": {
+        "op": "tableResize",
+        "settings": {
+          "rows": 3,
+          "columns": 3,
+          "alignments": ["left", "left", "right"],
+          "cells": [["Sprache", "Typ", "Jahr"], ["C++", "Kompiliert", "1985"], ["Python", "Interpretiert", "1991"]]
+        },
+        "rows": 5,
+        "columns": 2
+      },
+      "expect": {
+        "rows": 5,
+        "columns": 2,
+        "cells": [["Sprache", "Typ"], ["C++", "Kompiliert"], ["Python", "Interpretiert"], ["", ""], ["", ""]],
+        "alignments": ["left", "left"]
+      }
+    },
+    {
+      "id": "resize-maximum",
+      "name": "Größe ändern behält Zellen und Ausrichtung, Grenzen werden eingehalten",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 106,
+      "input": {
+        "op": "tableResize",
+        "settings": {
+          "rows": 3,
+          "columns": 3,
+          "alignments": ["left", "left", "right"],
+          "cells": [["Sprache", "Typ", "Jahr"], ["C++", "Kompiliert", "1985"], ["Python", "Interpretiert", "1991"]]
+        },
+        "rows": 999,
+        "columns": 999
+      },
+      "expect": { "rows": 40, "columns": 12, "cellRowCount": 40, "cellColumnCount": 12 }
+    },
+    {
+      "id": "resize-minimum",
+      "name": "Größe ändern behält Zellen und Ausrichtung, Grenzen werden eingehalten",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 106,
+      "input": {
+        "op": "tableResize",
+        "settings": {
+          "rows": 3,
+          "columns": 3,
+          "alignments": ["left", "left", "right"],
+          "cells": [["Sprache", "Typ", "Jahr"], ["C++", "Kompiliert", "1985"], ["Python", "Interpretiert", "1991"]]
+        },
+        "rows": 0,
+        "columns": 0
+      },
+      "expect": { "rows": 1, "columns": 1, "cells": [["Sprache"]], "alignments": ["left"] }
+    },
+    {
+      "id": "tabSeparated-excel",
+      "name": "Einfügen aus Excel/Numbers: Tabulatoren, Anführungszeichen, leere Endzeilen",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 118,
+      "input": {
+        "op": "fillTabSeparated",
+        "settings": {
+          "rows": 3,
+          "columns": 3,
+          "alignments": ["left", "left", "left"],
+          "cells": [["", "", ""], ["", "", ""], ["", "", ""]]
+        },
+        "text": "Name\tWert\r\nA\t\"1,5\"\n\"mit\nUmbruch\"\t2\n\n"
+      },
+      "expect": {
+        "rows": 3,
+        "columns": 2,
+        "cells": [["Name", "Wert"], ["A", "1,5"], ["mit\nUmbruch", "2"]],
+        "alignments": ["left", "left"]
+      }
+    },
+    {
+      "id": "tabSeparated-empty-keeps",
+      "name": "Einfügen aus Excel/Numbers: Tabulatoren, Anführungszeichen, leere Endzeilen",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 118,
+      "input": {
+        "op": "fillTabSeparated",
+        "settings": {
+          "rows": 3,
+          "columns": 2,
+          "alignments": ["left", "left"],
+          "cells": [["Name", "Wert"], ["A", "1,5"], ["mit\nUmbruch", "2"]]
+        },
+        "text": ""
+      },
+      "expect": {
+        "rows": 3,
+        "columns": 2,
+        "cells": [["Name", "Wert"], ["A", "1,5"], ["mit\nUmbruch", "2"]]
+      }
+    },
+    {
+      "id": "tabSeparated-ragged",
+      "name": "Einfügen aus Excel/Numbers: Tabulatoren, Anführungszeichen, leere Endzeilen",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 118,
+      "input": {
+        "op": "fillTabSeparated",
+        "settings": {
+          "rows": 3,
+          "columns": 3,
+          "alignments": ["left", "left", "left"],
+          "cells": [["", "", ""], ["", "", ""], ["", "", ""]]
+        },
+        "text": "a\tb\tc\nd"
+      },
+      "expect": {
+        "rows": 2,
+        "columns": 3,
+        "cells": [["a", "b", "c"], ["d", "", ""]]
+      }
+    },
+    {
+      "id": "image",
+      "name": "Bild wie im Tutorial: zentriert, Breite relativ, Beschriftung dann Label",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 130,
+      "input": {
+        "op": "image",
+        "settings": { "caption": "Coca-Cola Werbung 1940.", "widthPercent": 75 },
+        "reference": "cola.png",
+        "label": "fig:cola"
+      },
+      "expect": {
+        "output": "\\begin{figure}\n\t\\centering\n\t\\includegraphics[width=.75\\textwidth]{cola.png}\n\t\\caption{Coca-Cola Werbung 1940.}\n\t\\label{fig:cola}\n\\end{figure}\n"
+      }
+    },
+    {
+      "id": "widths-100",
+      "name": "Breiten: 100 %, 50 %, 5 %",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 147,
+      "input": { "op": "widthText", "percent": 100 },
+      "expect": { "text": "\\textwidth" }
+    },
+    {
+      "id": "widths-50",
+      "name": "Breiten: 100 %, 50 %, 5 %",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 147,
+      "input": { "op": "widthText", "percent": 50 },
+      "expect": { "text": ".5\\textwidth" }
+    },
+    {
+      "id": "widths-5",
+      "name": "Breiten: 100 %, 50 %, 5 %",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 147,
+      "input": { "op": "widthText", "percent": 5 },
+      "expect": { "text": ".05\\textwidth" }
+    },
+    {
+      "id": "widths-0",
+      "name": "Breiten: 100 %, 50 %, 5 %",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 147,
+      "input": { "op": "widthText", "percent": 0 },
+      "expect": { "text": ".01\\textwidth" }
+    },
+    {
+      "id": "widths-500",
+      "name": "Breiten: 100 %, 50 %, 5 %",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 147,
+      "input": { "op": "widthText", "percent": 500 },
+      "expect": { "text": "\\textwidth" }
+    },
+    {
+      "id": "code",
+      "name": "Code: program-Float mit Sprachumgebung, nie lstlisting",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 156,
+      "input": {
+        "op": "code",
+        "settings": { "language": "SwiftCode", "content": "let x = 1\nprint(x)\n", "caption": "Beispiel." },
+        "label": "prog:beispiel"
+      },
+      "expect": {
+        "output": "\\begin{program}\n\t\\caption{Beispiel.}\n\t\\label{prog:beispiel}\n\\begin{SwiftCode}\nlet x = 1\nprint(x)\n\\end{SwiftCode}\n\\end{program}\n",
+        "notContains": ["lstlisting"]
+      }
+    },
+    {
+      "id": "codeVariants",
+      "name": "Code ohne Float und ohne Zeilennummern",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 177,
+      "input": {
+        "op": "code",
+        "settings": { "language": "PythonCode", "content": "x", "asFloat": false, "lineNumbers": false },
+        "label": ""
+      },
+      "expect": { "output": "\\begin{PythonCode}[numbers=none]\nx\n\\end{PythonCode}\n" }
+    },
+    {
+      "id": "languages",
+      "name": "Sprachen verweisen nur auf Umgebungen aus hgblistings.sty, ohne Duplikate",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 186,
+      "input": { "op": "codeLanguages" },
+      "expect": {
+        "languages": [
+          { "title": "Allgemein (ohne Sprache)", "environment": "GenericCode" },
+          { "title": "Bash", "environment": "BashCode" },
+          { "title": "C", "environment": "CCode" },
+          { "title": "C++", "environment": "CppCode" },
+          { "title": "C#", "environment": "CsCode" },
+          { "title": "CSS", "environment": "CssCode" },
+          { "title": "Dart", "environment": "DartCode" },
+          { "title": "GLSL", "environment": "GlslCode" },
+          { "title": "Go", "environment": "GoCode" },
+          { "title": "HTML", "environment": "HtmlCode" },
+          { "title": "Java", "environment": "JavaCode" },
+          { "title": "JavaScript", "environment": "JsCode" },
+          { "title": "JSON", "environment": "JsonCode" },
+          { "title": "Kotlin", "environment": "KotlinCode" },
+          { "title": "LaTeX", "environment": "LaTeXCode" },
+          { "title": "MATLAB", "environment": "MatlabCode" },
+          { "title": "Objective-C", "environment": "ObjCCode" },
+          { "title": "PHP", "environment": "PhpCode" },
+          { "title": "Python", "environment": "PythonCode" },
+          { "title": "R", "environment": "RCode" },
+          { "title": "Rust", "environment": "RustCode" },
+          { "title": "Scala", "environment": "ScalaCode" },
+          { "title": "SQL", "environment": "SqlCode" },
+          { "title": "Swift", "environment": "SwiftCode" },
+          { "title": "TypeScript", "environment": "TsCode" },
+          { "title": "XML", "environment": "XmlCode" },
+          { "title": "YAML", "environment": "YamlCode" }
+        ],
+        "defaultEnvironment": "PythonCode",
+        "allEndWithCode": true,
+        "unique": true
+      }
+    },
+    {
+      "id": "equation-numbered",
+      "name": "Gleichung nummeriert mit Label, ohne Nummer ohne Label, Platzhalter bei leerem Inhalt",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 194,
+      "input": { "op": "equation", "settings": { "kind": "equation", "content": "E = mc^2" }, "label": "eq:einstein" },
+      "expect": { "output": "\\begin{equation}\n\tE = mc^2\n\t\\label{eq:einstein}\n\\end{equation}\n" }
+    },
+    {
+      "id": "equation-align-star",
+      "name": "Gleichung nummeriert mit Label, ohne Nummer ohne Label, Platzhalter bei leerem Inhalt",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 194,
+      "input": { "op": "equation", "settings": { "kind": "alignStar", "content": "a &= b \\\\\nc &= d" }, "label": "eq:x" },
+      "expect": { "output": "\\begin{align*}\n\ta &= b \\\\\n\tc &= d\n\\end{align*}\n" }
+    },
+    {
+      "id": "equation-placeholder",
+      "name": "Gleichung nummeriert mit Label, ohne Nummer ohne Label, Platzhalter bei leerem Inhalt",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 194,
+      "input": { "op": "equation", "settings": { "kind": "alignStar", "content": "  " }, "label": "" },
+      "expect": { "contains": ["\ta = b"] }
+    },
+    {
+      "id": "list-output",
+      "name": "Liste mit Punkten und Text",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 208,
+      "input": { "op": "list", "settings": { "kind": "enumerate", "items": ["Erster", "", "Dritter"] } },
+      "expect": { "output": "\\begin{enumerate}\n\t\\item Erster\n\t\\item\n\t\\item Dritter\n\\end{enumerate}\n" }
+    },
+    {
+      "id": "list-resize-maximum",
+      "name": "Liste mit Punkten und Text",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 208,
+      "input": { "op": "listResize", "items": ["Erster", "", "Dritter"], "count": 100 },
+      "expect": { "itemCount": 30, "itemsPrefix": ["Erster", "", "Dritter", ""] }
+    },
+    {
+      "id": "referenceAndCitation-figure",
+      "name": "Verweis mit und ohne Vorsatz, Zitat mit Seitenangabe",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 219,
+      "input": { "op": "reference", "label": "fig:cola", "withPrefix": true },
+      "expect": { "text": "Abbildung~\\ref{fig:cola}" }
+    },
+    {
+      "id": "referenceAndCitation-table",
+      "name": "Verweis mit und ohne Vorsatz, Zitat mit Seitenangabe",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 219,
+      "input": { "op": "reference", "label": "tab:x", "withPrefix": true },
+      "expect": { "text": "Tabelle~\\ref{tab:x}" }
+    },
+    {
+      "id": "referenceAndCitation-no-prefix",
+      "name": "Verweis mit und ohne Vorsatz, Zitat mit Seitenangabe",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 219,
+      "input": { "op": "reference", "label": "fig:cola", "withPrefix": false },
+      "expect": { "text": "\\ref{fig:cola}" }
+    },
+    {
+      "id": "referenceAndCitation-unknown-prefix",
+      "name": "Verweis mit und ohne Vorsatz, Zitat mit Seitenangabe",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 219,
+      "input": { "op": "reference", "label": "unbekannt:x", "withPrefix": true },
+      "expect": { "text": "\\ref{unbekannt:x}" }
+    },
+    {
+      "id": "referenceAndCitation-cite-keys",
+      "name": "Verweis mit und ohne Vorsatz, Zitat mit Seitenangabe",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 219,
+      "input": { "op": "citation", "keys": ["a", "b"], "note": "" },
+      "expect": { "text": "\\cite{a,b}" }
+    },
+    {
+      "id": "referenceAndCitation-cite-note",
+      "name": "Verweis mit und ohne Vorsatz, Zitat mit Seitenangabe",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 219,
+      "input": { "op": "citation", "keys": ["a"], "note": "S.~12" },
+      "expect": { "text": "\\cite[S.~12]{a}" }
+    },
+    {
+      "id": "labels",
+      "name": "Labels: mehrere pro Zeile, Kommentare und auskommentierte Labels ignoriert",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 234,
+      "input": {
+        "op": "labels",
+        "text": "\\section{A}\\label{sec:a}\nText \\label{ a } und \\label{b}\n% \\label{auskommentiert}\n50\\% \\label{nach-prozent} % \\label{im-kommentar}"
+      },
+      "expect": {
+        "entries": [
+          { "label": "sec:a", "line": 1 },
+          { "label": "a", "line": 2 },
+          { "label": "b", "line": 2 },
+          { "label": "nach-prozent", "line": 4 }
+        ]
+      }
+    },
+    {
+      "id": "bibliography",
+      "name": "Literatur: Schlüssel und Titel, @string/@comment werden übersprungen",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 247,
+      "input": {
+        "op": "bibEntries",
+        "text": "@comment{ignoriert,}\n@string{name = \"x\"}\n@book{knuth1984,\n  author = {Knuth, Donald},\n  title = {The {TeX}book},\n  year = 1984\n}\n@article{ lamport94 ,\n  title = \"LaTeX: A Document Preparation System\",\n}"
+      },
+      "expect": {
+        "entries": [
+          { "key": "knuth1984", "title": "The TeXbook" },
+          { "key": "lamport94", "title": "LaTeX: A Document Preparation System" }
+        ]
+      }
+    },
+    {
+      "id": "singleLineBibEntries",
+      "name": "Einzeilige Literatureinträge liefern ihren Titel",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 266,
+      "input": {
+        "op": "bibEntries",
+        "text": "@book{knuth1984, title={The {TeX}book}, year=1984}\n@misc{x, note={ohne Titel}}\n"
+      },
+      "expect": {
+        "entries": [
+          { "key": "knuth1984", "title": "The TeXbook" },
+          { "key": "x", "title": "" }
+        ]
+      }
+    },
+    {
+      "id": "graphicsPath-single",
+      "name": "graphicspath mit mehreren Verzeichnissen",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 273,
+      "input": { "op": "graphicsDirectories", "text": "\\graphicspath{{images/}}" },
+      "expect": { "directories": ["images/"] }
+    },
+    {
+      "id": "graphicsPath-multiple",
+      "name": "graphicspath mit mehreren Verzeichnissen",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 273,
+      "input": { "op": "graphicsDirectories", "text": "\\graphicspath{ {img} {fig/sub/} }" },
+      "expect": { "directories": ["img/", "fig/sub/"] }
+    },
+    {
+      "id": "graphicsPath-none",
+      "name": "graphicspath mit mehreren Verzeichnissen",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 273,
+      "input": { "op": "graphicsDirectories", "text": "kein pfad" },
+      "expect": { "directories": [] }
+    },
+    {
+      "id": "graphicsReference-follows-graphicspath",
+      "name": "Pfad für includegraphics folgt graphicspath",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 280,
+      "input": {
+        "op": "graphicsReference",
+        "file": "/Users/x/5 Semster/Thesis/images/sub/bild.png",
+        "projectRoot": "/Users/x/5 Semster/Thesis",
+        "graphicsDirectories": ["images/"]
+      },
+      "expect": { "path": "sub/bild.png" }
+    },
+    {
+      "id": "graphicsReference-relative",
+      "name": "Pfad für includegraphics folgt graphicspath",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 280,
+      "input": {
+        "op": "graphicsReference",
+        "file": "/Users/x/5 Semster/Thesis/images/sub/bild.png",
+        "projectRoot": "/Users/x/5 Semster/Thesis",
+        "graphicsDirectories": []
+      },
+      "expect": { "path": "images/sub/bild.png" }
+    },
+    {
+      "id": "graphicsReference-outside-project",
+      "name": "Pfad für includegraphics folgt graphicspath",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 280,
+      "input": {
+        "op": "graphicsReference",
+        "file": "/woanders/x.png",
+        "projectRoot": "/Users/x/5 Semster/Thesis",
+        "graphicsDirectories": []
+      },
+      "expect": { "path": "x.png" }
+    },
+    {
+      "id": "sanitizing-spaces-parentheses",
+      "name": "Dateinamen werden bereinigt",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 290,
+      "input": { "op": "sanitizedName", "filename": "Mein Bild (1).PNG" },
+      "expect": { "name": "Mein-Bild-1.png" }
+    },
+    {
+      "id": "sanitizing-umlauts",
+      "name": "Dateinamen werden bereinigt",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 290,
+      "input": { "op": "sanitizedName", "filename": "Größe & Übersicht.jpeg" },
+      "expect": { "name": "Groesse-Uebersicht.jpeg" }
+    },
+    {
+      "id": "sanitizing-empty-base",
+      "name": "Dateinamen werden bereinigt",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 290,
+      "input": { "op": "sanitizedName", "filename": "___.pdf" },
+      "expect": { "name": "bild.pdf" }
+    },
+    {
+      "id": "sanitizing-unchanged",
+      "name": "Dateinamen werden bereinigt",
+      "source": "swift/Tests/LatexEditorTests/InsertionTests.swift",
+      "sourceLine": 290,
+      "input": { "op": "sanitizedName", "filename": "schon_gut-1.png" },
+      "expect": { "name": "schon_gut-1.png" }
+    },
+    {
+      "id": "excerpt",
+      "name": "Ausschnitt: drei Zeilen davor und danach, Zeilennummern wie im Editor",
+      "source": "swift/Tests/LatexEditorTests/InsertionContextTests.swift",
+      "sourceLine": 13,
+      "input": {
+        "op": "insertionContext",
+        "text": "eins\nzwei\ndrei\nvier\nfünf\nsechs\nsieben\nacht\nneun\n",
+        "selection": { "location": 20, "length": 0 },
+        "fileName": "a.tex"
+      },
+      "expect": {
+        "firstLineNumber": 2,
+        "excerpt": "zwei\ndrei\nvier\nfünf\nsechs\nsieben\nacht",
+        "selection": { "location": 15, "length": 0 },
+        "cursorLineNumber": 5
+      }
+    },
+    {
+      "id": "blockAtLineStart",
+      "name": "Ein Block am Zeilenanfang steht in eigenen Zeilen, nur sie sind neu",
+      "source": "swift/Tests/LatexEditorTests/InsertionContextTests.swift",
+      "sourceLine": 22,
+      "input": {
+        "op": "insertionLines",
+        "text": "eins\nzwei\ndrei\nvier\nfünf\nsechs\nsieben\nacht\nneun\n",
+        "selection": { "location": 20, "length": 0 },
+        "fileName": "a.tex",
+        "code": "\\begin{x}\n\\end{x}\n",
+        "isBlock": true,
+        "replacesSelection": false
+      },
+      "expect": {
+        "lines": [
+          { "number": 2, "text": "zwei", "isNew": false },
+          { "number": 3, "text": "drei", "isNew": false },
+          { "number": 4, "text": "vier", "isNew": false },
+          { "number": 5, "text": "\\begin{x}", "isNew": true },
+          { "number": 6, "text": "\\end{x}", "isNew": true },
+          { "number": 7, "text": "fünf", "isNew": false },
+          { "number": 8, "text": "sechs", "isNew": false },
+          { "number": 9, "text": "sieben", "isNew": false },
+          { "number": 10, "text": "acht", "isNew": false }
+        ]
+      }
+    },
+    {
+      "id": "blockMidLine",
+      "name": "Ein Block mitten in der Zeile beginnt in einer neuen Zeile (wie BlockPlacement im Editor)",
+      "source": "swift/Tests/LatexEditorTests/InsertionContextTests.swift",
+      "sourceLine": 31,
+      "input": {
+        "op": "insertionLines",
+        "text": "eins\nzwei\ndrei\nvier\nfünf\nsechs\nsieben\nacht\nneun\n",
+        "selection": { "location": 22, "length": 0 },
+        "fileName": "a.tex",
+        "code": "X\n",
+        "isBlock": true,
+        "replacesSelection": false
+      },
+      "expect": {
+        "linesContainText": ["fü"],
+        "isNewByText": { "X": true, "nf": false }
+      }
+    },
+    {
+      "id": "inlineAndSelection-replaces",
+      "name": "Ein Verweis im Fließtext markiert seine Zeile; eine Auswahl wird ersetzt, wenn der Baustein sie übernimmt",
+      "source": "swift/Tests/LatexEditorTests/InsertionContextTests.swift",
+      "sourceLine": 40,
+      "input": {
+        "op": "insertionLines",
+        "text": "eins\nzwei\ndrei\nvier\nfünf\nsechs\nsieben\nacht\nneun\n",
+        "selection": { "location": 10, "length": 4 },
+        "fileName": "a.tex",
+        "code": "\\ref{a}",
+        "isBlock": false,
+        "replacesSelection": true
+      },
+      "expect": { "firstNewLineText": "\\ref{a}" }
+    },
+    {
+      "id": "inlineAndSelection-keeps",
+      "name": "Ein Verweis im Fließtext markiert seine Zeile; eine Auswahl wird ersetzt, wenn der Baustein sie übernimmt",
+      "source": "swift/Tests/LatexEditorTests/InsertionContextTests.swift",
+      "sourceLine": 40,
+      "input": {
+        "op": "insertionLines",
+        "text": "eins\nzwei\ndrei\nvier\nfünf\nsechs\nsieben\nacht\nneun\n",
+        "selection": { "location": 10, "length": 4 },
+        "fileName": "a.tex",
+        "code": "\\ref{a}",
+        "isBlock": false,
+        "replacesSelection": false
+      },
+      "expect": { "firstNewLineText": "drei\\ref{a}" }
+    },
+    {
+      "id": "edges-start",
+      "name": "Am Dateianfang und -ende ohne Absturz",
+      "source": "swift/Tests/LatexEditorTests/InsertionContextTests.swift",
+      "sourceLine": 49,
+      "input": {
+        "op": "insertionContext",
+        "text": "eins\nzwei\ndrei\nvier\nfünf\nsechs\nsieben\nacht\nneun\n",
+        "selection": { "location": 0, "length": 0 },
+        "fileName": "a.tex"
+      },
+      "expect": { "firstLineNumber": 1 }
+    },
+    {
+      "id": "edges-end",
+      "name": "Am Dateianfang und -ende ohne Absturz",
+      "source": "swift/Tests/LatexEditorTests/InsertionContextTests.swift",
+      "sourceLine": 49,
+      "input": {
+        "op": "insertionLines",
+        "text": "eins\nzwei\ndrei\nvier\nfünf\nsechs\nsieben\nacht\nneun\n",
+        "selection": { "location": 48, "length": 0 },
+        "fileName": "a.tex",
+        "code": "Z\n",
+        "isBlock": true,
+        "replacesSelection": false
+      },
+      "expect": { "isNewByText": { "Z": true } }
+    }
+  ]
+}

@@ -1,0 +1,590 @@
+{
+  "suite": "references",
+  "version": 1,
+  "source": [
+    "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+    "swift/Tests/LatexEditorTests/ReferenceCheckTests.swift",
+    "swift/Tests/LatexEditorTests/UsageFinderTests.swift",
+    "swift/Tests/LatexEditorTests/SyntaxCheckerTests.swift"
+  ],
+  "notes": "Verweise, Zitate, Verweisprüfung, doppelte Labels und Verwendungssuche (Swift: LatexReferences.swift, UsageFinder.swift, Renaming.swift (Renamer.occurrences), ReferenceCheckStore.swift). Alle Eingabetexte sind reines ASCII (Nicht-ASCII nur in expect von longLine: Auslassungszeichen U+2026, ein UTF-16-Zeichen, und in Meldungstexten dieser Notes), daher sind UTF-16-Positionen und Zeichenpositionen gleich; Positionen werden nicht als Zahlen geprüft, sondern über den Teilstring des Bereichs (rangeTexts, matchTexts). Zeilennummern in Erwartungen (lines, line) sind 1-basiert (wie in Swift). Dateipfade in input/expect sind Zeichenketten (Projektpfade relativ zur Wurzel oder absolute Pfade wie /tmp/a.tex), nie echte Dateien; Dateiinhalte stehen als Text im Vektor. Jeder Fall nennt seine Swift-Datei in source.\n\nGEMEINSAMER BAUSTEIN scannable(text) (Swift: LatexMasking.scannable): Text, in dem Kommentare und Code durch Leerzeichen ersetzt sind, gleiche UTF-16-Länge. Reihenfolge: (1) \\verb: jeder Treffer von Regex  \\\\verb\\*?([^A-Za-z\\s*])[^\\n]*?\\1  (Begrenzer = erstes Zeichen nach \\verb, das kein Buchstabe, Leerraum oder * ist; Treffer bis zum nächsten gleichen Begrenzer, nicht über Zeilenende) wird komplett durch Leerzeichen ersetzt; (2) Kommentare: ein % beginnt einen Kommentar, wenn davor eine gerade Anzahl \\ steht (\\% ist kein Kommentar, \\\\% schon); der Kommentar reicht bis vor das nächste \\n oder \\r bzw. Textende und wird durch Leerzeichen ersetzt; (3) Code-Umgebungen: für jedes \\begin{NAME} (Regex  \\\\begin\\{([A-Za-z*]+)\\}  auf dem Text nach Schritt 2), dessen Anfang nicht innerhalb eines schon maskierten Bereichs liegt und bei dem NAME Code ist, wird der Inhalt NACH dem \\begin{NAME} bis vor das nächste \\end{NAME} (Teilstring-Suche, case-sensitive; fehlt es, bis Textende) durch Leerzeichen ersetzt. NAME ist Code, wenn er in {verbatim, verbatim*, lstlisting, minted, comment, Verbatim} liegt oder auf 'Code' endet und länger als 'Code' ist (PythonCode, JavaCode). Zeilenumbrüche im maskierten Bereich werden ebenfalls zu Leerzeichen.\n\nop scan: input {text}. Führt LatexReferences.scan aus: Treffer des Regex  \\\\(NAMEN)\\*?\\s*(?:\\[[^\\]\\n]*\\]\\s*){0,2}\\{([^{}]*)\\}  auf scannable(text). NAMEN = Alternative aus 'label', allen labelUseCommands und allen citationCommands, nach Länge absteigend sortiert (damit \\citeauthor vor \\cite passt). labelUseCommands: ref eqref pageref autoref Autoref cref Cref vref Vref nameref labelcref cpageref Cpageref. citationCommands: cite citep citet citealp citealt citeauthor citeyear citeyearpar citetitle Cite Citep Citet parencite Parencite textcite Textcite autocite Autocite smartcite Smartcite footcite footcitetext fullcite nocite supercite. Art: 'label' = labelDefinition, Name in labelUseCommands = labelUse, sonst citation. Aus Gruppe 2 (Inhalt der geschweiften Klammer) werden die Schlüssel gelesen: bei labelUse und citation am Komma geteilt, bei labelDefinition nicht geteilt; je Teil werden Leerzeichen/Tab/LF/CR an beiden Enden entfernt; leere Teile, der Schlüssel '*' (\\nocite{*}) und Schlüssel mit '#' (Makroparameter) fallen weg. Der Bereich eines Schlüssels ist genau der getrimmte Schlüssel im Text. Zusätzlich: Regex  \\\\hyperref\\s*\\[([^\\]\\n]*)\\]  liefert die Klammer-Option als EINEN Schlüssel der Art labelUse (nicht am Komma geteilt, gleiche Trim- und Filterregeln). Ergebnis nach Bereichsanfang aufsteigend sortiert. expect: kinds (Liste der Arten in Reihenfolge, Werte labelDefinition | labelUse | citation), keys (Schlüssel in Reihenfolge), rangeTexts (der Text des Bereichs im Eingabetext je Treffer); jeder Schlüssel optional, [] heißt: keine Treffer.\n\nop citesEverything: input {text}, expect {result: bool}: true, wenn scannable(text) den Teilstring \\nocite{*} (exakt, ohne Leerzeichen) enthält.\n\nop check: input {text, labels: [..], citations: [..] | null}. Führt ReferenceChecker.problems aus (acronyms bleibt nil, Abkürzungsprüfung ist hier nicht Gegenstand). Für jedes scan-Ergebnis auf scannable(text): labelDefinition ergibt nichts; labelUse ergibt Problem 'unknownLabel', wenn der Schlüssel nicht in labels steht; citation ergibt Problem 'unknownCitation', wenn citations nicht null ist und der Schlüssel nicht darin steht (citations null = Zitate nicht prüfen). Problem = {kind, key, range (der Schlüssel)}; Reihenfolge wie im Text. Meldungstexte: unknownLabel 'Das Label „KEY“ ist im Projekt nicht definiert.', unknownCitation '„KEY“ steht in keiner Literaturdatei des Projekts.'. expect: keys, kinds (unknownLabel | unknownCitation), rangeTexts, isEmpty, count, firstMessageContains (Teilstring der Meldung des ersten Problems).\n\nop storeCheck: input {fileName, text, knownLabels: [..] | null, knownCitations: [..] | null}. Verhalten von ReferenceCheckStore.check ohne Entprellung: Nur Dateien mit Endung .tex werden geprüft (.bib nie, Ergebnis leer). knownLabels null = Index nicht gelesen: keine Verweisprüfung, Ergebnis leer. Sonst wie op check mit labels = knownLabels und citations = knownCitations. expect: problemKeys (Liste der Schlüssel der Probleme in Reihenfolge, [] = keine).\n\nop bibEntries: input {text, withFile: bool}. Literatureinträge eines .bib-Texts (ProjectCatalog.bibEntries): Liste der Einträge in Dateireihenfolge mit key (Eintragsschlüssel, Duplikate bleiben erhalten), line (nur mit withFile: 1-basierte Zeile des ERSTEN Eintragskopfs mit diesem Schlüssel; Zeile über Regex  ^\\s*@[A-Za-z]+\\s*[{(]\\s*([^,\\s]+)\\s*,  mit Mehrzeilen-Modus, Zeilen ab dem Schlüssel gezählt; auch ein zweiter Eintrag gleichen Schlüssels bekommt diese erste Zeile; Kommentarzeilen mit % am Anfang matchen nicht), file (gesetzt, wenn withFile, sonst fehlend). Die Eintragsliste kommt aus einem BibTeX-Parser (nicht in diesen Vektoren spezifiziert; @string/@comment/@preamble sind keine Einträge). expect: keys, lines, hasFile (true: jeder Eintrag hat eine Datei; false: keiner).\n\nop usedSets: input {files: [{path, text}]}. Verhalten von CompletionIndex.build für benutzte Verweise: nur Dateien mit Endung .tex zählen; je Datei scan(scannable(text)); usedLabels = Schlüssel aller labelUse, usedCitations = Schlüssel aller citation (beide als Mengen); citesEverything = true, wenn irgendeine Datei \\nocite{*} im scannable-Text enthält. Definitionen (\\label) und Kommentare zählen nicht. expect: usedLabels, usedCitations (Listen, als Mengen vergleichen, hier sortiert angegeben), citesEverything.\n\nop unusedHints: input {labels: [{label, file, line}], bibEntries: [{key}], usedLabels: [..], usedCitations: [..], citesEverything, isLoaded}. Verhalten von ReferenceCheckStore.indexChanged: Ist isLoaded false, sind alle Listen leer. Sonst unusedLabels = labels, deren Name nicht in usedLabels steht (Reihenfolge der Eingabe); unusedSources = bibEntries, deren key nicht in usedCitations steht, aber leer, wenn citesEverything true ist. expect: unusedLabels (Liste der Namen), unusedSources (Liste der Schlüssel).\n\nop projectCheck: input {files: [{path, text}], checkFile, openTexts?: {path: text}}. Gesamtszenario (Swift: ReferenceCheckAppTests.projectCheck, AppModel + Index + Store; ohne Dateisystem, Zeit und Entprellung). Auf dem Projekt: (a) Katalog-Labels = je .tex-Datei zeilenweise: Kommentar ab dem ersten wirksamen % abschneiden, dann jedes \\label{NAME} (NAME getrimmt, nicht leer; die Suche läuft bis zur nächsten } ) mit Datei und 1-basierter Zeile; (b) Katalog-Quellen = bibEntries jeder .bib-Datei (mit Datei und Zeile wie bei op bibEntries, withFile true); (c) usedLabels/usedCitations wie bei op usedSets. Bekannte Labels = Katalog-Labels aller Dateien, außer denen von Dateien, die in openTexts stehen (ungespeicherte Editortexte): für diese zählen stattdessen die Labels aus dem Text in openTexts (gleiche Regel (a)). Bekannte Zitate = Menge der Schlüssel der Katalog-Quellen, null (nicht prüfen), wenn es keine gibt. Geprüft wird der Text von checkFile (aus openTexts, sonst aus files) mit op check. unusedLabels/unusedSources wie bei op unusedHints (isLoaded true, citesEverything wie usedSets) auf den Katalog-Werten der Platte. expect: problemKeys (Schlüssel der Probleme in checkFile in Reihenfolge), unusedLabels (Namen), unusedSources ([{key, file, line}]).\n\nop duplicateMarks: input {labels: [{label, file, line}], file, text}. Doppelte Labels (DuplicateLabelChecker). duplicates(in: labels): Gruppen nach Labelname mit mehr als einem Eintrag. marks(masked: text, file, duplicates): text gilt als schon maskiert (die Vektoren enthalten keine Kommentare oder Code). Für jedes scan-Ergebnis der Art labelDefinition mit Schlüssel in duplicates: line = 1-basierte Zeile des Bereichsanfangs; others = Einträge der Gruppe ohne den Eintrag mit gleicher Datei (Pfadgleichheit) und gleicher Zeile; ist others leer, keine Markierung, sonst eine Markierung mit Schweregrad warning, Bereich = der Schlüssel, Meldung 'Das Label „KEY“ ist mehrfach definiert, auch in PLATZ[ MEHR]. Verweise treffen nur eine der Stellen.' mit PLATZ = 'Zeile N', wenn die erste andere Stelle in derselben Datei liegt, sonst 'DATEINAME, Zeile N' (letzte Pfadkomponente), N = deren line, und MEHR = ' (insgesamt K Stellen)' mit K = Anzahl others + 1, falls others mehr als eine Stelle hat. Ohne duplicates (leer) gibt es keine Markierungen. Reihenfolge der Markierungen wie im Text. expect: duplicateKeys (Schlüssel von duplicates(in: labels), hier genau die doppelten), count, severity (alle Markierungen), rangeTexts, messageContains (Teilstring in der Meldung der ersten Markierung), messagePlaces (je Markierung in Reihenfolge: 3, wenn die Meldung 'Zeile 3' enthält, sonst 1, wenn sie 'Zeile 1' enthält, sonst 0).\n\nop duplicateList: input {labels: [{label, file, line}], isLoaded}. Verhalten von ReferenceCheckStore.indexChanged für duplicateLabels: leer, wenn isLoaded false; sonst alle Einträge der doppelt definierten Labels, sortiert nach (Name, Dateipfad, Zeile). expect: lines (die line-Werte in dieser Reihenfolge).\n\nop usages: input {kind, name, text, path}. Verwendungssuche UsageFinder.usages(of: {kind, name}, in: text, url: path). kind: label | citation | acronym | command | environment. Ist die Endung von path .bib, gilt die Datei als Literaturdatei. Schritt 1, Fundstellen (Renamer.occurrences, siehe auch renameOccurrences in misc.json): in .bib nur kind citation: Eintragsschlüssel (Regex  @([A-Za-z]+)\\s*[{(]\\s*([^\\s,{}()\"#%=]+)\\s*,  ohne Typ comment/string/preamble) und Werte von crossref/xref/xdata/related mit diesem Namen, auskommentierte (%) nicht; sonst []. In .tex (auf scannable-Text): label = alle scan-Treffer der Arten labelDefinition und labelUse mit diesem Schlüssel; citation = scan-Treffer der Art citation; acronym = Treffer von Acronyms.scan mit diesem Schlüssel (Definitionsbefehle newacronym, newglossaryentry, longnewglossaryentry, newabbreviation, DeclareAcronym, newdualentry; Verwendungsbefehle ac, acs, acl, acf, acp, gls, Gls, glspl, acrshort, acrlong, acrfull … siehe Renaming.swift; Regex  \\\\(NAMEN)\\*?\\s*(?:\\[[^\\]\\n]*\\]\\s*)?\\{\\s*([^{}\\s,]+)\\s*\\}, Bereich = Schlüssel); command = jedes \\NAME im scannable-Text (Bereich = Name ohne \\), wenn danach kein Buchstabe oder @ folgt und davor eine gerade Anzahl \\ steht; environment = Name in \\begin{NAME}, \\end{NAME} (Regex  \\\\(begin|end)\\s*\\{([A-Za-z]+\\*?)\\}) und in den Definitionen \\newenvironment, \\renewenvironment, \\NewDocumentEnvironment, \\RenewDocumentEnvironment, \\lstnewenvironment, \\newtheorem. Keine Fundstelle: Ergebnis []. Schritt 2: Fundstellen nach Anfang sortieren; je Fundstelle ein Eintrag {line (1-basiert, Zeile des Anfangs, Zeilentrenner \\n), excerpt, isDefinition, matchInExcerpt, index, id}. index = laufende Nummer des Treffers in seiner Zeile (0, 1, …), id = PFAD + ':' + line + ':' + index (zwei Treffer einer Zeile sind also verschiedene Einträge). excerpt: die Zeile ohne führende Leerzeichen/Tabs; ist die Zeile länger als 140 (maximumExcerptLength) oder liegt der Treffer hinter dem 140. Zeichen ab Zeilenstart-ohne-Einrückung, wird ein Ausschnitt von 140 Zeichen gebildet, der 40 Zeichen vor dem Treffer beginnt (nicht vor dem Start), und '…' wird vorn angefügt, wenn vorn abgeschnitten wurde, und hinten, wenn hinten abgeschnitten wurde (Länge dann höchstens 142). matchInExcerpt = Bereich des Treffers im excerpt (Anfang um 1 verschoben, wenn vorn '…' steht), sonst null. isDefinition: label = Treffer ist labelDefinition; acronym = Treffer ist eine Definition; citation in .bib = jeder Treffer; sonst nein; zusätzlich bei command/environment: der excerpt enthält einen Definitionsbefehl (command: Regex  \\\\(?:re)?newcommand|\\\\providecommand|\\\\DeclareRobustCommand|\\\\(?:New|Renew|Provide|Declare)DocumentCommand|\\\\[gex]?def\\b ; environment: Regex  \\\\(?:re)?newenvironment|\\\\(?:New|Renew|Provide)DocumentEnvironment|\\\\NewEnviron ). expect (alle optional): count, lines, isDefinition (Liste je Eintrag), excerpts ({\"Eintragsindex\": Text}, Index 0-basiert in der Ergebnisliste), matchTexts ({\"Eintragsindex\": Teilstring des excerpt an matchInExcerpt}), differentIds (Liste von Indexpaaren, deren ids verschieden sein müssen), firstIsDefinition (bool, nur erster Eintrag), restAreNotDefinitions (true: alle Einträge außer dem ersten haben isDefinition false), excerptHasPrefix, excerptHasSuffix (jeweils für den ersten Eintrag), excerptLengthAtMost (UTF-16-Länge des excerpt des ersten Eintrags, hier 142 = 140 + 2 Auslassungszeichen), firstMatchText (Teilstring des excerpt des ersten Eintrags an matchInExcerpt, der Bereich muss vorhanden sein), isEmpty.\n\nNicht verwendet: TextPositionsTests.swift und LineIndexTests.swift (Klemmen von Bereichen/Zeilennummern, Zeilenindex); die Zeilenermittlung in usages und duplicateMarks ist die einfache Zählung der \\n vor dem Offset.",
+  "skipped": [
+    {
+      "name": "Schnell genug und linear: 2.000 Zeilen mit Verweisen",
+      "reason": "Zeitbudget (ContinuousClock, < 1 s); die Logik (nur y fehlt je Zeile) ist durch check abgedeckt",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 88
+    },
+    {
+      "name": "Schreibhinweise auch ohne gelesenen Index; .bib bekommt keine; geschlossene Dateien verlieren sie",
+      "reason": "Testet WritingHints (Wiederholung, Satzanfang klein) und Store-Zustand mit DocumentSession, async/Entprellung; gehört zu den Schreibhinweisen",
+      "source": "swift/Tests/LatexEditorTests/ReferenceCheckTests.swift",
+      "sourceLine": 51
+    },
+    {
+      "name": "Geschlossene Dateien verlieren ihre Probleme, Zurücksetzen räumt alles",
+      "reason": "Reiner Store-Zustand (retain/reset) mit DocumentSession, @MainActor und async; ohne eigene Logik, die Web-Version testet ihren Store selbst",
+      "source": "swift/Tests/LatexEditorTests/ReferenceCheckTests.swift",
+      "sourceLine": 91
+    },
+    {
+      "name": "Der Schlüssel wird unterstrichen (mit Hinweistext), sonst nichts; Entfernen und Dateiwechsel räumen auf",
+      "reason": "AppKit (NSTextView-Layoutmanager, temporäre Attribute) und Task.sleep",
+      "source": "swift/Tests/LatexEditorTests/ReferenceCheckTests.swift",
+      "sourceLine": 116
+    },
+    {
+      "name": "Schreibhinweise blau gepunktet mit Tooltip; bei Überschneidung gewinnt der unbekannte Verweis",
+      "reason": "AppKit (Unterstreichung, NSColor) und Task.sleep",
+      "source": "swift/Tests/LatexEditorTests/ReferenceCheckTests.swift",
+      "sourceLine": 140
+    },
+    {
+      "name": "Fehler rot gestrichelt, Warnungen orange strichpunktiert; die schwerere Markierung gewinnt",
+      "reason": "AppKit (Unterstreichungsstile, NSColor) und Task.sleep",
+      "source": "swift/Tests/LatexEditorTests/ReferenceCheckTests.swift",
+      "sourceLine": 165
+    },
+    {
+      "name": "Meldungen des Builds unterstreichen die Zeile ohne Einrückung; Boxen und leere Zeilen nicht",
+      "reason": "AppKit (Unterstreichung) und Task.sleep",
+      "source": "swift/Tests/LatexEditorTests/ReferenceCheckTests.swift",
+      "sourceLine": 199
+    },
+    {
+      "name": "Ränge hinter dem Textende werden ignoriert",
+      "reason": "AppKit (Unterstreichung im Layoutmanager) und Task.sleep",
+      "source": "swift/Tests/LatexEditorTests/ReferenceCheckTests.swift",
+      "sourceLine": 221
+    },
+    {
+      "name": "Store: Syntaxfehler und doppelte Labels pro Datei, auch ohne gelesenen Index (Teil Syntaxfehler und retain)",
+      "reason": "Der Teil doppelte Labels steht als storeDiagnostics-duplicates in cases; der Rest (Syntaxfehler im Store, retain) braucht DocumentSession, async und Store-Zustand (Syntaxregeln: syntax-checker.json)",
+      "source": "swift/Tests/LatexEditorTests/SyntaxCheckerTests.swift",
+      "sourceLine": 112
+    }
+  ],
+  "cases": [
+    {
+      "id": "basics",
+      "name": "Labels, Verweise und Zitate mit Schlüsselbereich; Listen werden aufgeteilt",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 14,
+      "input": { "op": "scan", "text": "\\label{fig:a} siehe \\ref{fig:a} und \\cite[S.~3]{x, y} \\citep{z}" },
+      "expect": {
+        "kinds": ["labelDefinition", "labelUse", "citation", "citation", "citation"],
+        "keys": ["fig:a", "fig:a", "x", "y", "z"],
+        "rangeTexts": ["fig:a", "fig:a", "x", "y", "z"]
+      }
+    },
+    {
+      "id": "commandVariants-overlap",
+      "name": "Befehle mit Namensüberschneidung treffen genau einmal; Varianten mit Stern und Optionen",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 22,
+      "input": { "op": "scan", "text": "\\citeauthor{a}" },
+      "expect": { "keys": ["a"] }
+    },
+    {
+      "id": "commandVariants-starAndOthers",
+      "name": "Befehle mit Namensüberschneidung treffen genau einmal; Varianten mit Stern und Optionen",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 22,
+      "input": { "op": "scan", "text": "\\cite*{a} \\autoref{b} \\Cref{c} \\eqref{d} \\nameref{e}" },
+      "expect": { "keys": ["a", "b", "c", "d", "e"] }
+    },
+    {
+      "id": "commandVariants-parencite",
+      "name": "Befehle mit Namensüberschneidung treffen genau einmal; Varianten mit Stern und Optionen",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 22,
+      "input": { "op": "scan", "text": "\\parencite[vgl.][S.~5]{k}" },
+      "expect": { "keys": ["k"] }
+    },
+    {
+      "id": "commandVariants-hyperref",
+      "name": "Befehle mit Namensüberschneidung treffen genau einmal; Varianten mit Stern und Optionen",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 22,
+      "input": { "op": "scan", "text": "\\hyperref[sec:x]{Text}" },
+      "expect": { "keys": ["sec:x"] }
+    },
+    {
+      "id": "commandVariants-spaces",
+      "name": "Befehle mit Namensüberschneidung treffen genau einmal; Varianten mit Stern und Optionen",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 22,
+      "input": { "op": "scan", "text": "\\cref{ a , b }" },
+      "expect": { "keys": ["a", "b"] }
+    },
+    {
+      "id": "ignoredPlaces-comment",
+      "name": "Kommentare, Code, \\verb, Makroparameter und \\nocite{*} fallen weg",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 31,
+      "input": { "op": "scan", "text": "% \\ref{kommentar}\n\\ref{echt}" },
+      "expect": { "keys": ["echt"] }
+    },
+    {
+      "id": "ignoredPlaces-escapedPercent",
+      "name": "Kommentare, Code, \\verb, Makroparameter und \\nocite{*} fallen weg",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 31,
+      "input": { "op": "scan", "text": "50\\% \\ref{nach-prozent}" },
+      "expect": { "keys": ["nach-prozent"] }
+    },
+    {
+      "id": "ignoredPlaces-lstlisting",
+      "name": "Kommentare, Code, \\verb, Makroparameter und \\nocite{*} fallen weg",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 31,
+      "input": { "op": "scan", "text": "\\begin{lstlisting}\n\\ref{code}\n\\end{lstlisting}\\ref{danach}" },
+      "expect": { "keys": ["danach"] }
+    },
+    {
+      "id": "ignoredPlaces-codeSuffix",
+      "name": "Kommentare, Code, \\verb, Makroparameter und \\nocite{*} fallen weg",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 31,
+      "input": { "op": "scan", "text": "\\begin{PythonCode}\\cite{x}\\end{PythonCode}" },
+      "expect": { "keys": [] }
+    },
+    {
+      "id": "ignoredPlaces-verb",
+      "name": "Kommentare, Code, \\verb, Makroparameter und \\nocite{*} fallen weg",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 31,
+      "input": { "op": "scan", "text": "\\verb|\\ref{v}| \\ref{w}" },
+      "expect": { "keys": ["w"] }
+    },
+    {
+      "id": "ignoredPlaces-macroParameter",
+      "name": "Kommentare, Code, \\verb, Makroparameter und \\nocite{*} fallen weg",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 31,
+      "input": { "op": "scan", "text": "\\newcommand{\\mein}[1]{\\ref{fig:#1}}" },
+      "expect": { "keys": [] }
+    },
+    {
+      "id": "ignoredPlaces-nociteStar",
+      "name": "Kommentare, Code, \\verb, Makroparameter und \\nocite{*} fallen weg",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 31,
+      "input": { "op": "scan", "text": "\\nocite{*}" },
+      "expect": { "keys": [] }
+    },
+    {
+      "id": "ignoredPlaces-citesEverything",
+      "name": "Kommentare, Code, \\verb, Makroparameter und \\nocite{*} fallen weg",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 31,
+      "input": { "op": "citesEverything", "text": "\\nocite{*}" },
+      "expect": { "result": true }
+    },
+    {
+      "id": "ignoredPlaces-citesEverythingCommented",
+      "name": "Kommentare, Code, \\verb, Makroparameter und \\nocite{*} fallen weg",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 31,
+      "input": { "op": "citesEverything", "text": "% \\nocite{*}" },
+      "expect": { "result": false }
+    },
+    {
+      "id": "checking",
+      "name": "Prüfung: unbekannte Labels und Zitate; ohne Literatur keine Zitatprüfung",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 44,
+      "input": { "op": "check", "text": "\\label{a}\\ref{a}\\ref{fehlt}\\cite{da,weg}", "labels": ["a"], "citations": ["da"] },
+      "expect": {
+        "keys": ["fehlt", "weg"],
+        "kinds": ["unknownLabel", "unknownCitation"],
+        "rangeTexts": ["fehlt", "weg"],
+        "firstMessageContains": "fehlt"
+      }
+    },
+    {
+      "id": "checking-noCitations",
+      "name": "Prüfung: unbekannte Labels und Zitate; ohne Literatur keine Zitatprüfung",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 44,
+      "input": { "op": "check", "text": "\\label{a}\\ref{a}\\ref{fehlt}\\cite{da,weg}", "labels": ["a"], "citations": null },
+      "expect": { "keys": ["fehlt"] }
+    },
+    {
+      "id": "emptySets-noReference",
+      "name": "Eigene Definition in derselben Datei zählt als bekannt (Labels des Textes kommen vom Aufrufer)",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 56,
+      "input": { "op": "check", "text": "kein Verweis", "labels": [], "citations": [] },
+      "expect": { "isEmpty": true }
+    },
+    {
+      "id": "emptySets-oneUnknown",
+      "name": "Eigene Definition in derselben Datei zählt als bekannt (Labels des Textes kommen vom Aufrufer)",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 56,
+      "input": { "op": "check", "text": "\\ref{x}", "labels": [], "citations": [] },
+      "expect": { "count": 1 }
+    },
+    {
+      "id": "bibLines",
+      "name": "Literatureinträge kennen Datei und Zeile",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 62,
+      "input": {
+        "op": "bibEntries",
+        "text": "% Kopf\n@book{erste,\n  title={A}\n}\n\n@article{zweite,\n title={B}}\n@book{erste, title={doppelt}}\n",
+        "withFile": true
+      },
+      "expect": { "keys": ["erste", "zweite", "erste"], "lines": [2, 6, 2], "hasFile": true }
+    },
+    {
+      "id": "bibLines-noFile",
+      "name": "Literatureinträge kennen Datei und Zeile",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 62,
+      "input": {
+        "op": "bibEntries",
+        "text": "% Kopf\n@book{erste,\n  title={A}\n}\n\n@article{zweite,\n title={B}}\n@book{erste, title={doppelt}}\n",
+        "withFile": false
+      },
+      "expect": { "hasFile": false }
+    },
+    {
+      "id": "indexUsedSets",
+      "name": "Der Projektindex merkt sich benutzte Labels und Zitate",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 73,
+      "input": {
+        "op": "usedSets",
+        "files": [
+          { "path": "main.tex", "text": "\\ref{a} \\label{a} \\label{b}\n\\input{k}\n% \\ref{kommentar}\n" },
+          { "path": "k.tex", "text": "\\cite{x,y} \\ref{c}\n" }
+        ]
+      },
+      "expect": { "usedLabels": ["a", "c"], "usedCitations": ["x", "y"], "citesEverything": false }
+    },
+    {
+      "id": "indexUsedSets-nocite",
+      "name": "Der Projektindex merkt sich benutzte Labels und Zitate",
+      "source": "swift/Tests/LatexEditorTests/LatexReferencesTests.swift",
+      "sourceLine": 73,
+      "input": { "op": "usedSets", "files": [{ "path": "n.tex", "text": "\\nocite{*}" }] },
+      "expect": { "citesEverything": true }
+    },
+    {
+      "id": "checksSession",
+      "name": "Probleme pro Datei, entprellt; nach einer Korrektur verschwinden sie",
+      "source": "swift/Tests/LatexEditorTests/ReferenceCheckTests.swift",
+      "sourceLine": 13,
+      "input": {
+        "op": "storeCheck",
+        "fileName": "kapitel.tex",
+        "text": "\\ref{a} \\ref{fehlt} \\cite{x,y}",
+        "knownLabels": ["a"],
+        "knownCitations": ["x"]
+      },
+      "expect": { "problemKeys": ["fehlt", "y"] }
+    },
+    {
+      "id": "checksSession-afterFix",
+      "name": "Probleme pro Datei, entprellt; nach einer Korrektur verschwinden sie",
+      "source": "swift/Tests/LatexEditorTests/ReferenceCheckTests.swift",
+      "sourceLine": 13,
+      "input": { "op": "storeCheck", "fileName": "kapitel.tex", "text": "\\ref{a}", "knownLabels": ["a"], "knownCitations": ["x"] },
+      "expect": { "problemKeys": [] }
+    },
+    {
+      "id": "skips-noIndex",
+      "name": "Ohne Index nicht prüfen; ohne Literatur keine Zitatprüfung; .bib wird nicht geprüft",
+      "source": "swift/Tests/LatexEditorTests/ReferenceCheckTests.swift",
+      "sourceLine": 30,
+      "input": { "op": "storeCheck", "fileName": "kapitel.tex", "text": "\\ref{x} \\cite{y}", "knownLabels": null, "knownCitations": null },
+      "expect": { "problemKeys": [] }
+    },
+    {
+      "id": "skips-noCitations",
+      "name": "Ohne Index nicht prüfen; ohne Literatur keine Zitatprüfung; .bib wird nicht geprüft",
+      "source": "swift/Tests/LatexEditorTests/ReferenceCheckTests.swift",
+      "sourceLine": 30,
+      "input": { "op": "storeCheck", "fileName": "kapitel.tex", "text": "\\ref{x} \\cite{y}", "knownLabels": [], "knownCitations": null },
+      "expect": { "problemKeys": ["x"] }
+    },
+    {
+      "id": "skips-bib",
+      "name": "Ohne Index nicht prüfen; ohne Literatur keine Zitatprüfung; .bib wird nicht geprüft",
+      "source": "swift/Tests/LatexEditorTests/ReferenceCheckTests.swift",
+      "sourceLine": 30,
+      "input": { "op": "storeCheck", "fileName": "lit.bib", "text": "\\ref{x}", "knownLabels": [], "knownCitations": null },
+      "expect": { "problemKeys": [] }
+    },
+    {
+      "id": "hints-basic",
+      "name": "Hinweise: ungenutzte Labels und Quellen aus dem Index; \\nocite{*} und fehlender Index",
+      "source": "swift/Tests/LatexEditorTests/ReferenceCheckTests.swift",
+      "sourceLine": 69,
+      "input": {
+        "op": "unusedHints",
+        "labels": [{ "label": "a", "file": "/p/a.tex", "line": 1 }, { "label": "b", "file": "/p/a.tex", "line": 2 }],
+        "bibEntries": [{ "key": "k1" }, { "key": "k2" }],
+        "usedLabels": ["a"],
+        "usedCitations": ["k1"],
+        "citesEverything": false,
+        "isLoaded": true
+      },
+      "expect": { "unusedLabels": ["b"], "unusedSources": ["k2"] }
+    },
+    {
+      "id": "hints-citesEverything",
+      "name": "Hinweise: ungenutzte Labels und Quellen aus dem Index; \\nocite{*} und fehlender Index",
+      "source": "swift/Tests/LatexEditorTests/ReferenceCheckTests.swift",
+      "sourceLine": 69,
+      "input": {
+        "op": "unusedHints",
+        "labels": [{ "label": "a", "file": "/p/a.tex", "line": 1 }, { "label": "b", "file": "/p/a.tex", "line": 2 }],
+        "bibEntries": [{ "key": "k1" }, { "key": "k2" }],
+        "usedLabels": ["a"],
+        "usedCitations": ["k1"],
+        "citesEverything": true,
+        "isLoaded": true
+      },
+      "expect": { "unusedSources": [] }
+    },
+    {
+      "id": "hints-notLoaded",
+      "name": "Hinweise: ungenutzte Labels und Quellen aus dem Index; \\nocite{*} und fehlender Index",
+      "source": "swift/Tests/LatexEditorTests/ReferenceCheckTests.swift",
+      "sourceLine": 69,
+      "input": {
+        "op": "unusedHints",
+        "labels": [{ "label": "a", "file": "/p/a.tex", "line": 1 }, { "label": "b", "file": "/p/a.tex", "line": 2 }],
+        "bibEntries": [{ "key": "k1" }, { "key": "k2" }],
+        "usedLabels": ["a"],
+        "usedCitations": ["k1"],
+        "citesEverything": true,
+        "isLoaded": false
+      },
+      "expect": { "unusedLabels": [] }
+    },
+    {
+      "id": "projectCheck",
+      "name": "Offene Datei: unbekanntes Label und Zitat werden gefunden, bekannte nicht; Hinweise aus dem Index",
+      "source": "swift/Tests/LatexEditorTests/ReferenceCheckTests.swift",
+      "sourceLine": 237,
+      "input": {
+        "op": "projectCheck",
+        "files": [
+          { "path": "main.tex", "text": "\\documentclass{report}\n\\bibliography{lit}\n\\begin{document}\n\\input{kapitel}\n\\end{document}\n" },
+          { "path": "kapitel.tex", "text": "\\chapter{A}\\label{cha:a}\nSiehe \\ref{cha:a}, \\ref{cha:fehlt} und \\cite{bekannt,unbekannt}.\n\\label{ungenutzt}\n" },
+          { "path": "lit.bib", "text": "@book{bekannt, title={Eins}}\n@book{nichtzitiert, title={Zwei}}\n" }
+        ],
+        "checkFile": "kapitel.tex"
+      },
+      "expect": {
+        "problemKeys": ["cha:fehlt", "unbekannt"],
+        "unusedLabels": ["ungenutzt"],
+        "unusedSources": [{ "key": "nichtzitiert", "file": "lit.bib", "line": 2 }]
+      }
+    },
+    {
+      "id": "projectCheck-unsavedLabel",
+      "name": "Offene Datei: unbekanntes Label und Zitat werden gefunden, bekannte nicht; Hinweise aus dem Index",
+      "source": "swift/Tests/LatexEditorTests/ReferenceCheckTests.swift",
+      "sourceLine": 237,
+      "input": {
+        "op": "projectCheck",
+        "files": [
+          { "path": "main.tex", "text": "\\documentclass{report}\n\\bibliography{lit}\n\\begin{document}\n\\input{kapitel}\n\\end{document}\n" },
+          { "path": "kapitel.tex", "text": "\\chapter{A}\\label{cha:a}\nSiehe \\ref{cha:a}, \\ref{cha:fehlt} und \\cite{bekannt,unbekannt}.\n\\label{ungenutzt}\n" },
+          { "path": "lit.bib", "text": "@book{bekannt, title={Eins}}\n@book{nichtzitiert, title={Zwei}}\n" }
+        ],
+        "checkFile": "kapitel.tex",
+        "openTexts": {
+          "kapitel.tex": "\\chapter{A}\\label{cha:a}\nSiehe \\ref{cha:a}, \\ref{cha:fehlt} und \\cite{bekannt,unbekannt}.\n\\label{ungenutzt}\n\\label{cha:fehlt}\n"
+        }
+      },
+      "expect": { "problemKeys": ["unbekannt"] }
+    },
+    {
+      "id": "duplicateLabelMarks",
+      "name": "Doppelte Labels: beide Stellen warnen, Meldung nennt die andere",
+      "source": "swift/Tests/LatexEditorTests/SyntaxCheckerTests.swift",
+      "sourceLine": 89,
+      "input": {
+        "op": "duplicateMarks",
+        "labels": [
+          { "label": "x", "file": "/tmp/a.tex", "line": 1 },
+          { "label": "x", "file": "/tmp/b.tex", "line": 7 },
+          { "label": "y", "file": "/tmp/a.tex", "line": 2 }
+        ],
+        "file": "/tmp/a.tex",
+        "text": "\\label{x}\n\\label{y}\n"
+      },
+      "expect": {
+        "duplicateKeys": ["x"],
+        "count": 1,
+        "severity": "warning",
+        "rangeTexts": ["x"],
+        "messageContains": "b.tex, Zeile 7"
+      }
+    },
+    {
+      "id": "duplicateInSameFile",
+      "name": "Zwei Labels derselben Datei verweisen aufeinander",
+      "source": "swift/Tests/LatexEditorTests/SyntaxCheckerTests.swift",
+      "sourceLine": 104,
+      "input": {
+        "op": "duplicateMarks",
+        "labels": [{ "label": "x", "file": "/tmp/a.tex", "line": 1 }, { "label": "x", "file": "/tmp/a.tex", "line": 3 }],
+        "file": "/tmp/a.tex",
+        "text": "\\label{x}\n\n\\label{x}"
+      },
+      "expect": { "messagePlaces": [3, 1] }
+    },
+    {
+      "id": "storeDiagnostics-duplicates",
+      "name": "Store: Syntaxfehler und doppelte Labels pro Datei, auch ohne gelesenen Index",
+      "source": "swift/Tests/LatexEditorTests/SyntaxCheckerTests.swift",
+      "sourceLine": 112,
+      "input": {
+        "op": "duplicateMarks",
+        "labels": [{ "label": "l", "file": "/tmp/kapitel.tex", "line": 1 }, { "label": "l", "file": "/tmp/kapitel.tex", "line": 2 }],
+        "file": "/tmp/zwei.tex",
+        "text": "\\label{l}\n\\label{l}\n"
+      },
+      "expect": { "count": 2 }
+    },
+    {
+      "id": "duplicateList",
+      "name": "Sidebar-Liste: mehrfach definierte Labels aus dem Index",
+      "source": "swift/Tests/LatexEditorTests/SyntaxCheckerTests.swift",
+      "sourceLine": 131,
+      "input": {
+        "op": "duplicateList",
+        "labels": [
+          { "label": "d", "file": "/p/a.tex", "line": 1 },
+          { "label": "d", "file": "/p/a.tex", "line": 5 },
+          { "label": "e", "file": "/p/a.tex", "line": 2 }
+        ],
+        "isLoaded": true
+      },
+      "expect": { "lines": [1, 5] }
+    },
+    {
+      "id": "duplicateList-notLoaded",
+      "name": "Sidebar-Liste: mehrfach definierte Labels aus dem Index",
+      "source": "swift/Tests/LatexEditorTests/SyntaxCheckerTests.swift",
+      "sourceLine": 131,
+      "input": {
+        "op": "duplicateList",
+        "labels": [
+          { "label": "d", "file": "/p/a.tex", "line": 1 },
+          { "label": "d", "file": "/p/a.tex", "line": 5 },
+          { "label": "e", "file": "/p/a.tex", "line": 2 }
+        ],
+        "isLoaded": false
+      },
+      "expect": { "lines": [] }
+    },
+    {
+      "id": "label",
+      "name": "Label: Definition zuerst erkennbar, Verweise mit Zeile und Auszug",
+      "source": "swift/Tests/LatexEditorTests/UsageFinderTests.swift",
+      "sourceLine": 10,
+      "input": {
+        "op": "usages",
+        "kind": "label",
+        "name": "fig:a",
+        "text": "Einleitung\n\\begin{figure}\n\t\\label{fig:a}\n\\end{figure}\nSiehe \\ref{fig:a} und \\autoref{fig:a}, \\ref{fig:b}.\n",
+        "path": "/p/a.tex"
+      },
+      "expect": {
+        "lines": [3, 5, 5],
+        "isDefinition": [true, false, false],
+        "excerpts": { "0": "\\label{fig:a}" },
+        "differentIds": [[1, 2]],
+        "matchTexts": { "1": "fig:a" }
+      }
+    },
+    {
+      "id": "citation-tex",
+      "name": "Quelle: Eintrag in der .bib ist die Definition, \\cite sind Verwendungen",
+      "source": "swift/Tests/LatexEditorTests/UsageFinderTests.swift",
+      "sourceLine": 22,
+      "input": { "op": "usages", "kind": "citation", "name": "knuth", "text": "Wie \\cite{knuth, lamport} zeigt.", "path": "/p/a.tex" },
+      "expect": { "count": 1, "isDefinition": [false] }
+    },
+    {
+      "id": "citation-bib",
+      "name": "Quelle: Eintrag in der .bib ist die Definition, \\cite sind Verwendungen",
+      "source": "swift/Tests/LatexEditorTests/UsageFinderTests.swift",
+      "sourceLine": 22,
+      "input": { "op": "usages", "kind": "citation", "name": "knuth", "text": "@book{knuth,\n  title = {TAOCP}\n}\n", "path": "/p/lit.bib" },
+      "expect": { "isDefinition": [true] }
+    },
+    {
+      "id": "acronym",
+      "name": "Abkürzung: \\newacronym ist die Definition",
+      "source": "swift/Tests/LatexEditorTests/UsageFinderTests.swift",
+      "sourceLine": 32,
+      "input": {
+        "op": "usages",
+        "kind": "acronym",
+        "name": "api",
+        "text": "\\newacronym{api}{API}{Application Programming Interface}\nDie \\gls{api} und \\acrshort{api}.\n",
+        "path": "/p/a.tex"
+      },
+      "expect": { "isDefinition": [true, false, false] }
+    },
+    {
+      "id": "definitions-command",
+      "name": "Befehl und Umgebung: \\newcommand bzw. \\newenvironment sind Definitionen",
+      "source": "swift/Tests/LatexEditorTests/UsageFinderTests.swift",
+      "sourceLine": 39,
+      "input": {
+        "op": "usages",
+        "kind": "command",
+        "name": "tool",
+        "text": "\\newcommand{\\tool}[1]{\\textsf{#1}}\n\\tool{x} \\tool{y}\n\\newenvironment{box}{}{}\n\\begin{box}\\end{box}\n",
+        "path": "/p/a.tex"
+      },
+      "expect": { "isDefinition": [true, false, false] }
+    },
+    {
+      "id": "definitions-environment",
+      "name": "Befehl und Umgebung: \\newcommand bzw. \\newenvironment sind Definitionen",
+      "source": "swift/Tests/LatexEditorTests/UsageFinderTests.swift",
+      "sourceLine": 39,
+      "input": {
+        "op": "usages",
+        "kind": "environment",
+        "name": "box",
+        "text": "\\newcommand{\\tool}[1]{\\textsf{#1}}\n\\tool{x} \\tool{y}\n\\newenvironment{box}{}{}\n\\begin{box}\\end{box}\n",
+        "path": "/p/a.tex"
+      },
+      "expect": { "firstIsDefinition": true, "restAreNotDefinitions": true }
+    },
+    {
+      "id": "longLine",
+      "name": "Lange Zeilen: Ausschnitt um den Treffer mit Auslassungszeichen",
+      "source": "swift/Tests/LatexEditorTests/UsageFinderTests.swift",
+      "sourceLine": 49,
+      "input": {
+        "op": "usages",
+        "kind": "label",
+        "name": "ziel",
+        "text": "wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort wort \\ref{ziel} rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest rest",
+        "path": "/p/a.tex"
+      },
+      "expect": { "excerptHasPrefix": "…", "excerptHasSuffix": "…", "excerptLengthAtMost": 142, "firstMatchText": "ziel" }
+    },
+    {
+      "id": "none",
+      "name": "Kein Vorkommen: leere Liste",
+      "source": "swift/Tests/LatexEditorTests/UsageFinderTests.swift",
+      "sourceLine": 59,
+      "input": { "op": "usages", "kind": "label", "name": "x", "text": "kein Label", "path": "/p/a.tex" },
+      "expect": { "isEmpty": true }
+    }
+  ]
+}

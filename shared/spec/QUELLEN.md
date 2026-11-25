@@ -86,3 +86,7 @@ Zeitbudget, Zufall, Fenster, Pixel, Prozesse: PerformanceTests, RobustnessTests,
 ## Status W3-1 (2026-11-25)
 
 `synctex.json` (SyncTeXTests, 30 Fälle aus 14 Tests, 3 übersprungen: Store-Nachladen, UserDefaults, MacTeX-Integration mit Process) ist umgesetzt; Referenzwerte stammen unverändert aus dem Swift-Test, Fixture `fixtures/two-chapters.synctex.gz`. Swift-Gegenprobe offen.
+
+## Status W4-1 / Vorarbeit W7-3 (2026-11-25)
+
+`completion.json`, `insertion.json`, `bibliography.json`, `references.json` und `writing.json` sind umgesetzt (Fallzahlen und Op-Listen: Tabelle in `README.md`); Swift-Gegenprobe (`SpecVectorTests`) offen. Übersprungen sind Tests mit AppKit, `sleep`, Dateisystem oder TeX. Die Fachvokabular-Listen liegen in `swift/Sources/LatexEditor/Syntax/TechnicalWords*.swift` und werden für die Web-Version als JSON extrahiert. Die Rechtschreibung nutzt in Swift `NSSpellChecker`; es gibt keinen eigenen Code dafür.

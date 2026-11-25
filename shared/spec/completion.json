@@ -1,0 +1,1461 @@
+{
+  "suite": "completion",
+  "version": 1,
+  "source": [
+    "swift/Tests/LatexEditorTests/CompletionTests.swift",
+    "swift/Tests/LatexEditorTests/CompletionOptionTests.swift"
+  ],
+  "notes": "Alle Offsets und Längen sind UTF-16-Einheiten (JavaScript-String-Indizes). Texte stehen ohne Cursor; wo der Cursor gebraucht wird, steht er als `|` in `input.marked` (das einzige `|`, es gehört nicht zum Text; Swift: erstes Vorkommen als Cursor, alle `|` entfernt) und, bei Ergebnissen eines Eingriffs, als Cursor-Marke in `expect.result`. Fehlende Schlüssel in `expect` werden nicht geprüft. Die Datei hat zwei Quellen; `cases[].source` nennt die jeweilige (CompletionTests.swift, CompletionOptionTests.swift), `sourceLine` bezieht sich darauf.\n\nKataloge (nicht hier kopiert, später als `catalog.json` extrahieren): Befehls- und Umgebungslisten `swift/Sources/LatexEditor/Completion/CommandCatalog.swift`; Optionen (graphics, floatPlacement, boxPosition, citation, standardClass, standardClasses, packages) `.../Completion/OptionCatalog.swift`; Tabelle Befehl → Argumentart `argumentCommands` in `.../Completion/CompletionContext.swift` (label: ref eqref pageref autoref Autoref cref Cref vref nameref labelcref cpageref; citation: cite citep citet citealp citeauthor citeyear citetitle parencite Parencite textcite Textcite autocite Autocite footcite fullcite nocite smartcite supercite; acronym: `Acronyms.useCommands` in `.../Model/Renaming.swift`; graphics: includegraphics; input: input include subfile includeonly; beginEnvironment: begin; endEnvironment: end). Die Fälle prüfen nur einzelne Einträge daraus.\n\n== op detectContext ==\ninput `{op, marked}`. Der Text ist `marked` ohne `|`, `cursor` die Position des `|`, `lineStart` der Anfang der Zeile, in der der Cursor steht (hinter dem letzten `\\n`/`\\r` vor dem Cursor, sonst 0). Alle Fälle hier sind einzeilig. expect `{context: null}` (kein Kontext) oder `{context: {...}}` mit beliebigen der Schlüssel: `kind` (`command`, `argument`, `option`), `argument` (bei kind argument: `label`, `citation`, `acronym`, `graphics`, `input`, `beginEnvironment`, `endEnvironment`), `target` (bei option: `graphics`, `floatPlacement`, `boxPosition`, `citation`, `documentClass`, `package`), `targetName` (bei documentClass/package der Name aus `]{name}` hinter dem Cursor, sonst \"\"), `key` (bei option: Schlüssel vor dem `=` oder `null`), `prefix` (bereits Getipptes), `range` `{location, length}` (zu ersetzender Bereich, UTF-16). `key: null` ist ein prüfbarer Wert (kein Schlüssel).\nAlgorithmus detect(text, cursor, lineStart): `null`, wenn cursor <= lineStart oder cursor > Länge. start = max(lineStart, cursor - 300). Nacheinander command, argument, option versuchen, das erste Ergebnis nehmen; ist es null oder liegt der Cursor in einem Kommentar (`isInComment(text, lineStart, cursor)` wie in latex-source.json: erstes nicht maskiertes `%` zwischen Zeilenanfang und Cursor, `\\%` zählt nicht), ist das Ergebnis null. Es wird nie vor `start` gelesen.\nisUnescapedBackslash(i): Anzahl direkt aufeinanderfolgender `\\` bis einschließlich Index i (rückwärts, nicht vor start) ist ungerade.\ncommand: wordStart = cursor, solange davor ein ASCII-Buchstabe (A-Z, a-z) steht, nach vorn schieben (nicht vor start). Es muss vor wordStart ein `\\` stehen (wordStart > start) und unescaped sein. prefix = Buchstaben, range = [wordStart, cursor).\nargument: argumentStart: rückwärts ab cursor; solange das Zeichen davor kein Leerzeichen/Tab ist: ist es `{` oder `,` -> Trenner gefunden (separator = dessen Index, Argumentanfang = Index+1); ist es `}` oder `\\` -> null; sonst weiter. Danach (am Leerraum angekommen) Leerzeichen/Tabs überspringen; davor muss `{` oder `,` stehen, sonst null (Leerraum ist also nur direkt nach `{` oder `,` erlaubt). Ist der Trenner ein `,`: rückwärts davor das öffnende `{` suchen (abbrechen mit null bei `}` oder `\\` oder Zeilen-/Suchstart). brace = Index des `{`. commandName(brace): ab brace rückwärts `[...]`-Gruppen überspringen (jedes `]` mit dem nächsten `[` davor paaren, sonst null), dann ein optionales `*`, dann Buchstaben; davor muss ein unescaped `\\` stehen; Name = die Buchstaben (ohne `*`). Name in `argumentCommands` nachschlagen, sonst null. Bei Trenner `,` ist nur Art label oder citation erlaubt, sonst null (`\\include{a,b|` -> null). Präfix: ab Argumentanfang Leerzeichen/Tabs überspringen, prefix = Rest bis cursor, range = [dort, cursor).\noption: optionStart: rückwärts ab cursor bis `[` oder `,` (Trenner); `]`, `{`, `}` -> null; `\\` ist erlaubt (Werte wie `0.8\\textwidth`). Ist der Trenner `,`, das davor liegende `[` suchen (einfach rückwärts das erste `[`), sonst null; bracket = dessen Index. Ziel (target) bestimmen: ab bracket rückwärts `[...]`-Gruppen überspringen; steht dann `}` davor, ist es eine Umgebung: Name aus `\\begin{name}` direkt davor (Zeichen rückwärts bis `{`, davor commandName == \"begin\"); float-Umgebungen figure, figure*, table, table*, program, algorithm, listing -> floatPlacement; tabular, tabular*, minipage, array -> boxPosition; sonst null. Andernfalls commandName(vor der Klammer): includegraphics -> graphics; documentclass -> documentClass(name); usepackage und RequirePackage -> package(name); ein Name, dessen Argumentart citation ist -> citation; sonst null (`\\section[`, `\\item[`, `\\begin{itemize}[`, `Text\\\\[` -> null, weil ein `\\\\` davor kein Befehlsanfang ist; auch `\\includegraphics[width=1cm] |` -> null, weil Leerzeichen hinter `]` zu keinem Trenner führt). name = nameAfterOptions: in der Zeile hinter dem Cursor (bis Zeilenende) das erste `]`, dahinter Leerzeichen überspringen, dann muss `{` folgen, dessen Inhalt bis zum ersten `}` (getrimmt) ist der Name; sonst \"\". Token = Text ab Tokenanfang (nach Überspringen von Leerzeichen/Tabs) bis cursor. Ohne `=` im Token: key null, prefix = Token, range = [Tokenanfang, cursor). Mit `=`: key = Text vor dem ersten `=` (getrimmt), prefix = Text nach dem `=` bis cursor, range = [Position hinter `=`, cursor).\n\n== op rank ==\ninput `{items: [{text, extra?}], prefix, limit?}` (alle Items haben die Art command; `extra` = zusätzlicher Suchtext, in diesen Fällen nie gesetzt). `limit` Standard 50. expect `texts` (vollständige Liste der `text` in Ergebnisreihenfolge) oder `count`. Leerer prefix: die ersten `limit` Items in Eingabereihenfolge. Sonst Punktzahl je Item (kleiner ist besser, ohne Punktzahl scheidet das Item aus): 0, wenn text mit prefix beginnt (Groß-/Kleinschreibung beachten); sonst in text.toLowerCase() alle Vorkommen von prefix.toLowerCase() prüfen: Vorkommen an Position 0 -> 1; Vorkommen an einer Wortanfangsposition -> 2 (sofort); sonst 3; kein Vorkommen und `extra` (kleingeschrieben) enthält prefix.toLowerCase() -> 4. Wortanfang = Position (UTF-16) eines Zeichens, dessen Vorgänger eines von `:` `-` `_` `/` `.` Leerzeichen ist oder das ein Großbuchstabe nach einem Kleinbuchstaben ist (die Position 0 ist keiner). Sortierung: Punktzahl aufsteigend, dann UTF-16-Länge von text aufsteigend, dann text aufsteigend (Codepunktreihenfolge); danach auf `limit` kürzen.\n\n== op apply ==\ninput `{op, marked, item}`; `marked` wie bei detectContext (der Kontext muss vorhanden sein, sonst ist der Fall ungültig). `item` `{kind, text, arguments?}`: kind `command`, `environment`, `label`, `citation`, `option`; Befehle werden mit der Fabrik aus `commandItem` gebaut (insertion = text + arguments, wenn arguments fehlt \"\"); alle anderen haben insertion = text, cursorOffset = null. Einrückeinheit der Umgebungs-Gerüste (`indentUnit`) ist in diesen Fällen der Tabulator `\\t` (Standard der Einstellungen). expect `{result, opensFollowUp?}`: `result` ist der Text nach der Ersetzung von `edit.range` durch `edit.text`, mit `|` an der Stelle `edit.selection.location` (Auswahllänge immer 0) eingefügt. `opensFollowUp` (optional geprüft): Folgeliste sofort zeigen. In den Fällen mit `opensFollowUp` ist der Wert aus dem Quelltext abgeleitet, nicht vom Swift-Test behauptet.\nFall context.kind command: Ersatz = insertion im Bereich context.range, Cursor = range.location + (cursorOffset ?? UTF-16-Länge(insertion)); opensFollowUp = (text ist in argumentCommands und insertion endet auf `{}`) oder insertion beginnt mit text + `[`.\nFall option (target egal, `value` = insertion): range = optionRange: ab context.range-Ende vorwärts bis `,`, `\\n`, `]`, `=` oder Textende; Beginn bleibt context.range.location (ersetzt also die ganze Option, auch den Teil hinter dem Cursor). Endet value auf `=`: steht schon ein `=` direkt hinter range, wird das `=` des Werts weggelassen (inserted = value ohne letztes Zeichen) und der Cursor hinter das vorhandene `=` gesetzt (range.location + Länge(inserted) + 1); sonst Cursor hinter inserted; opensFollowUp true. Sonst (Wert): rest = Text von Ende range bis Zeilenende; hat die Klammer nur einen Wert (target floatPlacement, boxPosition, citation) und rest enthält kein `]`, wird `]` an value angehängt; Cursor hinter inserted. Dieses target kommt hier aus detectContext (z. B. `\\begin{figure}[` -> floatPlacement, `\\cite[` -> citation, `\\includegraphics[`/`\\documentclass[` -> keine Einzelwerte).\nFall argument (label, citation, acronym, graphics, input, endEnvironment): argumentRange: ab context.range-Ende vorwärts bis `}` oder `,` (Zeichen dahinter = closer), `\\n` oder Textende (closer = keiner). Ersetzt wird [context.range.location, dort); inserted = value + (closer == keiner ? \"}\" : \"\"); Cursor = range.location + Länge(inserted) + (closer == `}` ? 1 : 0), steht also hinter der vorhandenen `}`; bei closer `,` bleibt das Komma stehen und der Cursor davor.\nFall argument beginEnvironment: name = insertion; argumentRange wie oben; afterClosing = Ende des Arguments + (closer == `}` ? 1 : 0); ersetzt wird [range.location, afterClosing). lineRange = Zeile des Cursors (inklusive Zeilenende), restOfLine = Text von afterClosing bis Zeilenende, indent = führende Leerzeichen/Tabs der Zeile, next = die folgende Zeile (\"\" am Textende). Ist restOfLine nach Trimmen (Leerraum und Zeilenumbrüche) nicht leer oder beginnt next nach Trimmen (Leerzeichen/Tabs) mit `\\end{name}`: inserted = name + `}`, Cursor dahinter (kein Gerüst). Sonst: body = `\\item ` für itemize, enumerate, description, sonst \"\"; head = name + `}\\n` + indent + indentUnit + body; inserted = head + `\\n` + indent + `\\end{name}`; Cursor = range.location + Länge(head).\n\n== op commandItem ==\ninput `{name, arguments?}` (arguments Standard \"\"). expect `{insertion, cursorOffset}`: insertion = name + arguments; cursorOffset = UTF-16-Länge(name) + Länge(arguments bis einschließlich dem ersten `{` oder `[`), `null`, wenn arguments keines davon enthält. Die Werte sind aus dem Quelltext abgeleitet (der Swift-Test prüft sie über `apply`).\n\n== op definedCommands / definedEnvironments ==\ninput `{text}`; expect `{names}`: Namen als Menge (Reihenfolge egal, keine Duplikate). Zuerst Kommentare unkenntlich machen (`LatexComments.masking`, siehe latex-source.json), dann alle Treffer sammeln. Befehle, Regex (ICU/JS gleich): `\\\\(?:newcommand|renewcommand|providecommand|DeclareRobustCommand|NewDocumentCommand|DeclareMathOperator|def)\\*?\\s*\\{?\\\\([A-Za-z]+)(?![A-Za-z@])`, Gruppe 1. Umgebungen: `\\\\(?:newenvironment|renewenvironment|NewDocumentEnvironment|lstnewenvironment|newtheorem|begin)\\*?\\s*\\{([A-Za-z]+\\*?)\\}`, Gruppe 1. (Das Lookahead schließt `\\intern@x` aus.)\n\n== op openEnvironments ==\ninput `{text, at: \"end\"}` (Cursor = Textende). expect `stack` (außen zuerst; Liste der offenen Umgebungsnamen) und optional `suggestionsForEnd` (die Vorschläge für `\\end{`: der Stapel umgekehrt, innerste zuerst). Regex `\\\\(begin|end)\\s*\\{([^}]*)\\}` im Bereich [max(0, cursor-200000), cursor); Treffer in Kommentaren (`isInComment` ab Zeilenanfang des Treffers) zählen nicht; begin schiebt den Namen auf den Stapel, end entfernt den letzten gleichnamigen Eintrag samt allem darüber (ohne Treffer: nichts).\n\n== op scanOptions ==\ninput `{files: {Dateiname: Text}}` (nur `.cls`/`.sty`, in der Reihenfolge des Objekts; Schlüssel = Name mit Endung). expect `{package, keys?, absentKeys?, flags?}`: geprüft wird der Eintrag `package` des Ergebnisses (Dateiname ohne Endung -> Optionen `{flags, keys}`); `keys` je genannter Schlüssel die vollständige Wertliste in Reihenfolge, `absentKeys` Schlüssel, die nicht vorkommen dürfen, `flags` vollständige Liste. Dateien ohne Optionen (keine Schalter, keine Schlüssel) erscheinen nicht im Ergebnis.\noptions(text) je Datei: flags = alle `\\DeclareOption\\{([^}#\\\\]+)\\}` (Gruppe 1) in Reihenfolge. Schlüssel: Text mit Kommentarmaskierung zeilenweise lesen; je Zeile Regex `^\\s*([A-Za-z]+)\\.code\\s*=` setzt den aktuellen Schlüssel (in Reihenfolge des ersten Auftretens aufnehmen); enthält eine Zeile `WarnDeprecatedOption`, ist der aktuelle Schlüssel veraltet (die Zeile kann auch eine Folgezeile desselben Schlüssels sein); veraltete Schlüssel werden ausgelassen. Schlüssel starten mit leerer Wertliste. Für leere Schlüssel mit `^\\s*([A-Za-z]+)\\.default:n` (maskierter Text): Werte `[\"true\",\"false\"]`. Je `\\\\@RegisterClassOption\\{([A-Za-z]+)\\}\\{([^}]+)\\}` (maskierter Text), dessen Schlüssel bekannt ist: Wert anhängen (Reihenfolge des Auftretens).\nscan(files): Danach für jeden Schlüssel mit leerer Wertliste: `hgbValues[key]`, sonst `globalValues[key]`, sonst bleibt leer. globalValues: aus allen Dateien (Reihenfolge), je Kommentarzeile (Regex auf dem unmaskierten Text) `%\\s*([A-Za-z]+)=([A-Za-z0-9]+(?:\\|[A-Za-z0-9]+)+)`: Schlüssel -> Werte an `|` getrennt; der erste Fund je Schlüssel gilt. hgbValues: `theme` = alle Dateinamen (ohne Endung) mit Präfix `hgbtheme-`, Präfix entfernt, sortiert (auch wenn die Datei leer ist); `degree` = Gruppe 1 jedes `\\\\hgbDefineDegree\\{([A-Za-z-]+)\\}` (maskierter Text) über alle Dateien in Dateien- und Textreihenfolge; beide nur gesetzt, wenn nicht leer.\n\n== op optionItems ==\ninput `{target, name?, key?, styleFiles?}`: `target` wie bei detectContext (`graphics`, `floatPlacement`, `boxPosition`, `citation`, `documentClass`, `package`), `name` für documentClass/package (\"\" wenn fehlt), `key` optional, `styleFiles` `{Dateiname: Text}` (nur .cls/.sty des Projekts, Eingabe für scanOptions; fehlt = leer). expect: `texts` (vollständige Liste der Vorschlags-Texte), `contains` (Liste, jedes Element muss vorkommen), `first` (erster Text). Optionen je target: graphics/floatPlacement/boxPosition/citation = gleichnamige Katalogeinträge `OptionCatalog.*`; documentClass(name) = scan[name] (leer, wenn unbekannt) vereinigt mit `OptionCatalog.standardClass`, wenn name in `standardClasses` (article, report, book, scrartcl, scrreprt, scrbook, \"\"); package(name) = scan[name] vereinigt mit `OptionCatalog.packages[name]` (leer, wenn unbekannt). Vereinigung `merged`: Schalter von rechts anhängen, falls neu; je Schlüssel Werte von rechts anhängen, falls neu; Hinweise: links gewinnt. Vorschläge: mit `key`: die Werte dieses Schlüssels (leer, wenn unbekannt); ohne `key`: erst alle Schlüssel sortiert (Codepunktreihenfolge) als `Schlüssel=`, dann alle Schalter in Reihenfolge.",
+  "skipped": [
+    {
+      "name": "Bilder relativ zu \\graphicspath, Dateien relativ zur Hauptdatei ohne .tex, Makros der Vorlage",
+      "reason": "Dateisystem (TemporaryProject), CompletionIndex.build und ProjectCatalog; Pfad- und Labelkatalog gehören nicht in diese Suite",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "sourceLine": 139
+    },
+    {
+      "name": "Labels auch aus ungespeicherten Dateien; \\end schlägt die innerste offene Umgebung zuerst vor (Rest)",
+      "reason": "Labels/Befehle über CompletionProvider mit Index aus Dateisystem und unsavedDocuments-Closure; nur der \\end-Teil steht als items-endEnvironments in cases",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "sourceLine": 168
+    },
+    {
+      "name": "\\ref{ tippen: Liste mit Labels, Weitertippen filtert, Return übernimmt als ein Undo-Schritt",
+      "reason": "Echter Editor (EditorCoordinator, NSWindow, CompletionController), Task.sleep und Tasteneingaben; kein reines Verhalten (AppKit, sleep, Undo)",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "sourceLine": 234
+    },
+    {
+      "name": "Befehl: \\beg + Tab → \\begin{} und gleich die Umgebungen; ↓ und Return fügen das Gerüst ein",
+      "reason": "Echter Editor (EditorCoordinator, NSWindow, CompletionController), Task.sleep und Tasteneingaben; kein reines Verhalten (AppKit, sleep)",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "sourceLine": 256
+    },
+    {
+      "name": "Esc schließt; Esc ohne Liste öffnet sie von Hand; ↑↓ wählen; Klick daneben schließt",
+      "reason": "Echter Editor (EditorCoordinator, NSWindow, CompletionController), Task.sleep und Tasteneingaben; kein reines Verhalten (AppKit, sleep)",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "sourceLine": 273
+    },
+    {
+      "name": "Nach mehreren Filterschritten zeigt das Popup genau die aktuellen Treffer (keine Reste früherer Zeilen)",
+      "reason": "Pixelvergleich von SwiftUI/AppKit-Rendering, sleep",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "sourceLine": 298
+    },
+    {
+      "name": "Nicht in Kommentaren, nicht bei abgeschalteter Automatik, nicht bei Einfügen größerer Texte",
+      "reason": "Echter Editor (EditorCoordinator, NSWindow, CompletionController), Task.sleep und Tasteneingaben; kein reines Verhalten; der Kommentar-Teil steht als comments-1 bis comments-3 in cases",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "sourceLine": 330
+    },
+    {
+      "name": "Index beim Öffnen des Projekts gelesen und nach dem Speichern aktualisiert",
+      "reason": "AppModel, Dateisystem, Speichern und Warteschleife mit sleep",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "sourceLine": 351
+    },
+    {
+      "name": "\\includegraphics[ → width= → Werte → Wert übernehmen; \\begin{figure}[ → H mit ]",
+      "reason": "Echter Editor (EditorCoordinator, NSWindow, CompletionController), Task.sleep und Tasteneingaben; kein reines Verhalten (AppKit, sleep)",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "sourceLine": 140
+    }
+  ],
+  "cases": [
+    {
+      "id": "commands-1",
+      "name": "Befehle: nach \\ und Buchstaben, nicht nach \\\\ (Zeilenumbruch)",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "Text \\sec|"
+      },
+      "expect": {
+        "context": {
+          "kind": "command",
+          "prefix": "sec"
+        }
+      },
+      "sourceLine": 17
+    },
+    {
+      "id": "commands-2",
+      "name": "Befehle: nach \\ und Buchstaben, nicht nach \\\\ (Zeilenumbruch)",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "Text \\|"
+      },
+      "expect": {
+        "context": {
+          "prefix": ""
+        }
+      },
+      "sourceLine": 17
+    },
+    {
+      "id": "commands-3",
+      "name": "Befehle: nach \\ und Buchstaben, nicht nach \\\\ (Zeilenumbruch)",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "a\\\\sec|"
+      },
+      "expect": {
+        "context": null
+      },
+      "sourceLine": 17
+    },
+    {
+      "id": "commands-4",
+      "name": "Befehle: nach \\ und Buchstaben, nicht nach \\\\ (Zeilenumbruch)",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "a\\\\\\sec|"
+      },
+      "expect": {
+        "context": {
+          "prefix": "sec"
+        }
+      },
+      "sourceLine": 17
+    },
+    {
+      "id": "commands-5",
+      "name": "Befehle: nach \\ und Buchstaben, nicht nach \\\\ (Zeilenumbruch)",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "50\\% \\emph|"
+      },
+      "expect": {
+        "context": {
+          "prefix": "emph"
+        }
+      },
+      "sourceLine": 17
+    },
+    {
+      "id": "commands-6",
+      "name": "Befehle: nach \\ und Buchstaben, nicht nach \\\\ (Zeilenumbruch)",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "einfach Text|"
+      },
+      "expect": {
+        "context": null
+      },
+      "sourceLine": 17
+    },
+    {
+      "id": "arguments-1",
+      "name": "Argumente bekannter Befehle, auch mit optionalen Argumenten und Stern",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "siehe \\ref{fig:|"
+      },
+      "expect": {
+        "context": {
+          "kind": "argument",
+          "argument": "label",
+          "prefix": "fig:"
+        }
+      },
+      "sourceLine": 28
+    },
+    {
+      "id": "arguments-2",
+      "name": "Argumente bekannter Befehle, auch mit optionalen Argumenten und Stern",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\cite[S.~3]{knu|"
+      },
+      "expect": {
+        "context": {
+          "kind": "argument",
+          "argument": "citation"
+        }
+      },
+      "sourceLine": 28
+    },
+    {
+      "id": "arguments-3",
+      "name": "Argumente bekannter Befehle, auch mit optionalen Argumenten und Stern",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\includegraphics[width=.5\\textwidth]{bil|"
+      },
+      "expect": {
+        "context": {
+          "kind": "argument",
+          "argument": "graphics"
+        }
+      },
+      "sourceLine": 28
+    },
+    {
+      "id": "arguments-4",
+      "name": "Argumente bekannter Befehle, auch mit optionalen Argumenten und Stern",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\include{|"
+      },
+      "expect": {
+        "context": {
+          "kind": "argument",
+          "argument": "input"
+        }
+      },
+      "sourceLine": 28
+    },
+    {
+      "id": "arguments-5",
+      "name": "Argumente bekannter Befehle, auch mit optionalen Argumenten und Stern",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\t\\begin{ite|"
+      },
+      "expect": {
+        "context": {
+          "kind": "argument",
+          "argument": "beginEnvironment"
+        }
+      },
+      "sourceLine": 28
+    },
+    {
+      "id": "arguments-6",
+      "name": "Argumente bekannter Befehle, auch mit optionalen Argumenten und Stern",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\end{|"
+      },
+      "expect": {
+        "context": {
+          "kind": "argument",
+          "argument": "endEnvironment"
+        }
+      },
+      "sourceLine": 28
+    },
+    {
+      "id": "arguments-7-unknownCommand",
+      "name": "Argumente bekannter Befehle, auch mit optionalen Argumenten und Stern",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\section*{Titel|"
+      },
+      "expect": {
+        "context": null
+      },
+      "sourceLine": 28
+    },
+    {
+      "id": "arguments-8-closedBrace",
+      "name": "Argumente bekannter Befehle, auch mit optionalen Argumenten und Stern",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\ref{a} und |"
+      },
+      "expect": {
+        "context": null
+      },
+      "sourceLine": 28
+    },
+    {
+      "id": "lists-1",
+      "name": "Listen nur bei Zitaten und Labels; Leerzeichen nach dem Komma gehören nicht zum Präfix",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\cite{knuth, lam|"
+      },
+      "expect": {
+        "context": {
+          "kind": "argument",
+          "argument": "citation",
+          "prefix": "lam"
+        }
+      },
+      "sourceLine": 41
+    },
+    {
+      "id": "lists-2",
+      "name": "Listen nur bei Zitaten und Labels; Leerzeichen nach dem Komma gehören nicht zum Präfix",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\cref{a,b|"
+      },
+      "expect": {
+        "context": {
+          "prefix": "b"
+        }
+      },
+      "sourceLine": 41
+    },
+    {
+      "id": "lists-3",
+      "name": "Listen nur bei Zitaten und Labels; Leerzeichen nach dem Komma gehören nicht zum Präfix",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\include{a,b|"
+      },
+      "expect": {
+        "context": null
+      },
+      "sourceLine": 41
+    },
+    {
+      "id": "comments-1",
+      "name": "Nicht in Kommentaren, aber nach maskiertem %",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "% \\ref{|"
+      },
+      "expect": {
+        "context": null
+      },
+      "sourceLine": 50
+    },
+    {
+      "id": "comments-2",
+      "name": "Nicht in Kommentaren, aber nach maskiertem %",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "Text % \\sec|"
+      },
+      "expect": {
+        "context": null
+      },
+      "sourceLine": 50
+    },
+    {
+      "id": "comments-3",
+      "name": "Nicht in Kommentaren, aber nach maskiertem %",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "50\\% \\ref{|"
+      },
+      "expect": {
+        "context": {
+          "kind": "argument",
+          "argument": "label"
+        }
+      },
+      "sourceLine": 50
+    },
+    {
+      "id": "utf16Range",
+      "name": "Bereich in UTF-16, auch hinter Emoji und Umlauten",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "Größe 😀 \\ref{ab|"
+      },
+      "expect": {
+        "context": {
+          "range": {
+            "location": 14,
+            "length": 2
+          }
+        }
+      },
+      "sourceLine": 57
+    },
+    {
+      "id": "ranking-1",
+      "name": "Anfang vor Anfang ohne Groß-/Kleinschreibung vor Wortanfang vor enthalten; kürzer zuerst",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "rank",
+        "items": [
+          {
+            "text": "section"
+          },
+          {
+            "text": "subsection"
+          },
+          {
+            "text": "Section"
+          },
+          {
+            "text": "textsection"
+          },
+          {
+            "text": "sectionmark"
+          },
+          {
+            "text": "fig:ablauf"
+          },
+          {
+            "text": "cha:einleitung"
+          }
+        ],
+        "prefix": "sec"
+      },
+      "expect": {
+        "texts": [
+          "section",
+          "sectionmark",
+          "Section",
+          "subsection",
+          "textsection"
+        ]
+      },
+      "sourceLine": 69
+    },
+    {
+      "id": "ranking-2",
+      "name": "Anfang vor Anfang ohne Groß-/Kleinschreibung vor Wortanfang vor enthalten; kürzer zuerst",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "rank",
+        "items": [
+          {
+            "text": "section"
+          },
+          {
+            "text": "subsection"
+          },
+          {
+            "text": "Section"
+          },
+          {
+            "text": "textsection"
+          },
+          {
+            "text": "sectionmark"
+          },
+          {
+            "text": "fig:ablauf"
+          },
+          {
+            "text": "cha:einleitung"
+          }
+        ],
+        "prefix": "einl"
+      },
+      "expect": {
+        "texts": [
+          "cha:einleitung"
+        ]
+      },
+      "sourceLine": 69
+    },
+    {
+      "id": "ranking-3",
+      "name": "Anfang vor Anfang ohne Groß-/Kleinschreibung vor Wortanfang vor enthalten; kürzer zuerst",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "rank",
+        "items": [
+          {
+            "text": "section"
+          },
+          {
+            "text": "subsection"
+          },
+          {
+            "text": "Section"
+          },
+          {
+            "text": "textsection"
+          },
+          {
+            "text": "sectionmark"
+          },
+          {
+            "text": "fig:ablauf"
+          },
+          {
+            "text": "cha:einleitung"
+          }
+        ],
+        "prefix": "abl"
+      },
+      "expect": {
+        "texts": [
+          "fig:ablauf"
+        ]
+      },
+      "sourceLine": 69
+    },
+    {
+      "id": "ranking-4",
+      "name": "Anfang vor Anfang ohne Groß-/Kleinschreibung vor Wortanfang vor enthalten; kürzer zuerst",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "rank",
+        "items": [
+          {
+            "text": "section"
+          },
+          {
+            "text": "subsection"
+          },
+          {
+            "text": "Section"
+          },
+          {
+            "text": "textsection"
+          },
+          {
+            "text": "sectionmark"
+          },
+          {
+            "text": "fig:ablauf"
+          },
+          {
+            "text": "cha:einleitung"
+          }
+        ],
+        "prefix": "xyz"
+      },
+      "expect": {
+        "texts": []
+      },
+      "sourceLine": 69
+    },
+    {
+      "id": "emptyPrefixAndLimit-1",
+      "name": "Ohne Präfix bleibt die Reihenfolge, die Grenze gilt",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "rank",
+        "items": [
+          {
+            "text": "section"
+          },
+          {
+            "text": "subsection"
+          },
+          {
+            "text": "Section"
+          },
+          {
+            "text": "textsection"
+          },
+          {
+            "text": "sectionmark"
+          },
+          {
+            "text": "fig:ablauf"
+          },
+          {
+            "text": "cha:einleitung"
+          }
+        ],
+        "prefix": ""
+      },
+      "expect": {
+        "texts": [
+          "section",
+          "subsection",
+          "Section",
+          "textsection",
+          "sectionmark",
+          "fig:ablauf",
+          "cha:einleitung"
+        ]
+      },
+      "sourceLine": 77
+    },
+    {
+      "id": "emptyPrefixAndLimit-2",
+      "name": "Ohne Präfix bleibt die Reihenfolge, die Grenze gilt",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "rank",
+        "items": [
+          {
+            "text": "section"
+          },
+          {
+            "text": "subsection"
+          },
+          {
+            "text": "Section"
+          },
+          {
+            "text": "textsection"
+          },
+          {
+            "text": "sectionmark"
+          },
+          {
+            "text": "fig:ablauf"
+          },
+          {
+            "text": "cha:einleitung"
+          }
+        ],
+        "prefix": "s",
+        "limit": 2
+      },
+      "expect": {
+        "count": 2
+      },
+      "sourceLine": 77
+    },
+    {
+      "id": "command-1",
+      "name": "Befehl mit Gerüst: Cursor im ersten Argument",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "apply",
+        "marked": "\\sec|",
+        "item": {
+          "kind": "command",
+          "text": "section",
+          "arguments": "{}"
+        }
+      },
+      "expect": {
+        "result": "\\section{|}",
+        "opensFollowUp": false
+      },
+      "sourceLine": 95
+    },
+    {
+      "id": "command-2",
+      "name": "Befehl mit Gerüst: Cursor im ersten Argument",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "apply",
+        "marked": "\\ci|",
+        "item": {
+          "kind": "command",
+          "text": "cite",
+          "arguments": "[]{}"
+        }
+      },
+      "expect": {
+        "result": "\\cite[|]{}",
+        "opensFollowUp": true
+      },
+      "sourceLine": 95
+    },
+    {
+      "id": "command-3",
+      "name": "Befehl mit Gerüst: Cursor im ersten Argument",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "apply",
+        "marked": "\\cen|",
+        "item": {
+          "kind": "command",
+          "text": "centering"
+        }
+      },
+      "expect": {
+        "result": "\\centering|",
+        "opensFollowUp": false
+      },
+      "sourceLine": 95
+    },
+    {
+      "id": "command-item-1",
+      "name": "Befehl mit Gerüst: Cursor im ersten Argument (Gerüst-Werte)",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "commandItem",
+        "name": "section",
+        "arguments": "{}"
+      },
+      "expect": {
+        "insertion": "section{}",
+        "cursorOffset": 8
+      },
+      "sourceLine": 95
+    },
+    {
+      "id": "command-item-2",
+      "name": "Befehl mit Gerüst: Cursor im ersten Argument (Gerüst-Werte)",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "commandItem",
+        "name": "cite",
+        "arguments": "[]{}"
+      },
+      "expect": {
+        "insertion": "cite[]{}",
+        "cursorOffset": 5
+      },
+      "sourceLine": 95
+    },
+    {
+      "id": "command-item-3",
+      "name": "Befehl mit Gerüst: Cursor im ersten Argument (Gerüst-Werte)",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "commandItem",
+        "name": "centering"
+      },
+      "expect": {
+        "insertion": "centering",
+        "cursorOffset": null
+      },
+      "sourceLine": 95
+    },
+    {
+      "id": "argument-1",
+      "name": "Argument: ersetzt das ganze Wort, schließt die Klammer nur, wenn sie fehlt; Komma bleibt",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "apply",
+        "marked": "\\ref{fig:a|",
+        "item": {
+          "kind": "label",
+          "text": "fig:ablauf"
+        }
+      },
+      "expect": {
+        "result": "\\ref{fig:ablauf}|"
+      },
+      "sourceLine": 102
+    },
+    {
+      "id": "argument-2",
+      "name": "Argument: ersetzt das ganze Wort, schließt die Klammer nur, wenn sie fehlt; Komma bleibt",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "apply",
+        "marked": "\\ref{fig:a|bc}",
+        "item": {
+          "kind": "label",
+          "text": "fig:ablauf"
+        }
+      },
+      "expect": {
+        "result": "\\ref{fig:ablauf}|"
+      },
+      "sourceLine": 102
+    },
+    {
+      "id": "argument-3",
+      "name": "Argument: ersetzt das ganze Wort, schließt die Klammer nur, wenn sie fehlt; Komma bleibt",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "apply",
+        "marked": "\\cite{knuth,la|,x}",
+        "item": {
+          "kind": "citation",
+          "text": "lamport"
+        }
+      },
+      "expect": {
+        "result": "\\cite{knuth,lamport|,x}"
+      },
+      "sourceLine": 102
+    },
+    {
+      "id": "environments-1",
+      "name": "\\begin: Gerüst mit \\end, eingerückt wie die Zeile; Listen mit \\item; kein doppeltes \\end",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "apply",
+        "marked": "\t\\begin{it|",
+        "item": {
+          "kind": "environment",
+          "text": "itemize"
+        }
+      },
+      "expect": {
+        "result": "\t\\begin{itemize}\n\t\t\\item |\n\t\\end{itemize}"
+      },
+      "sourceLine": 111
+    },
+    {
+      "id": "environments-2",
+      "name": "\\begin: Gerüst mit \\end, eingerückt wie die Zeile; Listen mit \\item; kein doppeltes \\end",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "apply",
+        "marked": "\\begin{fi|}",
+        "item": {
+          "kind": "environment",
+          "text": "figure"
+        }
+      },
+      "expect": {
+        "result": "\\begin{figure}\n\t|\n\\end{figure}"
+      },
+      "sourceLine": 111
+    },
+    {
+      "id": "environments-3-endExists",
+      "name": "\\begin: Gerüst mit \\end, eingerückt wie die Zeile; Listen mit \\item; kein doppeltes \\end",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "apply",
+        "marked": "\\begin{it|}\n\\end{itemize}",
+        "item": {
+          "kind": "environment",
+          "text": "itemize"
+        }
+      },
+      "expect": {
+        "result": "\\begin{itemize}|\n\\end{itemize}"
+      },
+      "sourceLine": 111
+    },
+    {
+      "id": "environments-4-textFollows",
+      "name": "\\begin: Gerüst mit \\end, eingerückt wie die Zeile; Listen mit \\item; kein doppeltes \\end",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "apply",
+        "marked": "\\begin{it|} danach",
+        "item": {
+          "kind": "environment",
+          "text": "itemize"
+        }
+      },
+      "expect": {
+        "result": "\\begin{itemize}| danach"
+      },
+      "sourceLine": 111
+    },
+    {
+      "id": "environments-5-end",
+      "name": "\\begin: Gerüst mit \\end, eingerückt wie die Zeile; Listen mit \\item; kein doppeltes \\end",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "apply",
+        "marked": "\\end{it|",
+        "item": {
+          "kind": "environment",
+          "text": "itemize"
+        }
+      },
+      "expect": {
+        "result": "\\end{itemize}|"
+      },
+      "sourceLine": 111
+    },
+    {
+      "id": "definitions-commands",
+      "name": "Eigene Makros und Umgebungen aus .tex und .sty, keine internen mit @, keine aus Kommentaren",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "definedCommands",
+        "text": "\\newcommand{\\todo}[1]{x}\n\\newcommand\\kurz{y}\n\\def\\alt{z}\n\\DeclareMathOperator{\\argmax}{arg\\,max}\n\\newcommand{\\intern@x}{}\n% \\newcommand{\\auskommentiert}{}"
+      },
+      "expect": {
+        "names": [
+          "todo",
+          "kurz",
+          "alt",
+          "argmax"
+        ]
+      },
+      "sourceLine": 125
+    },
+    {
+      "id": "definitions-environments",
+      "name": "Eigene Makros und Umgebungen aus .tex und .sty, keine internen mit @, keine aus Kommentaren",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "definedEnvironments",
+        "text": "\\newenvironment{hinweis}{}{}\n\\begin{itemize}\n\\begin{align*}"
+      },
+      "expect": {
+        "names": [
+          "hinweis",
+          "itemize",
+          "align*"
+        ]
+      },
+      "sourceLine": 125
+    },
+    {
+      "id": "openEnvironments",
+      "name": "Offene Umgebungen für \\end: innerste zuletzt im Stapel, geschlossene und auskommentierte zählen nicht",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "openEnvironments",
+        "text": "\\begin{document}\n\\begin{figure}\n\\begin{tabular}\n\\end{tabular}\n% \\begin{itemize}\n\\begin{center}\n",
+        "at": "end"
+      },
+      "expect": {
+        "stack": [
+          "document",
+          "figure",
+          "center"
+        ]
+      },
+      "sourceLine": 158
+    },
+    {
+      "id": "items-endEnvironments",
+      "name": "Labels auch aus ungespeicherten Dateien; \\end schlägt die innerste offene Umgebung zuerst vor (nur der \\end-Teil)",
+      "source": "swift/Tests/LatexEditorTests/CompletionTests.swift",
+      "input": {
+        "op": "openEnvironments",
+        "text": "\\begin{figure}\n\\begin{center}\n",
+        "at": "end"
+      },
+      "expect": {
+        "stack": [
+          "figure",
+          "center"
+        ],
+        "suggestionsForEnd": [
+          "center",
+          "figure"
+        ]
+      },
+      "sourceLine": 168
+    },
+    {
+      "id": "targets-1",
+      "name": "Befehle und Umgebungen mit Optionen; Schlüssel und Wert",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\includegraphics[|"
+      },
+      "expect": {
+        "context": {
+          "kind": "option",
+          "target": "graphics",
+          "key": null
+        }
+      },
+      "sourceLine": 24
+    },
+    {
+      "id": "targets-2",
+      "name": "Befehle und Umgebungen mit Optionen; Schlüssel und Wert",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\includegraphics[width=0.5|"
+      },
+      "expect": {
+        "context": {
+          "kind": "option",
+          "target": "graphics",
+          "key": "width",
+          "prefix": "0.5"
+        }
+      },
+      "sourceLine": 24
+    },
+    {
+      "id": "targets-3",
+      "name": "Befehle und Umgebungen mit Optionen; Schlüssel und Wert",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\includegraphics[keepaspectratio, wi|"
+      },
+      "expect": {
+        "context": {
+          "prefix": "wi"
+        }
+      },
+      "sourceLine": 24
+    },
+    {
+      "id": "targets-4",
+      "name": "Befehle und Umgebungen mit Optionen; Schlüssel und Wert",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\begin{figure}[|"
+      },
+      "expect": {
+        "context": {
+          "kind": "option",
+          "target": "floatPlacement",
+          "key": null
+        }
+      },
+      "sourceLine": 24
+    },
+    {
+      "id": "targets-5",
+      "name": "Befehle und Umgebungen mit Optionen; Schlüssel und Wert",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\begin{program}[H|"
+      },
+      "expect": {
+        "context": {
+          "prefix": "H"
+        }
+      },
+      "sourceLine": 24
+    },
+    {
+      "id": "targets-6",
+      "name": "Befehle und Umgebungen mit Optionen; Schlüssel und Wert",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\begin{tabular}[|"
+      },
+      "expect": {
+        "context": {
+          "kind": "option",
+          "target": "boxPosition",
+          "key": null
+        }
+      },
+      "sourceLine": 24
+    },
+    {
+      "id": "targets-7",
+      "name": "Befehle und Umgebungen mit Optionen; Schlüssel und Wert",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\cite[vgl.][|"
+      },
+      "expect": {
+        "context": {
+          "kind": "option",
+          "target": "citation",
+          "key": null
+        }
+      },
+      "sourceLine": 24
+    },
+    {
+      "id": "targets-8",
+      "name": "Befehle und Umgebungen mit Optionen; Schlüssel und Wert",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\documentclass[type=bachelor,the|]{hgbthesis}"
+      },
+      "expect": {
+        "context": {
+          "kind": "option",
+          "target": "documentClass",
+          "key": null,
+          "targetName": "hgbthesis"
+        }
+      },
+      "sourceLine": 24
+    },
+    {
+      "id": "targets-9",
+      "name": "Befehle und Umgebungen mit Optionen; Schlüssel und Wert",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\usepackage[|]{babel}"
+      },
+      "expect": {
+        "context": {
+          "kind": "option",
+          "target": "package",
+          "key": null,
+          "targetName": "babel"
+        }
+      },
+      "sourceLine": 24
+    },
+    {
+      "id": "targets-10",
+      "name": "Befehle und Umgebungen mit Optionen; Schlüssel und Wert",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\usepackage[|"
+      },
+      "expect": {
+        "context": {
+          "kind": "option",
+          "target": "package",
+          "key": null,
+          "targetName": ""
+        }
+      },
+      "sourceLine": 24
+    },
+    {
+      "id": "notOptions-1",
+      "name": "Keine Option: unbekannte Befehle, geschlossene Klammer, Zeilenumbruch \\\\[…], Kommentar",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\section[|"
+      },
+      "expect": {
+        "context": null
+      },
+      "sourceLine": 39
+    },
+    {
+      "id": "notOptions-2",
+      "name": "Keine Option: unbekannte Befehle, geschlossene Klammer, Zeilenumbruch \\\\[…], Kommentar",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\item[|"
+      },
+      "expect": {
+        "context": null
+      },
+      "sourceLine": 39
+    },
+    {
+      "id": "notOptions-3",
+      "name": "Keine Option: unbekannte Befehle, geschlossene Klammer, Zeilenumbruch \\\\[…], Kommentar",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\includegraphics[width=1cm] |"
+      },
+      "expect": {
+        "context": null
+      },
+      "sourceLine": 39
+    },
+    {
+      "id": "notOptions-4",
+      "name": "Keine Option: unbekannte Befehle, geschlossene Klammer, Zeilenumbruch \\\\[…], Kommentar",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "Text\\\\[|"
+      },
+      "expect": {
+        "context": null
+      },
+      "sourceLine": 39
+    },
+    {
+      "id": "notOptions-5",
+      "name": "Keine Option: unbekannte Befehle, geschlossene Klammer, Zeilenumbruch \\\\[…], Kommentar",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "% \\includegraphics[|"
+      },
+      "expect": {
+        "context": null
+      },
+      "sourceLine": 39
+    },
+    {
+      "id": "notOptions-6",
+      "name": "Keine Option: unbekannte Befehle, geschlossene Klammer, Zeilenumbruch \\\\[…], Kommentar",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "detectContext",
+        "marked": "\\begin{itemize}[|"
+      },
+      "expect": {
+        "context": null
+      },
+      "sourceLine": 39
+    },
+    {
+      "id": "keysAndValues-1",
+      "name": "Schlüssel mit = lässt den Cursor dahinter; Werte und Schalter ersetzen nur ihre Option",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "apply",
+        "marked": "\\includegraphics[wi|",
+        "item": {
+          "kind": "option",
+          "text": "width="
+        }
+      },
+      "expect": {
+        "result": "\\includegraphics[width=|",
+        "opensFollowUp": true
+      },
+      "sourceLine": 52
+    },
+    {
+      "id": "keysAndValues-2",
+      "name": "Schlüssel mit = lässt den Cursor dahinter; Werte und Schalter ersetzen nur ihre Option",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "apply",
+        "marked": "\\includegraphics[width=0.|]{a}",
+        "item": {
+          "kind": "option",
+          "text": "0.8\\textwidth"
+        }
+      },
+      "expect": {
+        "result": "\\includegraphics[width=0.8\\textwidth|]{a}"
+      },
+      "sourceLine": 52
+    },
+    {
+      "id": "keysAndValues-3",
+      "name": "Schlüssel mit = lässt den Cursor dahinter; Werte und Schalter ersetzen nur ihre Option",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "apply",
+        "marked": "\\includegraphics[|width=\\textwidth]",
+        "item": {
+          "kind": "option",
+          "text": "height="
+        }
+      },
+      "expect": {
+        "result": "\\includegraphics[height=|\\textwidth]",
+        "opensFollowUp": true
+      },
+      "sourceLine": 52
+    },
+    {
+      "id": "keysAndValues-4",
+      "name": "Schlüssel mit = lässt den Cursor dahinter; Werte und Schalter ersetzen nur ihre Option",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "apply",
+        "marked": "\\documentclass[a4paper,tw|,12pt]{report}",
+        "item": {
+          "kind": "option",
+          "text": "twoside"
+        }
+      },
+      "expect": {
+        "result": "\\documentclass[a4paper,twoside|,12pt]{report}"
+      },
+      "sourceLine": 52
+    },
+    {
+      "id": "singleValue-1",
+      "name": "Bei nur einem Wert (Platzierung, Zitat) wird ] ergänzt, wenn es fehlt",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "apply",
+        "marked": "\\begin{figure}[|",
+        "item": {
+          "kind": "option",
+          "text": "H"
+        }
+      },
+      "expect": {
+        "result": "\\begin{figure}[H]|"
+      },
+      "sourceLine": 60
+    },
+    {
+      "id": "singleValue-2",
+      "name": "Bei nur einem Wert (Platzierung, Zitat) wird ] ergänzt, wenn es fehlt",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "apply",
+        "marked": "\\begin{figure}[h|]",
+        "item": {
+          "kind": "option",
+          "text": "H"
+        }
+      },
+      "expect": {
+        "result": "\\begin{figure}[H|]"
+      },
+      "sourceLine": 60
+    },
+    {
+      "id": "singleValue-3",
+      "name": "Bei nur einem Wert (Platzierung, Zitat) wird ] ergänzt, wenn es fehlt",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "apply",
+        "marked": "\\cite[|",
+        "item": {
+          "kind": "option",
+          "text": "S.~"
+        }
+      },
+      "expect": {
+        "result": "\\cite[S.~]|"
+      },
+      "sourceLine": 60
+    },
+    {
+      "id": "classOptions",
+      "name": "Schlüssel aus \\DeclareKeys (ohne veraltete), Werte aus Registrierung, Wahrheitswerte, Schalter",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "scanOptions",
+        "files": {
+          "hgbthesis.cls": "\\@RegisterClassOption{type}{bachelor}\n\\@RegisterClassOption{type}{master}\n\\@RegisterClassOption{language}{german}\n\\DeclareKeys{\n\tbachelor.code \t= {\\renewcommand{\\hgb@ThesisType}{bachelor}\\@WarnDeprecatedOption{bachelor}{type=bachelor}},\n\ttype.code \t\t\t\t= {\\@ValidateClassOption{type}{#1}},\n\ttheme.code \t\t\t\t= \\renewcommand{\\@ThemeID}{#1},\n\tdegree.code\t\t\t\t= \\renewcommand{\\hgb@DegreeKey}{#1},\n\tlanguage.code\t\t\t= {\\@ValidateClassOption{language}{#1}},\n\tcodestyle.code\t\t\t= \\PassOptionsToPackage{codestyle=#1}{hgblistings},\n\ttwoside.code\t\t\t= {},\n\toneside.code\t\t\t= {\\renewcommand{\\hgb@@pagelayout}{oneside}%\n\t\t\t\t\t\t\t\t\\@WarnDeprecatedOption{oneside}{twoside=false}},\n\ttwoside.default:n\t\t= true,\n}\n\\DeclareOption{draft}{}\n% \\DeclareOption{auskommentiert}{}",
+          "hgbdict.sty": "\\hgbDefineDegree{engineering}{BSc}{MSc}\n\\hgbDefineDegree{law}{}{}\n",
+          "hgblistings.sty": "% codestyle=color|mono|classic: style\n",
+          "hgbtheme-default.sty": "",
+          "hgbtheme-fhooe26.sty": ""
+        }
+      },
+      "expect": {
+        "package": "hgbthesis",
+        "keys": {
+          "type": [
+            "bachelor",
+            "master"
+          ],
+          "language": [
+            "german"
+          ],
+          "degree": [
+            "engineering",
+            "law"
+          ],
+          "theme": [
+            "default",
+            "fhooe26"
+          ],
+          "codestyle": [
+            "color",
+            "mono",
+            "classic"
+          ],
+          "twoside": [
+            "true",
+            "false"
+          ]
+        },
+        "absentKeys": [
+          "bachelor",
+          "oneside"
+        ],
+        "flags": [
+          "draft"
+        ]
+      },
+      "sourceLine": 91
+    },
+    {
+      "id": "providerItems-1",
+      "name": "Vorschläge: Klassenoptionen der Vorlage, Standardklassen, Pakete, Werte zum Schlüssel",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "optionItems",
+        "target": "documentClass",
+        "name": "hgbthesis",
+        "styleFiles": {
+          "hgbthesis.cls": "\\@RegisterClassOption{type}{bachelor}\n\\@RegisterClassOption{type}{master}\n\\@RegisterClassOption{language}{german}\n\\DeclareKeys{\n\tbachelor.code \t= {\\renewcommand{\\hgb@ThesisType}{bachelor}\\@WarnDeprecatedOption{bachelor}{type=bachelor}},\n\ttype.code \t\t\t\t= {\\@ValidateClassOption{type}{#1}},\n\ttheme.code \t\t\t\t= \\renewcommand{\\@ThemeID}{#1},\n\tdegree.code\t\t\t\t= \\renewcommand{\\hgb@DegreeKey}{#1},\n\tlanguage.code\t\t\t= {\\@ValidateClassOption{language}{#1}},\n\tcodestyle.code\t\t\t= \\PassOptionsToPackage{codestyle=#1}{hgblistings},\n\ttwoside.code\t\t\t= {},\n\toneside.code\t\t\t= {\\renewcommand{\\hgb@@pagelayout}{oneside}%\n\t\t\t\t\t\t\t\t\\@WarnDeprecatedOption{oneside}{twoside=false}},\n\ttwoside.default:n\t\t= true,\n}\n\\DeclareOption{draft}{}\n% \\DeclareOption{auskommentiert}{}"
+        }
+      },
+      "expect": {
+        "contains": [
+          "type="
+        ]
+      },
+      "sourceLine": 114
+    },
+    {
+      "id": "providerItems-2",
+      "name": "Vorschläge: Klassenoptionen der Vorlage, Standardklassen, Pakete, Werte zum Schlüssel",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "optionItems",
+        "target": "documentClass",
+        "name": "hgbthesis",
+        "key": "type",
+        "styleFiles": {
+          "hgbthesis.cls": "\\@RegisterClassOption{type}{bachelor}\n\\@RegisterClassOption{type}{master}\n\\@RegisterClassOption{language}{german}\n\\DeclareKeys{\n\tbachelor.code \t= {\\renewcommand{\\hgb@ThesisType}{bachelor}\\@WarnDeprecatedOption{bachelor}{type=bachelor}},\n\ttype.code \t\t\t\t= {\\@ValidateClassOption{type}{#1}},\n\ttheme.code \t\t\t\t= \\renewcommand{\\@ThemeID}{#1},\n\tdegree.code\t\t\t\t= \\renewcommand{\\hgb@DegreeKey}{#1},\n\tlanguage.code\t\t\t= {\\@ValidateClassOption{language}{#1}},\n\tcodestyle.code\t\t\t= \\PassOptionsToPackage{codestyle=#1}{hgblistings},\n\ttwoside.code\t\t\t= {},\n\toneside.code\t\t\t= {\\renewcommand{\\hgb@@pagelayout}{oneside}%\n\t\t\t\t\t\t\t\t\\@WarnDeprecatedOption{oneside}{twoside=false}},\n\ttwoside.default:n\t\t= true,\n}\n\\DeclareOption{draft}{}\n% \\DeclareOption{auskommentiert}{}"
+        }
+      },
+      "expect": {
+        "texts": [
+          "bachelor",
+          "master"
+        ]
+      },
+      "sourceLine": 114
+    },
+    {
+      "id": "providerItems-3",
+      "name": "Vorschläge: Klassenoptionen der Vorlage, Standardklassen, Pakete, Werte zum Schlüssel",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "optionItems",
+        "target": "documentClass",
+        "name": "report"
+      },
+      "expect": {
+        "contains": [
+          "a4paper"
+        ]
+      },
+      "sourceLine": 114
+    },
+    {
+      "id": "providerItems-4",
+      "name": "Vorschläge: Klassenoptionen der Vorlage, Standardklassen, Pakete, Werte zum Schlüssel",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "optionItems",
+        "target": "package",
+        "name": "babel"
+      },
+      "expect": {
+        "contains": [
+          "ngerman"
+        ]
+      },
+      "sourceLine": 114
+    },
+    {
+      "id": "providerItems-5",
+      "name": "Vorschläge: Klassenoptionen der Vorlage, Standardklassen, Pakete, Werte zum Schlüssel",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "optionItems",
+        "target": "graphics",
+        "key": "width"
+      },
+      "expect": {
+        "first": "\\textwidth"
+      },
+      "sourceLine": 114
+    },
+    {
+      "id": "providerItems-6",
+      "name": "Vorschläge: Klassenoptionen der Vorlage, Standardklassen, Pakete, Werte zum Schlüssel",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "optionItems",
+        "target": "floatPlacement"
+      },
+      "expect": {
+        "first": "H"
+      },
+      "sourceLine": 114
+    },
+    {
+      "id": "providerItems-7",
+      "name": "Vorschläge: Klassenoptionen der Vorlage, Standardklassen, Pakete, Werte zum Schlüssel",
+      "source": "swift/Tests/LatexEditorTests/CompletionOptionTests.swift",
+      "input": {
+        "op": "optionItems",
+        "target": "package",
+        "name": "unbekannt"
+      },
+      "expect": {
+        "texts": []
+      },
+      "sourceLine": 114
+    }
+  ]
+}

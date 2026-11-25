@@ -1,0 +1,322 @@
+{
+  "suite": "bibliography",
+  "version": 1,
+  "source": "swift/Tests/LatexEditorTests/BibliographyTests.swift",
+  "notes": "Quellen der Logik: swift/Sources/LatexEditor/Insertion/Bibliography.swift (BibParser, BibAuthors, BibKey, BibFormatter, BibliographyFile, SourceBuilder) und Insertion/ProjectCatalog.swift (bibEntries). Alle Texte sind NFC-normalisiert (Umlaute als ein Zeichen); Positionen kommen nicht vor. Swift arbeitet auf Character (Graphem), JavaScript auf UTF-16; fuer die Vektoren (BMP-Zeichen, keine kombinierenden Zeichen) macht das keinen Unterschied. `op` steht in `input`.\n\nop `parseBib` {text}: BibParser.parse. Ergebnis `expect.records`: vollstaendige Liste von {type, key, fields: [{name, value}]} in Textreihenfolge. Algorithmus: Text zeichenweise lesen; ein `%` ausserhalb von Eintraegen ueberspringt bis zum Zeilenende, jedes andere Zeichen ausser `@` wird uebersprungen. Bei `@`: Typ = Bezeichner (Buchstaben, Ziffern, `_-:.`), kleingeschrieben; Leerraum; dann `{` oder `(` (sonst kein Eintrag). Typen `comment`, `string`, `preamble` werden samt Klammerinhalt uebersprungen (Klammertiefe zaehlen bis zur passenden schliessenden Klammer). Sonst: Schluessel = alles bis zum ersten `,` oder zur schliessenden Klammer (`}` bzw. `)`), getrimmt; leerer Schluessel = Eintrag verworfen. Felder: nach jedem `,` Leerraum ueberspringen, Feldname (Bezeichner, kleingeschrieben), Leerraum, `=` (fehlt es oder ist der Name leer, wird das Stueck ignoriert), Leerraum, dann der Wert. Wert: Folge von Teilen, mit `#` verkettet (Leerraum um `#` egal): `{...}` (verschachtelt, Inhalt ohne aeussere Klammern, innere Klammern bleiben), `\"...\"` (bis zum naechsten `\"` auf Klammertiefe 0, Inhalt ohne Anfuehrungszeichen) oder ein Wort/eine Zahl (bis `,`, `#`, Zeilenumbruch oder schliessende Klammer, an den Enden von Leerzeichen/Tabs befreit). Zum Schluss wird der verkettete Wert an Zeilenumbruechen geteilt (leere Teile entfallen), jedes Stueck von Leerzeichen/Tabs befreit und mit einem Leerzeichen verbunden. Der Eintrag endet hinter der schliessenden Klammer.\n\nop `catalogEntries` {text}: ProjectCatalog.bibEntries ohne Datei. Je geparstem Eintrag: authors-Quelle = Feld author, sonst editor, sonst organization (sonst \"\"); year = die ersten 4 Zeichen von date, sonst year (sonst \"\"); title = Titel ohne `{` und `}`, getrimmt; authors = `short(...)` ohne Klammern; Zusammenfassung `summary` = [authors + \" \" + year (leere weglassen), title] (leere weglassen) mit \" · \" verbunden. `expect.summaries` ist die vollstaendige Liste, `entries` (optional) Liste von {key, title, authors, year}. `short`: Personen = Teilstrings an \" and \" (nur nicht-leere); keine = \"\"; Nachname der ersten (firstLastName); bei 2 Personen \"A und B\", ab 3 \"A u. a.\".\n\nop `authorsBibtex` {input} -> {result}: BibAuthors.bibtex. Getrimmt leer -> \"\"; enthaelt \" and \" (ohne Beachtung der Gross-/Kleinschreibung) -> getrimmter Text unveraendert. Sonst an `;` und Zeilenumbruch teilen, Teile trimmen (Leerzeichen/Tabs), leere weg, je Person: enthaelt `,` oder beginnt mit `{` oder ist ein einzelnes Wort -> unveraendert, sonst \"Nachname, Vorname(n)\" (letztes Wort, dann alle uebrigen mit Leerzeichen); Personen mit \" and \" verbunden.\n\nop `authorsShort` {authors} -> {result}: BibAuthors.short (siehe oben). op `firstLastName` kommt nicht als eigener Fall vor.\n\nop `makeKey` {authors, title, year, existing: [..]} -> {key}: BibKey.make. Nachname = firstLastName(authors) (erste Person vor dem ersten \" and \", `{`/`}` entfernt; mit Komma: Text vor dem ersten Komma, sonst letztes Wort). Basis = ascii(Nachname); ist der Nachname leer: ascii(erstes Wort des Titels, an Leerzeichen geteilt), ohne Titel \"quelle\"; ist die Basis leer: \"quelle\". Stamm = Basis + ascii(year). Ist der Stamm nicht in `existing`, ist er der Schluessel; sonst der erste freie von Stamm + a, b, ..., z; sind alle belegt, Stamm + \"-\" + Anzahl der existing. `ascii`: ae/oe/ue/Ae/Oe/Ue/ss fuer ä ö ü Ä Ö Ü ß, dann Akzente entfernen (NFD, kombinierende Zeichen weg), dann nur ASCII-Buchstaben und -Ziffern behalten.\n\nop `keyValid` {key} -> {valid}: BibKey.isValid: nicht leer und jedes Zeichen ASCII-Buchstabe, -Ziffer oder eines von `:-_.`.\n\nop `formatEntry` {type, key, fields: [{name, value}], escaping?} -> {entry}: BibFormatter.entry; escaping Standard true. Felder mit leerem (nur Leerzeichen/Tabs) Wert entfallen; je Feld die Zeile \"\\t\" + name + \"={\" + Wert + \"}\", Wert mit escapeValue wenn escaping, sonst unveraendert. Ergebnis: \"@\" + type + \"{\" + key + \",\\n\" + Zeilen mit \",\\n\" verbunden + \"\\n}\\n\" (endet mit genau einem Zeilenumbruch, auch ohne Felder: \"@t{k,\\n\\n}\\n\").\n\nop `escapeValue` {value, field} -> {result}: BibFormatter.escaped. Wert an den Enden von Leerraum befreit (auch Zeilenumbrueche). Feldnamen url, doi, urldate, isbn, date, pages, langid: nur trimmen. Sonst vor jedes `&`, `%`, `#`, `_`, `$` einen `\\` setzen, ausser das vorherige Zeichen ist schon `\\`.\n\nop `bibTarget` {mainText, projectFiles: [Dateiname], mainFile} -> {target}: BibliographyFile.target. Hier ohne Dateisystem: alle Dateien liegen im Ordner der Hauptdatei, `projectFiles` sind die Dateinamen des Projekts (Swift prueft die Existenz auf der Platte, die Vektoren setzen sie gleich 'Name steht in projectFiles'). Im Haupttext werden der Reihe nach alle Treffer des regulaeren Ausdrucks `\\\\(?:addbibresource|AddBibFile|bibliography)\\s*(?:\\[[^\\]]*\\])?\\s*\\{([^}]+)\\}` untersucht; die Gruppe wird an `,` geteilt, jeder Name getrimmt, `.bib` angehaengt falls es nicht schon am Ende steht; der erste, der in projectFiles vorkommt, ist das Ziel. Sonst die erste Datei in projectFiles mit Endung .bib; `null` wenn keine.\n\nop `appendix` {entry, existing} -> {result}: BibliographyFile.appendix. existing leer -> entry. Sonst k = Anzahl der Zeilenumbrueche am Ende von existing (nur `\\n`); Ergebnis = max(0, 2 - k) Mal \"\\n\" + entry.\n\nop `buildSource` {settings, existingKeys: [..], today: \"JJJJ-MM-TT\"}: SourceBuilder.draft. settings = {mode: \"form\" | \"bibtex\", type, authors, values: {Feld: Text}, language, bibtex, keyOverride}; fehlende Schluessel haben die Standardwerte mode \"form\", type \"book\", authors \"\", values {}, language \"german\", bibtex \"\", keyOverride \"\". language -> langid-Wert: german \"ngerman\", english \"english\", none \"\" (leer = Feld entfaellt). `expect`: entweder {key, entry} oder {error: {missingFields: [Titel...]}} bzw. {error: \"noBibtexEntry\"}, dazu optional `errorMessage` (deutscher Text). Modus form: authors = authorsBibtex(settings.authors); values alle getrimmt; bei type online und leerem urldate wird urldate = today gesetzt. Fehlende Pflichtfelder (Reihenfolge der Typ-Feldliste, Meldung = Feldtitel); ist der Typ nicht online/software und authors leer, steht \"Autor\" vorn. Nicht leer -> Fehler missingFields. Sonst Schluessel: keyOverride (getrimmt) wenn keyValid und nicht in existingKeys, sonst makeKey(authors, title, die ersten 4 Zeichen von values.date, existingKeys). Felder in dieser Reihenfolge: author, dann alle Felder des Typs, dann langid; Eintrag = formatEntry mit escaping. Feldlisten je Typ (name: Pflicht): book = title*, subtitle, edition, publisher*, location, date*, isbn; article = title*, journaltitle*, volume, number, pages, date*, doi; inproceedings/incollection = title*, booktitle*, editor, publisher, location, pages, date*, doi; online = title*, organization, url*, urldate*, date; thesis = title*, type*, institution*, location, date*; software = title*, version, url, urldate, date. Feldtitel fuer Meldungen: title Titel, publisher Verlag, date Jahr, journaltitle Zeitschrift, booktitle Tagungsband (inproceedings) bzw. Sammelband (incollection), url URL, urldate Abgerufen am, type Art, institution Hochschule. Modus bibtex: erster Eintrag aus parseBib(settings.bibtex), keiner -> Fehler noBibtexEntry (Meldung: \"Kein BibTeX-Eintrag erkannt (er beginnt mit @book{…, @article{… usw.).\"; missingFields-Meldung: \"Bitte noch ausfüllen: \" + Titel mit \", \" verbunden). Vorgeschlagener Schluessel = keyOverride, wenn nicht leer (ungetrimmt), sonst der Schluessel des Eintrags; er gilt, wenn keyValid und nicht in existingKeys, sonst makeKey(author-Feld, title-Feld, date-Feld sonst year-Feld sonst \"\" (nicht auf 4 Zeichen gekuerzt), existingKeys). Eintrag = formatEntry(Typ des Eintrags, Schluessel, alle Felder des Eintrags in Reihenfolge, escaping false).",
+  "skipped": [
+    {
+      "name": "Suche findet über Autor und Titel, Treffer im Schlüssel stehen vorne",
+      "reason": "CompletionProvider (asynchrones Neuladen aus Dateien im Temporärprojekt, MainActor), Ranking gehört zur Vervollständigung und nicht zu Parser/Formatter",
+      "source": "swift/Tests/LatexEditorTests/BibliographyTests.swift",
+      "sourceLine": 152
+    },
+    {
+      "name": "Formular: Eintrag kommt ans Ende der .bib, Zitat an die Cursorposition, Vervollständigung kennt ihn",
+      "reason": "App-Ebene mit AppModel, NSWindow, Dateisystem und Task.sleep; die reine Textlogik (appendix, buildSource) steckt in den Fällen dieser Datei",
+      "sourceLine": 189
+    },
+    {
+      "name": "Geschlossene Latin-1-.bib bleibt erhalten; unlesbare .bib wird nie überschrieben",
+      "reason": "Dateisystem (Latin-1-Kodierung, Dateirechte 000), AppModel",
+      "sourceLine": 213
+    },
+    {
+      "name": "Offene, geänderte .bib: Eintrag landet im Editor und lässt sich rückgängig machen",
+      "reason": "AppModel, DocumentSession, UndoManager, Dateisystem",
+      "sourceLine": 249
+    }
+  ],
+  "cases": [
+    {
+      "id": "parse",
+      "name": "Felder mit {…} (verschachtelt), \"…\", Zahlen, Verkettung; Kommentare und @comment werden übersprungen",
+      "sourceLine": 9,
+      "input": {
+        "op": "parseBib",
+        "text": "% @book{auskommentiert, title={X}}\n@comment{ignoriert}\n@Book{Knuth1984,\n  Author = {Knuth, Donald E.},\n  title = {The {\\TeX}book},\n  year = 1984,\n  note = \"Teil \" # \"2\",\n}\n@online{web, title={Seite}, url={https://example.com/a_b}}"
+      },
+      "expect": {
+        "records": [
+          {
+            "type": "book",
+            "key": "Knuth1984",
+            "fields": [
+              { "name": "author", "value": "Knuth, Donald E." },
+              { "name": "title", "value": "The {\\TeX}book" },
+              { "name": "year", "value": "1984" },
+              { "name": "note", "value": "Teil 2" }
+            ]
+          },
+          {
+            "type": "online",
+            "key": "web",
+            "fields": [
+              { "name": "title", "value": "Seite" },
+              { "name": "url", "value": "https://example.com/a_b" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "catalogEntries",
+      "name": "Katalog: Autor kurz, Jahr aus date oder year, Titel ohne Klammern",
+      "sourceLine": 33,
+      "input": {
+        "op": "catalogEntries",
+        "text": "@book{a, author={Mustermann, Max and Musterfrau, Erika and Dritter, D}, title={Ein {LaTeX} Buch}, date={2024-03-01}}\n@article{b, author={Erika Musterfrau}, title={Artikel}, year={2021}}"
+      },
+      "expect": {
+        "summaries": ["Mustermann u. a. 2024 · Ein LaTeX Buch", "Musterfrau 2021 · Artikel"],
+        "entries": [
+          { "key": "a", "title": "Ein LaTeX Buch", "authors": "Mustermann u. a.", "year": "2024" },
+          { "key": "b", "title": "Artikel", "authors": "Musterfrau", "year": "2021" }
+        ]
+      }
+    },
+    {
+      "id": "authors-semicolon",
+      "name": "Autoren: „Vorname Nachname; …“ wird zu „Nachname, Vorname and …“, Bestehendes bleibt",
+      "sourceLine": 43,
+      "input": { "op": "authorsBibtex", "input": "Max Mustermann; Erika Musterfrau" },
+      "expect": { "result": "Mustermann, Max and Musterfrau, Erika" }
+    },
+    {
+      "id": "authors-newline",
+      "name": "Autoren: „Vorname Nachname; …“ wird zu „Nachname, Vorname and …“, Bestehendes bleibt",
+      "sourceLine": 43,
+      "input": { "op": "authorsBibtex", "input": "Mustermann, Max\nAnna Maria Huber" },
+      "expect": { "result": "Mustermann, Max and Huber, Anna Maria" }
+    },
+    {
+      "id": "authors-existingAnd",
+      "name": "Autoren: „Vorname Nachname; …“ wird zu „Nachname, Vorname and …“, Bestehendes bleibt",
+      "sourceLine": 43,
+      "input": { "op": "authorsBibtex", "input": "Knuth, D. and Lamport, L." },
+      "expect": { "result": "Knuth, D. and Lamport, L." }
+    },
+    {
+      "id": "authors-organization",
+      "name": "Autoren: „Vorname Nachname; …“ wird zu „Nachname, Vorname and …“, Bestehendes bleibt",
+      "sourceLine": 43,
+      "input": { "op": "authorsBibtex", "input": "Wikipedia" },
+      "expect": { "result": "Wikipedia" }
+    },
+    {
+      "id": "authors-short",
+      "name": "Autoren: „Vorname Nachname; …“ wird zu „Nachname, Vorname and …“, Bestehendes bleibt",
+      "sourceLine": 43,
+      "input": { "op": "authorsShort", "authors": "Mustermann, Max and Musterfrau, Erika" },
+      "expect": { "result": "Mustermann und Musterfrau" }
+    },
+    {
+      "id": "keys-umlaut",
+      "name": "Schlüssel: Nachname + Jahr, Umlaute umschrieben, eindeutig mit a, b; ohne Autor das Titelwort",
+      "sourceLine": 52,
+      "input": { "op": "makeKey", "authors": "Müller, Jörg", "title": "", "year": "2024", "existing": [] },
+      "expect": { "key": "Mueller2024" }
+    },
+    {
+      "id": "keys-unique",
+      "name": "Schlüssel: Nachname + Jahr, Umlaute umschrieben, eindeutig mit a, b; ohne Autor das Titelwort",
+      "sourceLine": 52,
+      "input": { "op": "makeKey", "authors": "Müller, Jörg", "title": "", "year": "2024", "existing": ["Mueller2024", "Mueller2024a"] },
+      "expect": { "key": "Mueller2024b" }
+    },
+    {
+      "id": "keys-titleWord",
+      "name": "Schlüssel: Nachname + Jahr, Umlaute umschrieben, eindeutig mit a, b; ohne Autor das Titelwort",
+      "sourceLine": 52,
+      "input": { "op": "makeKey", "authors": "", "title": "Café Guide", "year": "2020", "existing": [] },
+      "expect": { "key": "Cafe2020" }
+    },
+    {
+      "id": "keys-valid",
+      "name": "Schlüssel: Nachname + Jahr, Umlaute umschrieben, eindeutig mit a, b; ohne Autor das Titelwort",
+      "sourceLine": 52,
+      "input": { "op": "keyValid", "key": "Knuth1984:tex-book_2" },
+      "expect": { "valid": true }
+    },
+    {
+      "id": "keys-invalid",
+      "name": "Schlüssel: Nachname + Jahr, Umlaute umschrieben, eindeutig mit a, b; ohne Autor das Titelwort",
+      "sourceLine": 52,
+      "input": { "op": "keyValid", "key": "Müller 2024" },
+      "expect": { "valid": false }
+    },
+    {
+      "id": "formatting-entry",
+      "name": "Formatierung wie die Vorlage; Sonderzeichen maskiert, URL und DOI nicht",
+      "sourceLine": 61,
+      "input": {
+        "op": "formatEntry",
+        "type": "book",
+        "key": "Mustermann2024",
+        "fields": [
+          { "name": "author", "value": "Mustermann, Max" },
+          { "name": "title", "value": "Daten & Netze 100%" },
+          { "name": "publisher", "value": "" },
+          { "name": "url", "value": "https://x.org/a_b" }
+        ]
+      },
+      "expect": { "entry": "@book{Mustermann2024,\n\tauthor={Mustermann, Max},\n\ttitle={Daten \\& Netze 100\\%},\n\turl={https://x.org/a_b}\n}\n" }
+    },
+    {
+      "id": "formatting-escapedOnce",
+      "name": "Formatierung wie die Vorlage; Sonderzeichen maskiert, URL und DOI nicht",
+      "sourceLine": 61,
+      "input": { "op": "escapeValue", "value": "schon \\& maskiert", "field": "title" },
+      "expect": { "result": "schon \\& maskiert" }
+    },
+    {
+      "id": "bibliographyFile-target-named",
+      "name": "Zieldatei aus \\bibliography{…} der Hauptdatei; eine Leerzeile Abstand beim Anhängen",
+      "sourceLine": 70,
+      "input": {
+        "op": "bibTarget",
+        "mainFile": "main.tex",
+        "mainText": "\\bibliography{hgbreferences} % Biblatex",
+        "projectFiles": ["andere.bib", "hgbreferences.bib"]
+      },
+      "expect": { "target": "hgbreferences.bib" }
+    },
+    {
+      "id": "bibliographyFile-target-first",
+      "name": "Zieldatei aus \\bibliography{…} der Hauptdatei; eine Leerzeile Abstand beim Anhängen",
+      "sourceLine": 70,
+      "input": {
+        "op": "bibTarget",
+        "mainFile": "main.tex",
+        "mainText": "",
+        "projectFiles": ["andere.bib", "hgbreferences.bib"]
+      },
+      "expect": { "target": "andere.bib" }
+    },
+    {
+      "id": "bibliographyFile-appendix-empty",
+      "name": "Zieldatei aus \\bibliography{…} der Hauptdatei; eine Leerzeile Abstand beim Anhängen",
+      "sourceLine": 70,
+      "input": { "op": "appendix", "entry": "@x{}\n", "existing": "" },
+      "expect": { "result": "@x{}\n" }
+    },
+    {
+      "id": "bibliographyFile-appendix-oneNewline",
+      "name": "Zieldatei aus \\bibliography{…} der Hauptdatei; eine Leerzeile Abstand beim Anhängen",
+      "sourceLine": 70,
+      "input": { "op": "appendix", "entry": "@x{}\n", "existing": "@a{}\n" },
+      "expect": { "result": "\n@x{}\n" }
+    },
+    {
+      "id": "bibliographyFile-appendix-noNewline",
+      "name": "Zieldatei aus \\bibliography{…} der Hauptdatei; eine Leerzeile Abstand beim Anhängen",
+      "sourceLine": 70,
+      "input": { "op": "appendix", "entry": "@x{}\n", "existing": "@a{}" },
+      "expect": { "result": "\n\n@x{}\n" }
+    },
+    {
+      "id": "book",
+      "name": "Formular Buch: vollständiger Eintrag mit Sprache, Schlüssel automatisch",
+      "sourceLine": 90,
+      "input": {
+        "op": "buildSource",
+        "today": "2026-10-15",
+        "existingKeys": [],
+        "settings": {
+          "mode": "form",
+          "type": "book",
+          "authors": "Max Mustermann",
+          "values": { "title": "Ein Buchtitel", "publisher": "Verlag", "location": "Hagenberg", "date": "2024" }
+        }
+      },
+      "expect": {
+        "key": "Mustermann2024",
+        "entry": "@book{Mustermann2024,\n\tauthor={Mustermann, Max},\n\ttitle={Ein Buchtitel},\n\tpublisher={Verlag},\n\tlocation={Hagenberg},\n\tdate={2024},\n\tlangid={ngerman}\n}\n"
+      }
+    },
+    {
+      "id": "validation-missing",
+      "name": "Fehlende Pflichtfelder werden genannt; Webseite bekommt das heutige Abrufdatum",
+      "sourceLine": 111,
+      "input": {
+        "op": "buildSource",
+        "today": "2026-10-15",
+        "existingKeys": [],
+        "settings": { "mode": "form", "type": "book", "authors": "", "values": { "title": "X" } }
+      },
+      "expect": {
+        "error": { "missingFields": ["Autor", "Verlag", "Jahr"] },
+        "errorMessage": "Bitte noch ausfüllen: Autor, Verlag, Jahr"
+      }
+    },
+    {
+      "id": "validation-online",
+      "name": "Fehlende Pflichtfelder werden genannt; Webseite bekommt das heutige Abrufdatum",
+      "sourceLine": 111,
+      "input": {
+        "op": "buildSource",
+        "today": "2026-10-15",
+        "existingKeys": [],
+        "settings": {
+          "mode": "form",
+          "type": "online",
+          "authors": "",
+          "language": "english",
+          "values": { "title": "Dokumentation", "url": "https://swift.org", "organization": "Apple" }
+        }
+      },
+      "expect": {
+        "key": "Dokumentation",
+        "entry": "@online{Dokumentation,\n\ttitle={Dokumentation},\n\torganization={Apple},\n\turl={https://swift.org},\n\turldate={2026-10-15},\n\tlangid={english}\n}\n"
+      }
+    },
+    {
+      "id": "bibtex-replacesKey",
+      "name": "BibTeX einfügen: Felder bleiben unverändert, ungültiger oder doppelter Schlüssel wird ersetzt",
+      "sourceLine": 126,
+      "input": {
+        "op": "buildSource",
+        "today": "2026-10-15",
+        "existingKeys": ["Mueller2020"],
+        "settings": {
+          "mode": "bibtex",
+          "bibtex": "@article{Müller 2020, author={Müller, Jörg}, title={Über $\\alpha$}, year={2020}}"
+        }
+      },
+      "expect": {
+        "key": "Mueller2020a",
+        "entry": "@article{Mueller2020a,\n\tauthor={Müller, Jörg},\n\ttitle={Über $\\alpha$},\n\tyear={2020}\n}\n"
+      }
+    },
+    {
+      "id": "bibtex-noEntry",
+      "name": "BibTeX einfügen: Felder bleiben unverändert, ungültiger oder doppelter Schlüssel wird ersetzt",
+      "sourceLine": 126,
+      "input": {
+        "op": "buildSource",
+        "today": "2026-10-15",
+        "existingKeys": [],
+        "settings": { "mode": "bibtex", "bibtex": "kein Eintrag" }
+      },
+      "expect": {
+        "error": "noBibtexEntry",
+        "errorMessage": "Kein BibTeX-Eintrag erkannt (er beginnt mit @book{…, @article{… usw.)."
+      }
+    },
+    {
+      "id": "ownKey",
+      "name": "Eigener Schlüssel wird übernommen, wenn gültig und frei",
+      "sourceLine": 140,
+      "input": {
+        "op": "buildSource",
+        "today": "2026-10-15",
+        "existingKeys": [],
+        "settings": {
+          "mode": "bibtex",
+          "bibtex": "@book{alt, title={T}, author={A, B}, year={2000}}",
+          "keyOverride": "mein-buch"
+        }
+      },
+      "expect": { "key": "mein-buch" }
+    }
+  ]
+}

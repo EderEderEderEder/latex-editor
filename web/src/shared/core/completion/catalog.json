@@ -1,0 +1,1257 @@
+{
+ "_comment": "Erzeugt aus swift/Sources/LatexEditor/Completion/{CommandCatalog,OptionCatalog,CompletionContext}.swift, Insertion/InsertionModels.swift (CodeLanguage), Model/Renaming.swift (Acronyms.useCommands). Nicht von Hand ändern, ohne Swift anzupassen.",
+ "commands": [
+  {
+   "name": "part",
+   "arguments": "{}",
+   "detail": "Teil"
+  },
+  {
+   "name": "chapter",
+   "arguments": "{}",
+   "detail": "Kapitel"
+  },
+  {
+   "name": "chapter*",
+   "arguments": "{}",
+   "detail": "Kapitel ohne Nummer"
+  },
+  {
+   "name": "section",
+   "arguments": "{}",
+   "detail": "Abschnitt"
+  },
+  {
+   "name": "section*",
+   "arguments": "{}",
+   "detail": "Abschnitt ohne Nummer"
+  },
+  {
+   "name": "subsection",
+   "arguments": "{}",
+   "detail": "Unterabschnitt"
+  },
+  {
+   "name": "subsection*",
+   "arguments": "{}",
+   "detail": "Unterabschnitt ohne Nummer"
+  },
+  {
+   "name": "subsubsection",
+   "arguments": "{}",
+   "detail": "Unter-Unterabschnitt"
+  },
+  {
+   "name": "paragraph",
+   "arguments": "{}",
+   "detail": "Absatz mit Titel"
+  },
+  {
+   "name": "subparagraph",
+   "arguments": "{}",
+   "detail": "Unterabsatz mit Titel"
+  },
+  {
+   "name": "appendix",
+   "arguments": "",
+   "detail": "Anhang beginnen"
+  },
+  {
+   "name": "tableofcontents",
+   "arguments": "",
+   "detail": "Inhaltsverzeichnis"
+  },
+  {
+   "name": "listoffigures",
+   "arguments": "",
+   "detail": "Abbildungsverzeichnis"
+  },
+  {
+   "name": "listoftables",
+   "arguments": "",
+   "detail": "Tabellenverzeichnis"
+  },
+  {
+   "name": "maketitle",
+   "arguments": "",
+   "detail": "Titel setzen"
+  },
+  {
+   "name": "frontmatter",
+   "arguments": "",
+   "detail": "Vorspann"
+  },
+  {
+   "name": "mainmatter",
+   "arguments": "",
+   "detail": "Hauptteil"
+  },
+  {
+   "name": "backmatter",
+   "arguments": "",
+   "detail": "Nachspann"
+  },
+  {
+   "name": "label",
+   "arguments": "{}",
+   "detail": "Label setzen"
+  },
+  {
+   "name": "ref",
+   "arguments": "{}",
+   "detail": "Verweis"
+  },
+  {
+   "name": "eqref",
+   "arguments": "{}",
+   "detail": "Verweis auf Gleichung"
+  },
+  {
+   "name": "pageref",
+   "arguments": "{}",
+   "detail": "Seitenverweis"
+  },
+  {
+   "name": "autoref",
+   "arguments": "{}",
+   "detail": "Verweis mit Namen"
+  },
+  {
+   "name": "cref",
+   "arguments": "{}",
+   "detail": "cleveref"
+  },
+  {
+   "name": "Cref",
+   "arguments": "{}",
+   "detail": "cleveref, groß"
+  },
+  {
+   "name": "nameref",
+   "arguments": "{}",
+   "detail": "Verweis mit Titel"
+  },
+  {
+   "name": "cite",
+   "arguments": "{}",
+   "detail": "Zitat"
+  },
+  {
+   "name": "cite",
+   "arguments": "[]{}",
+   "detail": "Zitat mit Seite"
+  },
+  {
+   "name": "parencite",
+   "arguments": "{}",
+   "detail": "Zitat in Klammern"
+  },
+  {
+   "name": "textcite",
+   "arguments": "{}",
+   "detail": "Zitat im Text"
+  },
+  {
+   "name": "autocite",
+   "arguments": "{}",
+   "detail": "Zitat (automatisch)"
+  },
+  {
+   "name": "footcite",
+   "arguments": "{}",
+   "detail": "Zitat in Fußnote"
+  },
+  {
+   "name": "citeauthor",
+   "arguments": "{}",
+   "detail": "Autor"
+  },
+  {
+   "name": "citeyear",
+   "arguments": "{}",
+   "detail": "Jahr"
+  },
+  {
+   "name": "nocite",
+   "arguments": "{}",
+   "detail": "Ins Verzeichnis ohne Zitat"
+  },
+  {
+   "name": "footnote",
+   "arguments": "{}",
+   "detail": "Fußnote"
+  },
+  {
+   "name": "url",
+   "arguments": "{}",
+   "detail": "URL"
+  },
+  {
+   "name": "href",
+   "arguments": "{}{}",
+   "detail": "Link mit Text"
+  },
+  {
+   "name": "emph",
+   "arguments": "{}",
+   "detail": "Hervorhebung"
+  },
+  {
+   "name": "textbf",
+   "arguments": "{}",
+   "detail": "Fett"
+  },
+  {
+   "name": "textit",
+   "arguments": "{}",
+   "detail": "Kursiv"
+  },
+  {
+   "name": "texttt",
+   "arguments": "{}",
+   "detail": "Schreibmaschine"
+  },
+  {
+   "name": "textsc",
+   "arguments": "{}",
+   "detail": "Kapitälchen"
+  },
+  {
+   "name": "textsf",
+   "arguments": "{}",
+   "detail": "Serifenlos"
+  },
+  {
+   "name": "textrm",
+   "arguments": "{}",
+   "detail": "Serifen"
+  },
+  {
+   "name": "underline",
+   "arguments": "{}",
+   "detail": "Unterstrichen"
+  },
+  {
+   "name": "textsuperscript",
+   "arguments": "{}",
+   "detail": "Hochgestellt"
+  },
+  {
+   "name": "textsubscript",
+   "arguments": "{}",
+   "detail": "Tiefgestellt"
+  },
+  {
+   "name": "enquote",
+   "arguments": "{}",
+   "detail": "Anführungszeichen"
+  },
+  {
+   "name": "textquote",
+   "arguments": "{}",
+   "detail": "Zitat im Fließtext"
+  },
+  {
+   "name": "mbox",
+   "arguments": "{}",
+   "detail": "Kein Umbruch"
+  },
+  {
+   "name": "hyphenation",
+   "arguments": "{}",
+   "detail": "Trennregeln"
+  },
+  {
+   "name": "verb",
+   "arguments": "||",
+   "detail": "Code im Fließtext"
+  },
+  {
+   "name": "item",
+   "arguments": " ",
+   "detail": "Aufzählungspunkt"
+  },
+  {
+   "name": "item",
+   "arguments": "[] ",
+   "detail": "Punkt mit Bezeichnung"
+  },
+  {
+   "name": "newline",
+   "arguments": "",
+   "detail": "Neue Zeile"
+  },
+  {
+   "name": "newpage",
+   "arguments": "",
+   "detail": "Neue Seite"
+  },
+  {
+   "name": "clearpage",
+   "arguments": "",
+   "detail": "Seite abschließen"
+  },
+  {
+   "name": "cleardoublepage",
+   "arguments": "",
+   "detail": "Auf ungerader Seite fortsetzen"
+  },
+  {
+   "name": "linebreak",
+   "arguments": "",
+   "detail": "Zeilenumbruch"
+  },
+  {
+   "name": "noindent",
+   "arguments": "",
+   "detail": "Ohne Einzug"
+  },
+  {
+   "name": "centering",
+   "arguments": "",
+   "detail": "Zentrieren"
+  },
+  {
+   "name": "raggedright",
+   "arguments": "",
+   "detail": "Flattersatz links"
+  },
+  {
+   "name": "raggedleft",
+   "arguments": "",
+   "detail": "Flattersatz rechts"
+  },
+  {
+   "name": "vspace",
+   "arguments": "{}",
+   "detail": "Vertikaler Abstand"
+  },
+  {
+   "name": "hspace",
+   "arguments": "{}",
+   "detail": "Horizontaler Abstand"
+  },
+  {
+   "name": "smallskip",
+   "arguments": "",
+   "detail": "Kleiner Abstand"
+  },
+  {
+   "name": "medskip",
+   "arguments": "",
+   "detail": "Mittlerer Abstand"
+  },
+  {
+   "name": "bigskip",
+   "arguments": "",
+   "detail": "Großer Abstand"
+  },
+  {
+   "name": "hfill",
+   "arguments": "",
+   "detail": "Füllen"
+  },
+  {
+   "name": "vfill",
+   "arguments": "",
+   "detail": "Vertikal füllen"
+  },
+  {
+   "name": "dots",
+   "arguments": "",
+   "detail": "Auslassungspunkte"
+  },
+  {
+   "name": "ldots",
+   "arguments": "",
+   "detail": "Auslassungspunkte"
+  },
+  {
+   "name": "today",
+   "arguments": "",
+   "detail": "Heutiges Datum"
+  },
+  {
+   "name": "LaTeX",
+   "arguments": "",
+   "detail": "LaTeX-Logo"
+  },
+  {
+   "name": "TeX",
+   "arguments": "",
+   "detail": "TeX-Logo"
+  },
+  {
+   "name": "tiny",
+   "arguments": "",
+   "detail": "Schriftgröße"
+  },
+  {
+   "name": "scriptsize",
+   "arguments": "",
+   "detail": "Schriftgröße"
+  },
+  {
+   "name": "footnotesize",
+   "arguments": "",
+   "detail": "Schriftgröße"
+  },
+  {
+   "name": "small",
+   "arguments": "",
+   "detail": "Schriftgröße"
+  },
+  {
+   "name": "normalsize",
+   "arguments": "",
+   "detail": "Schriftgröße"
+  },
+  {
+   "name": "large",
+   "arguments": "",
+   "detail": "Schriftgröße"
+  },
+  {
+   "name": "Large",
+   "arguments": "",
+   "detail": "Schriftgröße"
+  },
+  {
+   "name": "LARGE",
+   "arguments": "",
+   "detail": "Schriftgröße"
+  },
+  {
+   "name": "huge",
+   "arguments": "",
+   "detail": "Schriftgröße"
+  },
+  {
+   "name": "Huge",
+   "arguments": "",
+   "detail": "Schriftgröße"
+  },
+  {
+   "name": "begin",
+   "arguments": "{}",
+   "detail": "Umgebung beginnen"
+  },
+  {
+   "name": "end",
+   "arguments": "{}",
+   "detail": "Umgebung beenden"
+  },
+  {
+   "name": "includegraphics",
+   "arguments": "{}",
+   "detail": "Bild"
+  },
+  {
+   "name": "includegraphics",
+   "arguments": "[width=\\textwidth]{}",
+   "detail": "Bild mit Breite"
+  },
+  {
+   "name": "caption",
+   "arguments": "{}",
+   "detail": "Beschriftung"
+  },
+  {
+   "name": "caption",
+   "arguments": "[]{}",
+   "detail": "Beschriftung mit Kurzform"
+  },
+  {
+   "name": "graphicspath",
+   "arguments": "{{}}",
+   "detail": "Bildordner"
+  },
+  {
+   "name": "textwidth",
+   "arguments": "",
+   "detail": "Textbreite"
+  },
+  {
+   "name": "linewidth",
+   "arguments": "",
+   "detail": "Zeilenbreite"
+  },
+  {
+   "name": "hline",
+   "arguments": "",
+   "detail": "Tabellenlinie"
+  },
+  {
+   "name": "toprule",
+   "arguments": "",
+   "detail": "Tabelle oben (booktabs)"
+  },
+  {
+   "name": "midrule",
+   "arguments": "",
+   "detail": "Tabelle Mitte (booktabs)"
+  },
+  {
+   "name": "bottomrule",
+   "arguments": "",
+   "detail": "Tabelle unten (booktabs)"
+  },
+  {
+   "name": "cmidrule",
+   "arguments": "{}",
+   "detail": "Teillinie (booktabs)"
+  },
+  {
+   "name": "multicolumn",
+   "arguments": "{}{}{}",
+   "detail": "Verbundene Spalten"
+  },
+  {
+   "name": "multirow",
+   "arguments": "{}{}{}",
+   "detail": "Verbundene Zeilen"
+  },
+  {
+   "name": "resizebox",
+   "arguments": "{}{}{}",
+   "detail": "Skalieren"
+  },
+  {
+   "name": "input",
+   "arguments": "{}",
+   "detail": "Datei einbinden"
+  },
+  {
+   "name": "include",
+   "arguments": "{}",
+   "detail": "Kapitel einbinden"
+  },
+  {
+   "name": "includeonly",
+   "arguments": "{}",
+   "detail": "Nur diese Kapitel"
+  },
+  {
+   "name": "documentclass",
+   "arguments": "[]{}",
+   "detail": "Dokumentklasse"
+  },
+  {
+   "name": "usepackage",
+   "arguments": "{}",
+   "detail": "Paket laden"
+  },
+  {
+   "name": "usepackage",
+   "arguments": "[]{}",
+   "detail": "Paket mit Optionen"
+  },
+  {
+   "name": "newcommand",
+   "arguments": "{}{}",
+   "detail": "Eigener Befehl"
+  },
+  {
+   "name": "renewcommand",
+   "arguments": "{}{}",
+   "detail": "Befehl ändern"
+  },
+  {
+   "name": "newenvironment",
+   "arguments": "{}{}{}",
+   "detail": "Eigene Umgebung"
+  },
+  {
+   "name": "title",
+   "arguments": "{}",
+   "detail": "Titel"
+  },
+  {
+   "name": "author",
+   "arguments": "{}",
+   "detail": "Autor"
+  },
+  {
+   "name": "date",
+   "arguments": "{}",
+   "detail": "Datum"
+  },
+  {
+   "name": "bibliography",
+   "arguments": "{}",
+   "detail": "Literatur (BibTeX)"
+  },
+  {
+   "name": "bibliographystyle",
+   "arguments": "{}",
+   "detail": "Literaturstil"
+  },
+  {
+   "name": "addbibresource",
+   "arguments": "{}",
+   "detail": "Literatur (biblatex)"
+  },
+  {
+   "name": "printbibliography",
+   "arguments": "",
+   "detail": "Literaturverzeichnis"
+  },
+  {
+   "name": "frac",
+   "arguments": "{}{}",
+   "detail": "Bruch"
+  },
+  {
+   "name": "dfrac",
+   "arguments": "{}{}",
+   "detail": "Bruch (groß)"
+  },
+  {
+   "name": "sqrt",
+   "arguments": "{}",
+   "detail": "Wurzel"
+  },
+  {
+   "name": "sqrt",
+   "arguments": "[]{}",
+   "detail": "n-te Wurzel"
+  },
+  {
+   "name": "sum",
+   "arguments": "_{}^{}",
+   "detail": "Summe"
+  },
+  {
+   "name": "prod",
+   "arguments": "_{}^{}",
+   "detail": "Produkt"
+  },
+  {
+   "name": "int",
+   "arguments": "_{}^{}",
+   "detail": "Integral"
+  },
+  {
+   "name": "lim",
+   "arguments": "_{}",
+   "detail": "Grenzwert"
+  },
+  {
+   "name": "mathbf",
+   "arguments": "{}",
+   "detail": "Fett (Mathe)"
+  },
+  {
+   "name": "mathit",
+   "arguments": "{}",
+   "detail": "Kursiv (Mathe)"
+  },
+  {
+   "name": "mathrm",
+   "arguments": "{}",
+   "detail": "Aufrecht (Mathe)"
+  },
+  {
+   "name": "mathcal",
+   "arguments": "{}",
+   "detail": "Kalligrafisch"
+  },
+  {
+   "name": "mathbb",
+   "arguments": "{}",
+   "detail": "Doppelstrich"
+  },
+  {
+   "name": "text",
+   "arguments": "{}",
+   "detail": "Text in Formel"
+  },
+  {
+   "name": "operatorname",
+   "arguments": "{}",
+   "detail": "Operator"
+  },
+  {
+   "name": "left",
+   "arguments": "",
+   "detail": "Klammer links"
+  },
+  {
+   "name": "right",
+   "arguments": "",
+   "detail": "Klammer rechts"
+  },
+  {
+   "name": "cdot",
+   "arguments": "",
+   "detail": "Malpunkt"
+  },
+  {
+   "name": "times",
+   "arguments": "",
+   "detail": "Mal"
+  },
+  {
+   "name": "leq",
+   "arguments": "",
+   "detail": "Kleiner gleich"
+  },
+  {
+   "name": "geq",
+   "arguments": "",
+   "detail": "Größer gleich"
+  },
+  {
+   "name": "neq",
+   "arguments": "",
+   "detail": "Ungleich"
+  },
+  {
+   "name": "approx",
+   "arguments": "",
+   "detail": "Ungefähr"
+  },
+  {
+   "name": "infty",
+   "arguments": "",
+   "detail": "Unendlich"
+  },
+  {
+   "name": "quad",
+   "arguments": "",
+   "detail": "Abstand"
+  },
+  {
+   "name": "qquad",
+   "arguments": "",
+   "detail": "Doppelter Abstand"
+  },
+  {
+   "name": "overline",
+   "arguments": "{}",
+   "detail": "Überstrich"
+  },
+  {
+   "name": "hat",
+   "arguments": "{}",
+   "detail": "Dach"
+  },
+  {
+   "name": "vec",
+   "arguments": "{}",
+   "detail": "Vektor"
+  },
+  {
+   "name": "tag",
+   "arguments": "{}",
+   "detail": "Eigene Gleichungsnummer"
+  },
+  {
+   "name": "nonumber",
+   "arguments": "",
+   "detail": "Ohne Nummer"
+  },
+  {
+   "name": "intertext",
+   "arguments": "{}",
+   "detail": "Text zwischen Zeilen"
+  }
+ ],
+ "environments": [
+  "itemize",
+  "enumerate",
+  "description",
+  "figure",
+  "figure*",
+  "table",
+  "table*",
+  "tabular",
+  "tabularx",
+  "tabular*",
+  "center",
+  "flushleft",
+  "flushright",
+  "minipage",
+  "quote",
+  "quotation",
+  "verse",
+  "verbatim",
+  "abstract",
+  "equation",
+  "equation*",
+  "align",
+  "align*",
+  "gather",
+  "gather*",
+  "multline",
+  "multline*",
+  "split",
+  "cases",
+  "matrix",
+  "pmatrix",
+  "bmatrix",
+  "vmatrix",
+  "array",
+  "theorem",
+  "lemma",
+  "proof",
+  "definition",
+  "example",
+  "footnotesize",
+  "small",
+  "document",
+  "thebibliography",
+  "program",
+  "english",
+  "german",
+  "GenericCode",
+  "BashCode",
+  "CCode",
+  "CppCode",
+  "CsCode",
+  "CssCode",
+  "DartCode",
+  "GlslCode",
+  "GoCode",
+  "HtmlCode",
+  "JavaCode",
+  "JsCode",
+  "JsonCode",
+  "KotlinCode",
+  "LaTeXCode",
+  "MatlabCode",
+  "ObjCCode",
+  "PhpCode",
+  "PythonCode",
+  "RCode",
+  "RustCode",
+  "ScalaCode",
+  "SqlCode",
+  "SwiftCode",
+  "TsCode",
+  "XmlCode",
+  "YamlCode"
+ ],
+ "argumentCommands": {
+  "label": [
+   "ref",
+   "eqref",
+   "pageref",
+   "autoref",
+   "Autoref",
+   "cref",
+   "Cref",
+   "vref",
+   "nameref",
+   "labelcref",
+   "cpageref"
+  ],
+  "citation": [
+   "cite",
+   "citep",
+   "citet",
+   "citealp",
+   "citeauthor",
+   "citeyear",
+   "citetitle",
+   "parencite",
+   "Parencite",
+   "textcite",
+   "Textcite",
+   "autocite",
+   "Autocite",
+   "footcite",
+   "fullcite",
+   "nocite",
+   "smartcite",
+   "supercite"
+  ],
+  "acronym": [
+   "ac",
+   "acs",
+   "acl",
+   "acf",
+   "acp",
+   "acsp",
+   "aclp",
+   "acfp",
+   "Ac",
+   "Acs",
+   "Acl",
+   "Acf",
+   "Acp",
+   "Acsp",
+   "Aclp",
+   "Acfp",
+   "iac",
+   "Iac",
+   "acsingle",
+   "acused",
+   "acreset",
+   "acuse",
+   "acresetall",
+   "gls",
+   "Gls",
+   "GLS",
+   "glspl",
+   "Glspl",
+   "GLSpl",
+   "glstext",
+   "Glstext",
+   "glsfirst",
+   "Glsfirst",
+   "glsdesc",
+   "Glsdesc",
+   "glssymbol",
+   "glsuseri",
+   "glsentrytext",
+   "glslink",
+   "acrshort",
+   "acrlong",
+   "acrfull",
+   "Acrshort",
+   "Acrlong",
+   "Acrfull",
+   "acrshortpl",
+   "acrlongpl",
+   "acrfullpl",
+   "glsxtrshort",
+   "glsxtrlong",
+   "glsxtrfull"
+  ],
+  "graphics": [
+   "includegraphics"
+  ],
+  "input": [
+   "input",
+   "include",
+   "subfile",
+   "includeonly"
+  ],
+  "beginEnvironment": [
+   "begin"
+  ],
+  "endEnvironment": [
+   "end"
+  ]
+ },
+ "options": {
+  "graphics": {
+   "flags": [
+    "keepaspectratio",
+    "clip",
+    "draft"
+   ],
+   "keys": {
+    "width": [
+     "\\textwidth",
+     "0.8\\textwidth",
+     "0.5\\textwidth",
+     "\\linewidth",
+     "\\columnwidth"
+    ],
+    "height": [
+     "\\textheight",
+     "0.5\\textheight",
+     "\\linewidth"
+    ],
+    "scale": [
+     "0.5",
+     "0.75",
+     "1.5"
+    ],
+    "angle": [
+     "90",
+     "180",
+     "270"
+    ],
+    "trim": [],
+    "page": [],
+    "viewport": []
+   },
+   "details": {
+    "width": "Breite",
+    "height": "Höhe",
+    "scale": "Skalierung",
+    "angle": "Drehung in Grad",
+    "trim": "Ränder abschneiden (links unten rechts oben)",
+    "page": "Seite eines PDFs",
+    "viewport": "Ausschnitt",
+    "keepaspectratio": "Seitenverhältnis behalten",
+    "clip": "Abgeschnittenes ausblenden",
+    "draft": "Nur Rahmen"
+   }
+  },
+  "floatPlacement": {
+   "flags": [
+    "H",
+    "htbp",
+    "h",
+    "t",
+    "b",
+    "p",
+    "!htbp",
+    "!ht",
+    "tbp"
+   ],
+   "keys": {},
+   "details": {
+    "H": "Hier erzwingen (H)",
+    "h": "Hier, wenn möglich (h)",
+    "t": "Seitenanfang (t)",
+    "b": "Seitenende (b)",
+    "p": "Eigene Seite (p)",
+    "htbp": "Überall erlaubt",
+    "!htbp": "Überall, Regeln lockern",
+    "!ht": "Hier oder oben, Regeln lockern",
+    "tbp": "Nicht hier"
+   }
+  },
+  "boxPosition": {
+   "flags": [
+    "t",
+    "c",
+    "b"
+   ],
+   "keys": {},
+   "details": {
+    "t": "Oben ausrichten",
+    "c": "Mittig ausrichten",
+    "b": "Unten ausrichten"
+   }
+  },
+  "citation": {
+   "flags": [
+    "S.~",
+    "vgl.",
+    "Kap.~",
+    "Abschn.~",
+    "f.",
+    "ff."
+   ],
+   "keys": {},
+   "details": {
+    "S.~": "Seite",
+    "vgl.": "Vergleiche (Vorsatz)",
+    "Kap.~": "Kapitel",
+    "Abschn.~": "Abschnitt",
+    "f.": "folgende Seite",
+    "ff.": "folgende Seiten"
+   }
+  },
+  "standardClass": {
+   "flags": [
+    "a4paper",
+    "letterpaper",
+    "10pt",
+    "11pt",
+    "12pt",
+    "oneside",
+    "twoside",
+    "openright",
+    "openany",
+    "titlepage",
+    "notitlepage",
+    "onecolumn",
+    "twocolumn",
+    "landscape",
+    "draft",
+    "final",
+    "fleqn",
+    "leqno"
+   ],
+   "keys": {},
+   "details": {
+    "a4paper": "Papier A4",
+    "11pt": "Schriftgröße",
+    "12pt": "Schriftgröße",
+    "twoside": "Doppelseitig",
+    "openright": "Kapitel rechts beginnen",
+    "twocolumn": "Zweispaltig",
+    "draft": "Entwurf (Overfull markiert)"
+   }
+  },
+  "standardClasses": [
+   "article",
+   "report",
+   "book",
+   "scrartcl",
+   "scrreprt",
+   "scrbook",
+   ""
+  ],
+  "packages": {
+   "babel": {
+    "flags": [
+     "ngerman",
+     "german",
+     "naustrian",
+     "austrian",
+     "english",
+     "american",
+     "british"
+    ],
+    "keys": {},
+    "details": {}
+   },
+   "inputenc": {
+    "flags": [
+     "utf8"
+    ],
+    "keys": {},
+    "details": {}
+   },
+   "fontenc": {
+    "flags": [
+     "T1"
+    ],
+    "keys": {},
+    "details": {}
+   },
+   "geometry": {
+    "flags": [
+     "a4paper",
+     "landscape",
+     "includeheadfoot"
+    ],
+    "keys": {
+     "margin": [
+      "2.5cm",
+      "3cm"
+     ],
+     "top": [],
+     "bottom": [],
+     "left": [],
+     "right": [],
+     "inner": [],
+     "outer": []
+    },
+    "details": {}
+   },
+   "hyperref": {
+    "flags": [
+     "hidelinks",
+     "colorlinks",
+     "breaklinks",
+     "bookmarksnumbered"
+    ],
+    "keys": {
+     "linkcolor": [
+      "black",
+      "blue"
+     ],
+     "urlcolor": [
+      "black",
+      "blue"
+     ],
+     "citecolor": [
+      "black",
+      "blue"
+     ],
+     "pdftitle": [],
+     "pdfauthor": []
+    },
+    "details": {}
+   },
+   "xcolor": {
+    "flags": [
+     "dvipsnames",
+     "svgnames",
+     "table"
+    ],
+    "keys": {},
+    "details": {}
+   },
+   "graphicx": {
+    "flags": [
+     "draft",
+     "final"
+    ],
+    "keys": {},
+    "details": {}
+   },
+   "amsmath": {
+    "flags": [
+     "fleqn",
+     "leqno"
+    ],
+    "keys": {},
+    "details": {}
+   },
+   "caption": {
+    "flags": [],
+    "keys": {
+     "font": [
+      "small",
+      "footnotesize"
+     ],
+     "labelfont": [
+      "bf",
+      "it"
+     ],
+     "format": [
+      "hang",
+      "plain"
+     ]
+    },
+    "details": {}
+   },
+   "biblatex": {
+    "flags": [],
+    "keys": {
+     "style": [
+      "numeric",
+      "authoryear",
+      "alphabetic",
+      "apa"
+     ],
+     "backend": [
+      "biber",
+      "bibtex"
+     ],
+     "sorting": [
+      "nyt",
+      "none",
+      "ynt"
+     ],
+     "maxbibnames": [],
+     "maxcitenames": []
+    },
+    "details": {}
+   },
+   "csquotes": {
+    "flags": [],
+    "keys": {
+     "autostyle": [
+      "true",
+      "false"
+     ],
+     "german": [
+      "guillemets",
+      "quotes",
+      "swiss"
+     ]
+    },
+    "details": {}
+   },
+   "enumitem": {
+    "flags": [
+     "inline",
+     "shortlabels"
+    ],
+    "keys": {},
+    "details": {}
+   },
+   "siunitx": {
+    "flags": [],
+    "keys": {
+     "locale": [
+      "DE",
+      "US"
+     ]
+    },
+    "details": {}
+   }
+  }
+ }
+}

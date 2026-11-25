@@ -237,6 +237,11 @@ Stand 2026-11-22. „Fälle“ = Einträge in `cases`, „übersprungen“ = Ein
 | `latex-log.json` | `LatexLogParserTests.swift` | 12 | 0 | Schema und IDs geprüft, Swift-Gegenprobe offen |
 | `misc.json` | `EditorTabsTests`, `QuickOpenTests`, `OutlineParserTests`, `ReferenceUpdaterTests`, `FileOperationsTests`, `JumpTargetTests`, `LinkPreviewTests`, `PDFJumpHistoryTests`, `FileTypeFilterTests`, `RenamingTests` (alle `.swift`) | 148 | 20 | Schema und IDs geprüft, Swift-Gegenprobe offen |
 | `synctex.json` | `SyncTeXTests.swift` | 30 | 3 | Schema und IDs geprüft, Swift-Gegenprobe offen; nutzt `fixtures/two-chapters.synctex.gz` |
+| `completion.json` | `CompletionTests.swift, CompletionOptionTests.swift` | 76 | 9 | Schema und IDs geprüft, Swift-Gegenprobe offen; Ops: detectContext, rank, apply, commandItem, definedCommands, definedEnvironments, openEnvironments, scanOptions, optionItems; Eingabe/Ausgabe je Op in `notes` der Datei |
+| `insertion.json` | `InsertionTests.swift, InsertionContextTests.swift, InsertionIntegrationTests.swift` | 69 | 5 | Schema und IDs geprüft, Swift-Gegenprobe offen; Ops: escape, slug, label, blockPlacement, table, image, code, equation, list, reference, citation, insertionContext u. a.; Eingabe/Ausgabe je Op in `notes` der Datei |
+| `bibliography.json` | `BibliographyTests.swift` | 25 | 4 | Schema und IDs geprüft, Swift-Gegenprobe offen; Ops: parseBib, catalogEntries, authorsBibtex, authorsShort, makeKey, keyValid, formatEntry, escapeValue, bibTarget, appendix, buildSource; Eingabe/Ausgabe je Op in `notes` der Datei |
+| `references.json` | `LatexReferencesTests, ReferenceCheckTests, UsageFinderTests, SyntaxCheckerTests (Doppelte Labels)` | 46 | 9 | Schema und IDs geprüft, Swift-Gegenprobe offen; Ops: scan, check, storeCheck, bibEntries, usedSets, unusedHints, projectCheck, duplicateMarks, duplicateList, usages; Eingabe/Ausgabe je Op in `notes` der Datei |
+| `writing.json` | `WritingHintsTests, WordCounterTests, AcronymTests, TechnicalVocabularyTests` | 163 | 8 | Schema und IDs geprüft, Swift-Gegenprobe offen; Ops: capitalizationCorrection, writingHints, wordCount, acronymDefinitions, acronymProblems, vocabularyAccepts, vocabularySize; Eingabe/Ausgabe je Op in `notes` der Datei |
 | `example.json` | `LatexTokenizerTests.swift` | 3 | 0 | nur Beispiel für das Format (ohne `op`) |
 
 ## Namen der Vektordateien

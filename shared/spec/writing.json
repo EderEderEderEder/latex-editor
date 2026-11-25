@@ -1,0 +1,2284 @@
+{
+  "suite": "writing",
+  "version": 1,
+  "source": [
+    "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+    "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+    "swift/Tests/LatexEditorTests/AcronymTests.swift",
+    "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift"
+  ],
+  "notes": "ALLGEMEIN. Alle Positionen sind UTF-16-Einheiten (wie JS-String). Zeilenumbrüche \\n. Nicht-ASCII-Texte (Umlaute, ß, Ü, „“, Gedankenstrich) stehen in: sentenceStart-7 („Mit Ü. über“), afterDisplayMath-1, -3, -4 und -5 („erfüllt“), twoInitialCapitals-2 („ÜBer“), noHintAfterEquation-1 und -2, onlyProse (Präambel), plainText-4 und -5, commands-6 und -10, accents (nur ASCII, aber LaTeX-Akzente), definitions (Abkürzung, Gedankenstrich in summary), inflections (Gaußsche), compounds (Gaußverfahren), compoundsWithSystemWords-3 (Größe), baseForms (Verschränkung, Dekohärenz). Kein Fall prüft einen numerischen Offset; geprüft werden nur Texte, Arten, Zahlen und Reihenfolge. rejectsMisspellings: nur ASCII. shortWords-3 enthält U+200B (Nullbreitenleerzeichen).\n\nOPERATIONEN (input.op), Eingabe -> Ausgabe. Fehlende expect-Schlüssel werden nicht geprüft.\n\n1) capitalizationCorrection  (TS: core/latex/capitalization.ts)\ninput {text}. Simuliert: der Nutzer hat gerade hinter das letzte Wort von text ein Leerzeichen getippt; Wortende = text.length. expect {replacement: string | null}: Ersatztext für das Wort (Bereich ist das Wort) oder null = keine Korrektur. Algorithmus (Quelle Capitalization.swift):\n a) Wort: start = Ende; solange start>0 und text[start-1] ein Buchstabe ist (Unicode-Kategorie L* oder M*; Surrogate zählen nicht), start--. Kein Buchstabe -> null. Ist start>0, muss text[start-1] Leerzeichen, Tab, CR, LF oder '(' sein, sonst null (Wort steht hinter Befehl '\\', '{', in Dateinamen wie main.tex ...).\n b) fixingTwoInitialCapitals(wort): Zeichen (Grapheme) >= 3, Zeichen 0 und 1 Großbuchstaben, alle weiteren Zeichen Buchstaben und klein, und der Rest ist nicht genau \"s\" -> Ergebnis = Zeichen0 + Rest ab Zeichen1 kleingeschrieben (\"DIe\" -> \"Die\", \"ÜBer\" -> \"Über\"); sonst null (\"IDs\", \"API\", \"LaTeX\", \"iOS\", \"OK\" bleiben). Liefert b) ein Ergebnis, ist das die Antwort.\n c) sonst: isAllLowercase(wort) (nicht leer, jedes Zeichen Buchstabe und klein) UND startsSentence(start) -> erster Buchstabe groß + Rest unverändert; sonst null.\n startsSentence(wordStart): index = wordStart-1, newlines = 0; solange index>=0: '\\n' zählt newlines++, anderer Nicht-Leerraum (Leerzeichen, Tab, CR, LF sind Leerraum) bricht ab; index--. \n   - newlines >= 2 (Leerzeile = neuer Absatz): ist index<0 oder endet vor index keine abgesetzte Formel -> true. Endet dort eine abgesetzte Formel (displayMathStart), dann gilt: true nur, wenn das letzte Nicht-Leerraum-Zeichen vor der Formel '.', '!' oder '?' ist (false bei Textanfang davor), sonst false (der Satz geht nach der Formel weiter).\n   - sonst: index<0 -> false (Textanfang bleibt). Zeichen bei index: '!' oder '?' -> true; '.' -> isSentenceEndingPeriod; alles andere (',', ':', Buchstabe ...) -> false.\n displayMathStart(last): Zeichen bei last: '}' -> im Fenster der letzten 40 Zeichen davor rückwärts nach \"\\end{\" suchen; Name = Text zwischen dem Fund und last; ist der Name eine Mathe-Umgebung -> Startposition des Funds, sonst keine Formel. Zeichen ']' mit '\\' davor (also \"\\]\") -> Formel. Zeichen '$' mit '$' davor (\"$$\") -> Formel. Sonst keine Formel. Mathe-Umgebungen: equation, equation*, align, align*, alignat, alignat*, gather, gather*, multline, multline*, flalign, flalign*, eqnarray, eqnarray*, displaymath, math, split. (itemize u. ä. sind keine Formel.)\n isSentenceEndingPeriod(period): period==0 -> false; Zeichen davor == '.' -> false (\"...\" ); n = Anzahl Buchstaben direkt vor dem Punkt; n==0 -> true nur wenn das Zeichen davor in )]}\"'$“”«» ist; n==1 -> false (Einzelbuchstabe, \"z. B.\", \"Ü.\"); sonst true, wenn das Wort (kleingeschrieben) NICHT in der Abkürzungsliste steht. Ziffer vor dem Punkt (\"3.\") ergibt n==0 und kein Schließzeichen -> false. Abkürzungen: bzw vgl ggf usw etc abb tab kap nr ca evtl inkl exkl bspw sog bzgl insb zzgl mio mrd dr prof hr fr jh jhd bd hrsg aufl ff vs resp al zit anm abs art gem lt max min mind orig st str tel ugs urspr verf vol eg ie cf fig eq sec ch pp ed eds approx no dipl ing mag bsp.\n Hinweis: Ob die Stelle Fließtext ist (nicht in Befehlen, Mathe, Kommentaren, Code), prüft der Aufrufer (Editor), nicht diese Funktion; die Vektoren prüfen das daher nicht (siehe skipped TypingTests).\n\n2) writingHints  (TS: core/latex/writingHints.ts)\ninput {text, dropKinds?: [Art], dropMarkedContaining?: string}. Ergebnis: Liste von Hinweisen {kind, range (UTF-16 location/length), message}, nach range.location aufsteigend sortiert (stabil nach Regelreihenfolge bei gleicher Position), höchstens 1000. kind-Namen: repeatedWord, spaceBeforePunctuation, missingSpace, multipleSpaces, abbreviationSpacing, ellipsis, straightQuote, lowercaseSentenceStart, twoInitialCapitals.\n expect-Schlüssel: kinds (vollständige Liste der Arten in Ergebnisreihenfolge; [] = keine Hinweise), markedTexts (vollständige Liste des Textes jedes Hinweisbereichs im Originaltext), kindsContain / kindsNotContain (Arten kommen vor bzw. nicht vor), messageContains ({\"<Index>\": Teilstring} der Meldung des Hinweises Nr. Index), sortedByLocation (true: range.location nicht fallend). Vor dem Vergleich filtern: dropKinds entfernt Hinweise dieser Arten, dropMarkedContaining entfernt Hinweise, deren markierter Text diesen Teilstring enthält (nach dem Filter wird kinds/markedTexts verglichen).\n Ablauf: masked = LatexMasking.scannable(text) (Kommentare, \\verb und Code-Umgebungen durch Leerzeichen gleicher Länge ersetzt, siehe latex-source.json, TS core/latex/masking.ts). Suchbereich = ab dem Ende des ersten \"\\begin{document}\" im masked-Text (kommt es nicht vor: ab 0, also Kapiteldatei komplett). Jede Regel läuft mit ihrem regulären Ausdruck (global) über masked im Suchbereich; Gruppe `group` des Treffers ist der Hinweisbereich (0 = ganzer Treffer). Ein Treffer zählt nur, wenn (i) range nicht leer ist, (ii) text.substring(range) === masked.substring(range) (nichts davon maskiert), (iii) kein Token des Syntaxfärbers (LatexTokenizer, alle Arten: command, delimiter, optionalArgument, keyArgument, math, comment, verbatim; Zeilenzustände über den ganzen Text, siehe latex-tokenizer.json) den Bereich überlappt (Token.location < range.end und Token.end > range.location), und (iv) die Meldungsfunktion nicht null liefert. Regeln (Ausdrücke in ICU-Syntax; in JS mit Flag u, \\p{L} usw. funktionieren dort gleich, Lookbehind ist erlaubt):\n  repeatedWord, Flag i (case-insensitive), group 2: (?<![\\p{L}\\\\])(\\p{L}{2,})(?:[ \\t]+|[ \\t]*\\n[ \\t]*)(\\1)(?!\\p{L})  Meldung: „<Wort>“ steht zweimal hintereinander. (Wort = Text der Gruppe 2). Nur ein einzelner Zeilenumbruch, kein Absatz.\n  spaceBeforePunctuation: (?<=[\\p{L}\\}])[ \\t]+(?=[,;:!?]|\\.(?![.\\d]))  Meldung: Leerzeichen vor dem Satzzeichen.\n  missingSpace: (?<=\\p{L})[,;](?=\\p{L})|(?<=\\p{Ll}\\p{Ll})\\.(?=\\p{Lu}\\p{Ll})  Meldung: Nach „<Treffer>“ fehlt ein Leerzeichen.\n  multipleSpaces: (?<=[\\p{L}\\d.,;:!?)\\}])[ ]{2,}(?=[\\p{L}\\d(\\\\])  Meldung: Mehrere Leerzeichen hintereinander (im PDF wirkt nur eines). (Einrückung am Zeilenanfang trifft nicht.)\n  abbreviationSpacing: (?<![\\p{L}\\\\.])(\\p{L})\\.( ?)(\\p{L})\\.(?!\\p{L})  Meldung nur wenn Gruppe 1 kleingeschrieben ist (first.lowercased() == first; sonst Treffer verwerfen, z. B. Initialen „J. R.“): Abkürzung mit schmalem Abstand setzen: <g1>.\\,<g3>.   (Meldung für \"z.B.\" also \"Abkürzung mit schmalem Abstand setzen: z.\\,B.\").\n  ellipsis: (?<![.\\\\])\\.\\.\\.(?!\\.)  Meldung: Auslassungspunkte mit \\dots setzen (gleichmäßige Abstände).\n  straightQuote, Flag m (^ und $ an Zeilengrenzen): (?:^|(?<=[\\s(]))\"(?=\\p{L})|(?<=[\\p{L}.,!?])\"(?=[\\s.,;:!?)]|$)  Meldung: Gerade Anführungszeichen: besser \\enquote{…} oder „…“.\n  lowercaseSentenceStart, group 1: (?:[.!?](?:[ \\t]+\\n?|\\n)[ \\t]*|\\n[ \\t]*\\n\\s*)(\\p{Ll}\\p{L}*)(?![\\p{L}\\d\\\\{])  Treffer nur, wenn das Wort isAllLowercase ist UND startsSentence(Wortanfang, masked-Text) (aus Operation 1) wahr ist. Meldung: Satzanfang klein geschrieben: „<Wort mit großem Anfangsbuchstaben>“?\n  twoInitialCapitals: (?<![\\p{L}\\\\])\\p{Lu}\\p{Lu}\\p{Ll}+(?!\\p{L})  nur wenn fixingTwoInitialCapitals(Treffer) nicht null ist. Meldung: Zwei Großbuchstaben am Wortanfang: „<korrigiertes Wort>“?\n Reihenfolge der Regeln = Reihenfolge oben; danach stabil nach range.location sortieren (die Vektoren hängen nicht von der Reihenfolge bei gleicher Position ab). Fließtext-Prüfung (iii) macht Fälle wie Befehlsargumente (\\ref{fig:a,b}), Optionen (\\cite[S. 3 ,4]{x}), Mathe ($a  ,b$), \\usepackage{a,b} straffrei; Kommentare, \\verb und PythonCode-Inhalt sind schon durch (ii) ausgeschlossen. Die Präambel (vor \\begin{document}) wird nie geprüft.\n\n3) wordCount  (TS: core/latex/wordCounter.ts)\ninput {text, repeat?: n} (repeat: text n-mal hintereinander, nur Fall performance; das Zeitbudget von Swift gehört nicht zum Vektor). expect {count}. Algorithmus (WordCounter.swift), Arbeit auf Unicode-Skalaren (Codepoints), nicht UTF-16:\n Körper = Text zwischen dem ersten \"\\begin{document}\" (dahinter) und dem ersten \"\\end{document}\" dahinter, jeweils falls vorhanden (sonst ganzer Text; Nachspann zählt nicht). Dann ein Scanner mit Zustand inWord und Zähler:\n Wortzeichen: ASCII-Buchstaben und -Ziffern; Nicht-ASCII: Unicode-Eigenschaft Alphabetic oder numerischer Typ. Ein Wortzeichen beginnt ein Wort (count++, falls nicht inWord) oder setzt es fort. Zeichen '-', '\\'' , '’' innerhalb eines Wortes (inWord) und mit einem Wortzeichen direkt danach verbinden (state-of-the-art, don't); '.' und ',' verbinden nur zwischen zwei Ziffern (3.14, 2,5). Doppelter Bindestrich \"--\" trennt (das erste '-' hat kein Wortzeichen direkt dahinter). Alles andere beendet das Wort (inWord=false).\n '%' überspringt bis Zeilenende ('\\n' bleibt stehen) und beendet das Wort. '{' und '}' werden still übergangen (beenden das Wort NICHT: Stra\\ss{}e). '~' beendet das Wort. '$' beginnt Formel: Wort beenden; \"$$\" ist Display; Inhalt überspringen bis zum schließenden gleichen Begrenzer ('\\' überspringt das nächste Zeichen, also \\$ endet nicht); eine Leerzeile (Zeilenumbruch, danach nur Leerzeichen/Tab, dann Zeilenumbruch oder Textende) beendet eine offene Formel; fehlender Abschluss -> bis Textende.\n '\\' beginnt einen Befehl. Folgt ein ASCII-Buchstabe: Name = alle ASCII-Buchstaben; ein folgendes '*' wird übersprungen. Sonst ein Steuersymbol (ein Zeichen nach '\\'):  \"\\(\" überspringt bis \"\\)\", \"\\[\" bis \"\\]\" (Wort beenden); '\\-' und '\\/' tun nichts; \"\\\\\" beendet das Wort und überspringt ein direkt folgendes [..] (\\\\[1ex]); Akzentsymbole \" ' ` ^ ~ = . : steht danach direkt {x} mit genau einem Wortzeichen x, gehört x zum laufenden Wort (startOrContinue, 3 Zeichen überspringen), sonst nichts (das Folgezeichen z. B. 'o' in \\\"o ist normales Wortzeichen und setzt das Wort fort); jedes andere Symbol (\\%, \\$, \\&, \\#, \\_, \\{ …) beendet das Wort.\n Befehlsnamen: (a) Buchstabenbefehle ss ae AE oe OE aa AA o O l L i j setzen einen Buchstaben des Wortes (startOrContinue, Wort wird nicht beendet). (b) Akzentbefehle u v H c k r b d t: Leerraum überspringen, dann {x} wie oben (ein Wortzeichen); sonst nichts. (c) Alle anderen beenden das Wort, dann: begin -> Umgebung; end -> Leerraum und eine {..}-Gruppe überspringen; verb -> optionales '*', Begrenzer = nächstes Zeichen, überspringt bis zum zweiten gleichen Begrenzer (oder Zeilenende); def -> bis zur ersten '{' (nicht über Zeilenende) und diese Gruppe überspringen; Befehle der Tabelle unten -> Argumente überspringen; sonst folgt unmittelbar '[' -> diese [..]-Gruppe überspringen (\\section[Kurz]{Lang}); der Rest bleibt Text.\n skipArguments(n): wiederholt: Leerraum (Leerzeichen, Tab, Zeilenumbruch) überspringen; steht dort '[' überspringt die [..]-Gruppe (beliebig viele); steht dort '{' und es sind noch Argumente übrig, überspringt die {..}-Gruppe, n--; sonst Position zurücksetzen und Ende. Ist n==0 und es folgt kein '[', Ende. Gruppen sind verschachtelt, '\\' überspringt das nächste Zeichen.\n Tabelle (Befehl -> Anzahl {..}-Argumente): label ref eqref pageref autoref Autoref cref Cref vref nameref labelcref cpageref = 1, hyperref 0, cite citep citet citealp citeauthor citeyear citetitle parencite Parencite textcite Textcite autocite footcite nocite fullcite = 1, input include includegraphics includepdf lstinputlisting subfile usepackage RequirePackage documentclass usetikzlibrary bibliography bibliographystyle addbibresource graphicspath url href hypersetup pagestyle thispagestyle geometry lstset captionsetup hyphenation pagenumbering hspace vspace textcolor color newcounter = 1, setlength setcounter addtocounter rule newcommand renewcommand providecommand DeclareMathOperator newtheorem = 2, definecolor newenvironment renewenvironment = 3. (\\textcolor{red}{rot gefärbt}: nur {red} wird übersprungen, \"rot gefärbt\" ist Text. hyperref mit 0 überspringt nur optionale [..]; url und href überspringen das erste {..}.)\n Umgebung \\begin{name}: Leerraum überspringen, dann {name} lesen (muss mit '{' beginnen, sonst ende). Ist name Code (verbatim, verbatim*, lstlisting, minted, comment, Verbatim oder Endung \"Code\" mit mindestens einem Zeichen davor, z. B. PythonCode), Mathe (Liste wie bei Operation 1) oder Grafik (tikzpicture, pgfpicture): alles bis einschließlich des ersten \"\\end{name}\" überspringen (fehlt es: bis Textende). Sonst: gehört name zu tabular, tabular*, tabularx, tabulary, longtable, array, supertabular, minipage, multicols, thebibliography, genau ein {..}-Argument (davor beliebig [..]) überspringen, sonst 0 Argumente (nur [..] wie bei figure[H]). Innen zählen Zellen, \\item, \\caption{..} normal; '&' und '\\\\' trennen Wörter.\n Beachte: Das Wort-Ende bei '\\begin'/'\\end' (Wort wird beendet), daher \"Vor\\begin{equation}a+b\\end{equation}Nach\" = 2.\n\n4) acronymDefinitions  (TS: core/latex/acronyms.ts)\ninput {text}. expect {keys: [Schlüssel in Textreihenfolge], entriesPartial: {\"<Index>\": {short?, long?, line?, summary?}}} (nur genannte Felder werden geprüft; line 1-basiert; Datei spielt keine Rolle). Algorithmus (Acronyms in Renaming.swift): masked = LatexMasking.scannable(text) (Kommentare weg). Regex (global, über masked) \\\\(NAMEN)\\*?\\s*(?:\\[[^\\]\\n]*\\]\\s*)?\\{\\s*([^{}\\s,]+)\\s*\\}, NAMEN = alle Befehle aus Definitions- und Verwendungsliste, absteigend nach Länge sortiert, mit | verbunden. Definitionsbefehle: newacronym, newglossaryentry, longnewglossaryentry, newabbreviation, DeclareAcronym, newdualentry. Verwendungsbefehle (isDefinition=false): ac acs acl acf acp acsp aclp acfp Ac Acs Acl Acf Acp Acsp Aclp Acfp iac Iac acsingle acused acreset acuse acresetall gls Gls GLS glspl Glspl GLSpl glstext Glstext glsfirst Glsfirst glsdesc Glsdesc glssymbol glsuseri glsentrytext glslink acrshort acrlong acrfull Acrshort Acrlong Acrfull acrshortpl acrlongpl acrfullpl glsxtrshort glsxtrlong glsxtrfull. Nur Vorkommen mit Definitionsbefehl werden zu Einträgen (key = Gruppe 2). line = Zeile (0-basierte Zeile des Schlüssels im masked-Text) + 1.\n short/long: ab dem Schlüssel bis zur ersten '}' springen (= Ende von {key}), dahinter die nächsten {..}-Gruppen lesen (Leerzeichen, Tab, Zeilenumbruch vor der Gruppe erlaubt; innerhalb zählt '\\' als Escape für das nächste Zeichen und {..} verschachtelt; Inhalt höchstens 200 UTF-16-Einheiten). Gruppe 1 vorhanden? Nein -> short=\"\", long=\"\". Enthält Gruppe 1 ein '=' -> Schlüssel-Wert-Liste: bei Kommas auf Klammertiefe 0 teilen, je Teil beim ersten '=' in Name (getrimmt, kleingeschrieben) und Wert (clean) teilen; short = Werte[\"short\"] ?? Werte[\"name\"] ?? \"\", long = Werte[\"long\"] ?? Werte[\"description\"] ?? \"\". Sonst: Gruppe 2 vorhanden -> short=clean(g1), long=clean(g2); fehlt Gruppe 2 -> short=clean(g1), long=\"\". clean(wert): trimmen (Leerraum inkl. Zeilenumbruch), solange von { } umschlossen äußere Klammern entfernen, Rest an Leerraum teilen und mit einem Leerzeichen verbinden (Zeilenumbruch wird Leerzeichen). summary = [short, long] ohne leere Teile mit \" – \" (Gedankenstrich U+2013 mit Leerzeichen) verbunden.\n\n5) acronymProblems  (Teil von core/latex/references.ts o. ä., hier nur die Abkürzungsprüfung)\ninput {text, known: [Schlüssel] | null}. Prüft Verwendungen: für jedes Vorkommen ohne Definitionsbefehl (Regel wie Operation 4, auf masked-Text), dessen Schlüssel nicht in known steht, entsteht ein Problem {kind: \"unknownAcronym\", key, message}; message = „Die Abkürzung „<key>“ ist im Projekt nicht definiert (\\newacronym, \\newglossaryentry …).“ Ist known null: keine Prüfung, leere Liste. expect {keys: [key aller Probleme in Textreihenfolge], firstKind, firstMessageContains}. (Die Swift-Funktion liefert zusätzlich Label- und Zitatprobleme; die Eingabe hat keine \\ref/\\cite, ihre Listen sind hier leer.)\n\n6) vocabularyAccepts  (TS: core/latex/technicalVocabulary.ts, Wortlisten aus eigenem Extraktionsschritt)\ninput {word, known?: [string]}. expect {accepted: bool}. known ist der Ersatz der Systemrechtschreibung: isKnown(w) ist wahr, wenn w in known steht (die Einträge sind großgeschrieben, z. B. \"Schublade\"). Fehlt known: nichts bekannt. Vokabular = Wortlisten Nomen, Adjektive, Verben (als Stamm, z. B. \"optimier\"), Namen; je Liste in Kleinschreibung als Menge. Alle Längen zählen Zeichen (Grapheme), alles in Kleinschreibung. accepts(word): lowered = word.lowercased(); Länge < 4 -> false; sonst isInflectedEntry(lowered) oder isCompound(lowered, parts=1).\n isInflectedEntry(w): gilt, wenn für eine der Listen und eine Endung e aus deren Endungsliste gilt: w endet auf e, length(w) - length(e) >= 3 und w ohne e ist in der Liste. Endungen: Nomen [\"\", e, en, n, s, es, er, ern, ens, se, sen]; Adjektive [\"\", e, en, er, es, em, keit, keiten, heit, heiten, lich, erweise, weise]; Verben [\"\", e, en, est, st, t, et, te, ten, tet, end, ung, ungen, bar, er, ern, erung]; Namen [\"\", s, sche, schen, scher, sches, schem, ian, ianer].\n isCompound(w, parts): length(w) = L; false, wenn parts >= 4 oder L < 6. Für jede Trennstelle split von 3 bis L-3: head = w[0..split), tail = w[split..). Wahr, wenn (A) isVocabularyPrefix(head) und isRemainder(tail, parts) oder (B) isInflectedEntry(tail) und isKnownPrefix(head).\n isVocabularyPrefix(head): für jeden Kandidaten aus withoutLinkingElement(head) gilt Kandidat in Nomen, Adjektive oder Namen (nicht Verben). withoutLinkingElement(head): für jedes Fugenelement f aus [\"\", s, n, en, e, es, er, ens], das head als Endung hat und length(head)-length(f) >= 3, den Kopf ohne f. isRemainder(tail, parts): isInflectedEntry(tail) oder isKnownByChecker(tail) oder isCompound(tail, parts+1). isKnownPrefix(head): ein Kandidat aus withoutLinkingElement(head) mit isKnownByChecker. isKnownByChecker(part): length >= 3 und (isKnown(part mit großem Anfangsbuchstaben, Rest klein) oder isKnown(part)).\n Die Vokabellisten selbst stehen nicht im Vektor; sie liegen in swift/Sources/LatexEditor/Syntax/TechnicalWords*.swift (siehe Bericht) und werden getrennt als JSON extrahiert. Bis dahin sind die Fälle ohne Listen nicht ausführbar.\n\n7) vocabularySize  expect {wordCountGreaterThan: n}: Summe der Größen der vier Mengen (Nomen, Adjektive, Verben, Namen; je Menge nach Kleinschreibung und Duplikatentfernung) ist größer als n. Braucht die extrahierten Listen.",
+  "skipped": [
+    {
+      "name": "Code-Umgebungen werden erkannt, auch mit LaTeX-Befehlen im Code",
+      "reason": "bereits in latex-source.json (Fälle WritingHintsTests.insideCode-*)",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 72
+    },
+    {
+      "name": "Vervollständigung in \\gls{…} und \\acrshort{…}",
+      "reason": "CompletionContextDetector gehört zur Vervollständigung (eigene Vektordatei), nicht zur Abkürzungslogik",
+      "source": "swift/Tests/LatexEditorTests/AcronymTests.swift",
+      "sourceLine": 32
+    },
+    {
+      "name": "⌘-Klick auf den Schlüssel einer Abkürzung, nicht auf die Definition",
+      "reason": "bereits in misc.json (op jumpTarget, Fälle zu acronym)",
+      "source": "swift/Tests/LatexEditorTests/AcronymTests.swift",
+      "sourceLine": 51
+    },
+    {
+      "name": "Index: Einträge, Verwendungen und \\glsaddall",
+      "reason": "Dateisystem (TemporaryProject) und CompletionIndex.build über mehrere Dateien; Projektindex, keine reine Textlogik",
+      "source": "swift/Tests/LatexEditorTests/AcronymTests.swift",
+      "sourceLine": 61
+    },
+    {
+      "name": "Hinweise: ungenutzte Abkürzungen aus dem Index",
+      "reason": "@MainActor-Store ReferenceCheckStore (Zustand, Entprellung), keine reine Funktion",
+      "source": "swift/Tests/LatexEditorTests/AcronymTests.swift",
+      "sourceLine": 79
+    },
+    {
+      "name": "Treffer der Systemprüfung auf Fachwörter werden verworfen, andere bleiben",
+      "reason": "AppKit: EditorCoordinator, NSTextView und NSSpellChecker-Ergebnisse; nicht ohne Fenster prüfbar",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 70
+    },
+    {
+      "name": "Satzanfang und ZWei Großbuchstaben werden beim Weitertippen korrigiert; ⌘Z nimmt nur die Korrektur zurück",
+      "reason": "AppKit-Tippen mit Runloop, Undo-Manager und Cursor; die reine Logik steckt in capitalizationCorrection",
+      "source": "swift/Tests/LatexEditorTests/TypingTests.swift",
+      "sourceLine": 125
+    },
+    {
+      "name": "Nicht in Befehlen, Schlüsseln, Mathe, Kommentaren, Code und nach Abkürzungen; abschaltbar",
+      "reason": "AppKit-Tippen mit Runloop und UserDefaults (Schalter autoCapitalize); die Prüfung auf Fließtext leistet der Editor (Syntax-Token), nicht Capitalization",
+      "source": "swift/Tests/LatexEditorTests/TypingTests.swift",
+      "sourceLine": 149
+    }
+  ],
+  "cases": [
+    {
+      "id": "sentenceStart-1",
+      "name": "Satzanfang nach . ! ? und am Absatzanfang wird groß",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 13,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Das ist gut. das"
+      },
+      "expect": {
+        "replacement": "Das"
+      }
+    },
+    {
+      "id": "sentenceStart-2",
+      "name": "Satzanfang nach . ! ? und am Absatzanfang wird groß",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 13,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Wirklich? ja"
+      },
+      "expect": {
+        "replacement": "Ja"
+      }
+    },
+    {
+      "id": "sentenceStart-3",
+      "name": "Satzanfang nach . ! ? und am Absatzanfang wird groß",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 13,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Achtung! hier"
+      },
+      "expect": {
+        "replacement": "Hier"
+      }
+    },
+    {
+      "id": "sentenceStart-4",
+      "name": "Satzanfang nach . ! ? und am Absatzanfang wird groß",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 13,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Ende.\nneuer"
+      },
+      "expect": {
+        "replacement": "Neuer"
+      }
+    },
+    {
+      "id": "sentenceStart-5",
+      "name": "Satzanfang nach . ! ? und am Absatzanfang wird groß",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 13,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Absatz eins.\n\nzweiter"
+      },
+      "expect": {
+        "replacement": "Zweiter"
+      }
+    },
+    {
+      "id": "sentenceStart-6",
+      "name": "Satzanfang nach . ! ? und am Absatzanfang wird groß",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 13,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Text ohne Punkt\n\nabsatz"
+      },
+      "expect": {
+        "replacement": "Absatz"
+      }
+    },
+    {
+      "id": "sentenceStart-7",
+      "name": "Satzanfang nach . ! ? und am Absatzanfang wird groß",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 13,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Mit Ü. über"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "sentenceStart-8",
+      "name": "Satzanfang nach . ! ? und am Absatzanfang wird groß",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 13,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Ein Satz (mit Klammer). danach"
+      },
+      "expect": {
+        "replacement": "Danach"
+      }
+    },
+    {
+      "id": "sentenceStart-9",
+      "name": "Satzanfang nach . ! ? und am Absatzanfang wird groß",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 13,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Er sagte \\enquote{so}. dann"
+      },
+      "expect": {
+        "replacement": "Dann"
+      }
+    },
+    {
+      "id": "afterDisplayMath-1",
+      "name": "Nach einer abgesetzten Formel geht der Satz weiter, außer sie endet mit einem Satzzeichen",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 26,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "muss die Bedingung\n\n\\begin{equation}\n  a = 1\n\\end{equation}\n\nerfüllt"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "afterDisplayMath-2",
+      "name": "Nach einer abgesetzten Formel geht der Satz weiter, außer sie endet mit einem Satzzeichen",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 26,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "muss gelten\n\n\\begin{align*}\n a &= 1 \\\\\n b &= 2\n\\end{align*}\n\nwobei"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "afterDisplayMath-3",
+      "name": "Nach einer abgesetzten Formel geht der Satz weiter, außer sie endet mit einem Satzzeichen",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 26,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "muss gelten\n\n\\[\n a = 1\n\\]\n\nerfüllt"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "afterDisplayMath-4",
+      "name": "Nach einer abgesetzten Formel geht der Satz weiter, außer sie endet mit einem Satzzeichen",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 26,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "muss gelten\n\n$$\n a = 1\n$$\n\nerfüllt"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "afterDisplayMath-5",
+      "name": "Nach einer abgesetzten Formel geht der Satz weiter, außer sie endet mit einem Satzzeichen",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 26,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Es gilt\n\n\\begin{equation}\n  a = 1,\n\\end{equation}\n\nwobei"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "afterDisplayMath-6",
+      "name": "Nach einer abgesetzten Formel geht der Satz weiter, außer sie endet mit einem Satzzeichen",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 26,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Es gilt\n\n\\begin{equation}\n  a = 1.\n\\end{equation}\n\nneuer"
+      },
+      "expect": {
+        "replacement": "Neuer"
+      }
+    },
+    {
+      "id": "afterDisplayMath-7",
+      "name": "Nach einer abgesetzten Formel geht der Satz weiter, außer sie endet mit einem Satzzeichen",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 26,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Es gilt\n\n\\[\n a = 1 .\n\\]\n\nneuer"
+      },
+      "expect": {
+        "replacement": "Neuer"
+      }
+    },
+    {
+      "id": "afterDisplayMath-8",
+      "name": "Nach einer abgesetzten Formel geht der Satz weiter, außer sie endet mit einem Satzzeichen",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 26,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Liste\n\\begin{itemize}\n\\item a\n\\end{itemize}\n\nneuer"
+      },
+      "expect": {
+        "replacement": "Neuer"
+      }
+    },
+    {
+      "id": "notSentenceStart-1",
+      "name": "Kein Satzende: Abkürzungen, Zahlen, Auslassungspunkte, Wortmitte, Textanfang",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 39,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Das ist z. B. ein"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "notSentenceStart-2",
+      "name": "Kein Satzende: Abkürzungen, Zahlen, Auslassungspunkte, Wortmitte, Textanfang",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 39,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Das ist z.B. ein"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "notSentenceStart-3",
+      "name": "Kein Satzende: Abkürzungen, Zahlen, Auslassungspunkte, Wortmitte, Textanfang",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 39,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Siehe Abb. drei"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "notSentenceStart-4",
+      "name": "Kein Satzende: Abkürzungen, Zahlen, Auslassungspunkte, Wortmitte, Textanfang",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 39,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Siehe vgl. dazu"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "notSentenceStart-5",
+      "name": "Kein Satzende: Abkürzungen, Zahlen, Auslassungspunkte, Wortmitte, Textanfang",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 39,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Das bzw. jenes"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "notSentenceStart-6",
+      "name": "Kein Satzende: Abkürzungen, Zahlen, Auslassungspunkte, Wortmitte, Textanfang",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 39,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "am 3. oktober"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "notSentenceStart-7",
+      "name": "Kein Satzende: Abkürzungen, Zahlen, Auslassungspunkte, Wortmitte, Textanfang",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 39,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "und dann... egal"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "notSentenceStart-8",
+      "name": "Kein Satzende: Abkürzungen, Zahlen, Auslassungspunkte, Wortmitte, Textanfang",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 39,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Das ist gut, das"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "notSentenceStart-9",
+      "name": "Kein Satzende: Abkürzungen, Zahlen, Auslassungspunkte, Wortmitte, Textanfang",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 39,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Das ist gut: das"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "notSentenceStart-10",
+      "name": "Kein Satzende: Abkürzungen, Zahlen, Auslassungspunkte, Wortmitte, Textanfang",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 39,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "erstes"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "notSentenceStart-11",
+      "name": "Kein Satzende: Abkürzungen, Zahlen, Auslassungspunkte, Wortmitte, Textanfang",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 39,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "main.tex"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "notSentenceStart-12",
+      "name": "Kein Satzende: Abkürzungen, Zahlen, Auslassungspunkte, Wortmitte, Textanfang",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 39,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Ende. iPhone"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "twoInitialCapitals-1",
+      "name": "ZWei Großbuchstaben: „DIe“ → „Die“, aber nicht IDs, API, LaTeX, iOS",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 55,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Hier DIe"
+      },
+      "expect": {
+        "replacement": "Die"
+      }
+    },
+    {
+      "id": "twoInitialCapitals-2",
+      "name": "ZWei Großbuchstaben: „DIe“ → „Die“, aber nicht IDs, API, LaTeX, iOS",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 55,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Hier ÜBer"
+      },
+      "expect": {
+        "replacement": "Über"
+      }
+    },
+    {
+      "id": "twoInitialCapitals-3",
+      "name": "ZWei Großbuchstaben: „DIe“ → „Die“, aber nicht IDs, API, LaTeX, iOS",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 55,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Viele IDs"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "twoInitialCapitals-4",
+      "name": "ZWei Großbuchstaben: „DIe“ → „Die“, aber nicht IDs, API, LaTeX, iOS",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 55,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Die API"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "twoInitialCapitals-5",
+      "name": "ZWei Großbuchstaben: „DIe“ → „Die“, aber nicht IDs, API, LaTeX, iOS",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 55,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Mit LaTeX"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "twoInitialCapitals-6",
+      "name": "ZWei Großbuchstaben: „DIe“ → „Die“, aber nicht IDs, API, LaTeX, iOS",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 55,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Für iOS"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "twoInitialCapitals-7",
+      "name": "ZWei Großbuchstaben: „DIe“ → „Die“, aber nicht IDs, API, LaTeX, iOS",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 55,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Ein OK"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "notAfterCommand-1",
+      "name": "Nach einem Befehl oder in einem Argument ist es kein eigenes Wort",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 66,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Satz. \\emph"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "notAfterCommand-2",
+      "name": "Nach einem Befehl oder in einem Argument ist es kein eigenes Wort",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 66,
+      "input": {
+        "op": "capitalizationCorrection",
+        "text": "Satz. {das"
+      },
+      "expect": {
+        "replacement": null
+      }
+    },
+    {
+      "id": "repeatedWords-1",
+      "name": "Doppelte Wörter, auch über einen Zeilenumbruch und in anderer Schreibung, nicht über Absätze",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 94,
+      "input": {
+        "op": "writingHints",
+        "text": "Das ist das das Ende."
+      },
+      "expect": {
+        "markedTexts": [
+          "das"
+        ]
+      }
+    },
+    {
+      "id": "repeatedWords-2",
+      "name": "Doppelte Wörter, auch über einen Zeilenumbruch und in anderer Schreibung, nicht über Absätze",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 94,
+      "input": {
+        "op": "writingHints",
+        "text": "Ende mit der\nder nächsten Zeile."
+      },
+      "expect": {
+        "markedTexts": [
+          "der"
+        ]
+      }
+    },
+    {
+      "id": "repeatedWords-3",
+      "name": "Doppelte Wörter, auch über einen Zeilenumbruch und in anderer Schreibung, nicht über Absätze",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 94,
+      "input": {
+        "op": "writingHints",
+        "text": "Die die Leute"
+      },
+      "expect": {
+        "markedTexts": [
+          "die"
+        ]
+      }
+    },
+    {
+      "id": "repeatedWords-4",
+      "name": "Doppelte Wörter, auch über einen Zeilenumbruch und in anderer Schreibung, nicht über Absätze",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 94,
+      "input": {
+        "op": "writingHints",
+        "text": "Absatz der\n\nder nächste."
+      },
+      "expect": {
+        "kindsNotContain": [
+          "repeatedWord"
+        ]
+      }
+    },
+    {
+      "id": "repeatedWords-5",
+      "name": "Doppelte Wörter, auch über einen Zeilenumbruch und in anderer Schreibung, nicht über Absätze",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 94,
+      "input": {
+        "op": "writingHints",
+        "text": "Er ist ein Weinbauer bauer."
+      },
+      "expect": {
+        "kinds": []
+      }
+    },
+    {
+      "id": "spacing-1",
+      "name": "Leerzeichen vor Satzzeichen, fehlendes Leerzeichen danach, mehrere Leerzeichen",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 103,
+      "input": {
+        "op": "writingHints",
+        "text": "Das ist so , und so."
+      },
+      "expect": {
+        "kinds": [
+          "spaceBeforePunctuation"
+        ]
+      }
+    },
+    {
+      "id": "spacing-2",
+      "name": "Leerzeichen vor Satzzeichen, fehlendes Leerzeichen danach, mehrere Leerzeichen",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 103,
+      "input": {
+        "op": "writingHints",
+        "text": "Satz ende ."
+      },
+      "expect": {
+        "kinds": [
+          "spaceBeforePunctuation"
+        ]
+      }
+    },
+    {
+      "id": "spacing-3",
+      "name": "Leerzeichen vor Satzzeichen, fehlendes Leerzeichen danach, mehrere Leerzeichen",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 103,
+      "input": {
+        "op": "writingHints",
+        "text": "Wort,Wort hier."
+      },
+      "expect": {
+        "kinds": [
+          "missingSpace"
+        ]
+      }
+    },
+    {
+      "id": "spacing-4",
+      "name": "Leerzeichen vor Satzzeichen, fehlendes Leerzeichen danach, mehrere Leerzeichen",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 103,
+      "input": {
+        "op": "writingHints",
+        "text": "Ende.Neuer Satz."
+      },
+      "expect": {
+        "kinds": [
+          "missingSpace"
+        ]
+      }
+    },
+    {
+      "id": "spacing-5",
+      "name": "Leerzeichen vor Satzzeichen, fehlendes Leerzeichen danach, mehrere Leerzeichen",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 103,
+      "input": {
+        "op": "writingHints",
+        "text": "Zwei  Leerzeichen."
+      },
+      "expect": {
+        "kinds": [
+          "multipleSpaces"
+        ]
+      }
+    },
+    {
+      "id": "spacing-6",
+      "name": "Leerzeichen vor Satzzeichen, fehlendes Leerzeichen danach, mehrere Leerzeichen",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 103,
+      "input": {
+        "op": "writingHints",
+        "text": "Zahl 3,5 und 0.5 und z.B. hier",
+        "dropKinds": [
+          "abbreviationSpacing"
+        ]
+      },
+      "expect": {
+        "kinds": []
+      }
+    },
+    {
+      "id": "spacing-7",
+      "name": "Leerzeichen vor Satzzeichen, fehlendes Leerzeichen danach, mehrere Leerzeichen",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 103,
+      "input": {
+        "op": "writingHints",
+        "text": "\tEingerückt und Ende."
+      },
+      "expect": {
+        "kinds": []
+      }
+    },
+    {
+      "id": "spacing-8",
+      "name": "Leerzeichen vor Satzzeichen, fehlendes Leerzeichen danach, mehrere Leerzeichen",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 103,
+      "input": {
+        "op": "writingHints",
+        "text": "Text % Kommentar  mit , Fehlern"
+      },
+      "expect": {
+        "kinds": []
+      }
+    },
+    {
+      "id": "typography-1",
+      "name": "Typografie: z.B. ohne schmalen Abstand, Auslassungspunkte, gerade Anführungszeichen",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 115,
+      "input": {
+        "op": "writingHints",
+        "text": "Das ist z.B. so, d. h. anders... und \"zitiert\" hier."
+      },
+      "expect": {
+        "kinds": [
+          "abbreviationSpacing",
+          "abbreviationSpacing",
+          "ellipsis",
+          "straightQuote",
+          "straightQuote"
+        ],
+        "messageContains": {
+          "0": "z.\\,B."
+        }
+      }
+    },
+    {
+      "id": "typography-2",
+      "name": "Typografie: z.B. ohne schmalen Abstand, Auslassungspunkte, gerade Anführungszeichen",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 115,
+      "input": {
+        "op": "writingHints",
+        "text": "Das ist z.\\,B. richtig."
+      },
+      "expect": {
+        "kinds": []
+      }
+    },
+    {
+      "id": "typography-3",
+      "name": "Typografie: z.B. ohne schmalen Abstand, Auslassungspunkte, gerade Anführungszeichen",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 115,
+      "input": {
+        "op": "writingHints",
+        "text": "Von J. R. Tolkien."
+      },
+      "expect": {
+        "kinds": []
+      }
+    },
+    {
+      "id": "typography-4",
+      "name": "Typografie: z.B. ohne schmalen Abstand, Auslassungspunkte, gerade Anführungszeichen",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 115,
+      "input": {
+        "op": "writingHints",
+        "text": "Das \\enquote{passt}\\dots{} so."
+      },
+      "expect": {
+        "kinds": []
+      }
+    },
+    {
+      "id": "capitalization-1",
+      "name": "Groß-/Kleinschreibung wie bei der Autokorrektur",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 125,
+      "input": {
+        "op": "writingHints",
+        "text": "Erster Satz. zweiter Satz."
+      },
+      "expect": {
+        "markedTexts": [
+          "zweiter"
+        ]
+      }
+    },
+    {
+      "id": "capitalization-2",
+      "name": "Groß-/Kleinschreibung wie bei der Autokorrektur",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 125,
+      "input": {
+        "op": "writingHints",
+        "text": "Ein Satz pro Zeile.\nzweiter Satz."
+      },
+      "expect": {
+        "markedTexts": [
+          "zweiter"
+        ]
+      }
+    },
+    {
+      "id": "capitalization-3",
+      "name": "Groß-/Kleinschreibung wie bei der Autokorrektur",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 125,
+      "input": {
+        "op": "writingHints",
+        "text": "Absatz.\n\n  neuer Absatz."
+      },
+      "expect": {
+        "markedTexts": [
+          "neuer"
+        ]
+      }
+    },
+    {
+      "id": "capitalization-4",
+      "name": "Groß-/Kleinschreibung wie bei der Autokorrektur",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 125,
+      "input": {
+        "op": "writingHints",
+        "text": "Siehe z. B. dort und DIe Wand.",
+        "dropMarkedContaining": "."
+      },
+      "expect": {
+        "markedTexts": [
+          "DIe"
+        ]
+      }
+    },
+    {
+      "id": "capitalization-5",
+      "name": "Groß-/Kleinschreibung wie bei der Autokorrektur",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 125,
+      "input": {
+        "op": "writingHints",
+        "text": "Viele IDs. Und mehr."
+      },
+      "expect": {
+        "kinds": []
+      }
+    },
+    {
+      "id": "noHintAfterEquation-1",
+      "name": "Fortgesetzter Satz nach einer Gleichung ist kein Fehlalarm",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 134,
+      "input": {
+        "op": "writingHints",
+        "text": "Um einen validen Zustand darzustellen, muss die Bedingung\n\n\\begin{equation}\n  \\lvert\\alpha\\rvert^2 + \\lvert\\beta\\rvert^2 = 1\n\\end{equation}\n\nerfüllt sein."
+      },
+      "expect": {
+        "kindsNotContain": [
+          "lowercaseSentenceStart"
+        ]
+      }
+    },
+    {
+      "id": "noHintAfterEquation-2",
+      "name": "Fortgesetzter Satz nach einer Gleichung ist kein Fehlalarm",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 134,
+      "input": {
+        "op": "writingHints",
+        "text": "Text.\n\nerfüllt sein."
+      },
+      "expect": {
+        "kindsContain": [
+          "lowercaseSentenceStart"
+        ]
+      }
+    },
+    {
+      "id": "onlyProse",
+      "name": "Nur Fließtext: nicht in Präambel, Befehlen, Schlüsseln, Mathe, Kommentaren, Code, \\verb",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 149,
+      "input": {
+        "op": "writingHints",
+        "text": "\\documentclass{article}\n\\usepackage{a,b}  % Präambel , mit  Fehlern\n\\begin{document}\nText mit $a  ,b$ und \\ref{fig:a,b} und \\cite[S. 3 ,4]{x}.\n\\begin{PythonCode}\nx = \"a\"  ,  y... das das\n\\end{PythonCode}\nHier \\verb|a  ,b| Ende.\n% das das , hier\n\\begin{equation}\na ,  b\n\\end{equation}\n\\end{document}"
+      },
+      "expect": {
+        "kinds": []
+      }
+    },
+    {
+      "id": "chapterFile",
+      "name": "Ohne \\begin{document} (eingebundene Kapiteldatei) wird alles geprüft; Hinweise nach Position sortiert",
+      "source": "swift/Tests/LatexEditorTests/WritingHintsTests.swift",
+      "sourceLine": 169,
+      "input": {
+        "op": "writingHints",
+        "text": "\\chapter{Titel}\nEin Satz ,und Wort,Wort. weiter"
+      },
+      "expect": {
+        "kinds": [
+          "spaceBeforePunctuation",
+          "missingSpace",
+          "lowercaseSentenceStart"
+        ],
+        "sortedByLocation": true
+      }
+    },
+    {
+      "id": "plainText-1",
+      "name": "Einfacher Text, Satzzeichen, Zeilenumbrüche, Zahlen",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 9,
+      "input": {
+        "op": "wordCount",
+        "text": ""
+      },
+      "expect": {
+        "count": 0
+      }
+    },
+    {
+      "id": "plainText-2",
+      "name": "Einfacher Text, Satzzeichen, Zeilenumbrüche, Zahlen",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 9,
+      "input": {
+        "op": "wordCount",
+        "text": "Das ist ein Test."
+      },
+      "expect": {
+        "count": 4
+      }
+    },
+    {
+      "id": "plainText-3",
+      "name": "Einfacher Text, Satzzeichen, Zeilenumbrüche, Zahlen",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 9,
+      "input": {
+        "op": "wordCount",
+        "text": "Eins,\nzwei;  drei!"
+      },
+      "expect": {
+        "count": 3
+      }
+    },
+    {
+      "id": "plainText-4",
+      "name": "Einfacher Text, Satzzeichen, Zeilenumbrüche, Zahlen",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 9,
+      "input": {
+        "op": "wordCount",
+        "text": "Im Jahr 2024 gab es 3 Fälle."
+      },
+      "expect": {
+        "count": 7
+      }
+    },
+    {
+      "id": "plainText-5",
+      "name": "Einfacher Text, Satzzeichen, Zeilenumbrüche, Zahlen",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 9,
+      "input": {
+        "op": "wordCount",
+        "text": "Umlaute: Übergrößenträger"
+      },
+      "expect": {
+        "count": 2
+      }
+    },
+    {
+      "id": "plainText-6",
+      "name": "Einfacher Text, Satzzeichen, Zeilenumbrüche, Zahlen",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 9,
+      "input": {
+        "op": "wordCount",
+        "text": "a ~ b"
+      },
+      "expect": {
+        "count": 2
+      }
+    },
+    {
+      "id": "joiners-1",
+      "name": "Wörter mit Bindestrich, Apostroph und Dezimalzahlen sind eins; Gedankenstrich trennt",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 19,
+      "input": {
+        "op": "wordCount",
+        "text": "state-of-the-art"
+      },
+      "expect": {
+        "count": 1
+      }
+    },
+    {
+      "id": "joiners-2",
+      "name": "Wörter mit Bindestrich, Apostroph und Dezimalzahlen sind eins; Gedankenstrich trennt",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 19,
+      "input": {
+        "op": "wordCount",
+        "text": "don't"
+      },
+      "expect": {
+        "count": 1
+      }
+    },
+    {
+      "id": "joiners-3",
+      "name": "Wörter mit Bindestrich, Apostroph und Dezimalzahlen sind eins; Gedankenstrich trennt",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 19,
+      "input": {
+        "op": "wordCount",
+        "text": "Wert 3.14 und 2,5"
+      },
+      "expect": {
+        "count": 4
+      }
+    },
+    {
+      "id": "joiners-4",
+      "name": "Wörter mit Bindestrich, Apostroph und Dezimalzahlen sind eins; Gedankenstrich trennt",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 19,
+      "input": {
+        "op": "wordCount",
+        "text": "eins--zwei"
+      },
+      "expect": {
+        "count": 2
+      }
+    },
+    {
+      "id": "joiners-5",
+      "name": "Wörter mit Bindestrich, Apostroph und Dezimalzahlen sind eins; Gedankenstrich trennt",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 19,
+      "input": {
+        "op": "wordCount",
+        "text": "Ende. Neu"
+      },
+      "expect": {
+        "count": 2
+      }
+    },
+    {
+      "id": "commentsAndPreamble-1",
+      "name": "Kommentare und Präambel zählen nicht; \\% ist kein Kommentar",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 28,
+      "input": {
+        "op": "wordCount",
+        "text": "Text % ein Kommentar\nmehr"
+      },
+      "expect": {
+        "count": 2
+      }
+    },
+    {
+      "id": "commentsAndPreamble-2",
+      "name": "Kommentare und Präambel zählen nicht; \\% ist kein Kommentar",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 28,
+      "input": {
+        "op": "wordCount",
+        "text": "50\\% sicher"
+      },
+      "expect": {
+        "count": 2
+      }
+    },
+    {
+      "id": "commentsAndPreamble-3",
+      "name": "Kommentare und Präambel zählen nicht; \\% ist kein Kommentar",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 28,
+      "input": {
+        "op": "wordCount",
+        "text": "\\documentclass{report}\n\\usepackage{x}\n\\begin{document}\nHallo Welt\n\\end{document}\nNachspann"
+      },
+      "expect": {
+        "count": 2
+      }
+    },
+    {
+      "id": "commands-1",
+      "name": "Befehle zählen nicht, ihr Text schon; Optionen und Schlüssel nicht",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 35,
+      "input": {
+        "op": "wordCount",
+        "text": "\\textbf{fett} und \\emph{kursiv}"
+      },
+      "expect": {
+        "count": 3
+      }
+    },
+    {
+      "id": "commands-2",
+      "name": "Befehle zählen nicht, ihr Text schon; Optionen und Schlüssel nicht",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 35,
+      "input": {
+        "op": "wordCount",
+        "text": "\\section{Die Einleitung}\\label{sec:ein}"
+      },
+      "expect": {
+        "count": 2
+      }
+    },
+    {
+      "id": "commands-3",
+      "name": "Befehle zählen nicht, ihr Text schon; Optionen und Schlüssel nicht",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 35,
+      "input": {
+        "op": "wordCount",
+        "text": "Wie in \\cref{fig:a} und \\cite[S.~3]{autor2024} gezeigt"
+      },
+      "expect": {
+        "count": 4
+      }
+    },
+    {
+      "id": "commands-4",
+      "name": "Befehle zählen nicht, ihr Text schon; Optionen und Schlüssel nicht",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 35,
+      "input": {
+        "op": "wordCount",
+        "text": "\\section[Kurz]{Der lange Titel}"
+      },
+      "expect": {
+        "count": 3
+      }
+    },
+    {
+      "id": "commands-5",
+      "name": "Befehle zählen nicht, ihr Text schon; Optionen und Schlüssel nicht",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 35,
+      "input": {
+        "op": "wordCount",
+        "text": "\\includegraphics[width=.5\\textwidth]{bild.png} Text"
+      },
+      "expect": {
+        "count": 1
+      }
+    },
+    {
+      "id": "commands-6",
+      "name": "Befehle zählen nicht, ihr Text schon; Optionen und Schlüssel nicht",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 35,
+      "input": {
+        "op": "wordCount",
+        "text": "Haus\\footnote{Eine Fußnote hier}"
+      },
+      "expect": {
+        "count": 4
+      }
+    },
+    {
+      "id": "commands-7",
+      "name": "Befehle zählen nicht, ihr Text schon; Optionen und Schlüssel nicht",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 35,
+      "input": {
+        "op": "wordCount",
+        "text": "\\input{kapitel/eins}\\include{zwei}"
+      },
+      "expect": {
+        "count": 0
+      }
+    },
+    {
+      "id": "commands-8",
+      "name": "Befehle zählen nicht, ihr Text schon; Optionen und Schlüssel nicht",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 35,
+      "input": {
+        "op": "wordCount",
+        "text": "\\usepackage[utf8]{inputenc}Text"
+      },
+      "expect": {
+        "count": 1
+      }
+    },
+    {
+      "id": "commands-9",
+      "name": "Befehle zählen nicht, ihr Text schon; Optionen und Schlüssel nicht",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 35,
+      "input": {
+        "op": "wordCount",
+        "text": "\\newcommand{\\neu}[1]{Makro #1}Text"
+      },
+      "expect": {
+        "count": 1
+      }
+    },
+    {
+      "id": "commands-10",
+      "name": "Befehle zählen nicht, ihr Text schon; Optionen und Schlüssel nicht",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 35,
+      "input": {
+        "op": "wordCount",
+        "text": "\\textcolor{red}{rot gefärbt}"
+      },
+      "expect": {
+        "count": 2
+      }
+    },
+    {
+      "id": "commands-11",
+      "name": "Befehle zählen nicht, ihr Text schon; Optionen und Schlüssel nicht",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 35,
+      "input": {
+        "op": "wordCount",
+        "text": "\\verb|\\ref{x}| danach"
+      },
+      "expect": {
+        "count": 1
+      }
+    },
+    {
+      "id": "mathAndCode-1",
+      "name": "Formeln, Code und Umgebungen mit Inhalt, der kein Text ist",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 50,
+      "input": {
+        "op": "wordCount",
+        "text": "Es gilt $x^2 + y^2$ immer"
+      },
+      "expect": {
+        "count": 3
+      }
+    },
+    {
+      "id": "mathAndCode-2",
+      "name": "Formeln, Code und Umgebungen mit Inhalt, der kein Text ist",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 50,
+      "input": {
+        "op": "wordCount",
+        "text": "$$a = b$$ danach"
+      },
+      "expect": {
+        "count": 1
+      }
+    },
+    {
+      "id": "mathAndCode-3",
+      "name": "Formeln, Code und Umgebungen mit Inhalt, der kein Text ist",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 50,
+      "input": {
+        "op": "wordCount",
+        "text": "Siehe \\(a+b\\) und \\[c+d\\] fertig"
+      },
+      "expect": {
+        "count": 3
+      }
+    },
+    {
+      "id": "mathAndCode-4",
+      "name": "Formeln, Code und Umgebungen mit Inhalt, der kein Text ist",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 50,
+      "input": {
+        "op": "wordCount",
+        "text": "Vor\\begin{equation}a+b\\end{equation}Nach"
+      },
+      "expect": {
+        "count": 2
+      }
+    },
+    {
+      "id": "mathAndCode-5",
+      "name": "Formeln, Code und Umgebungen mit Inhalt, der kein Text ist",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 50,
+      "input": {
+        "op": "wordCount",
+        "text": "\\begin{align*} a &= b \\\\ c &= d \\end{align*} Wort"
+      },
+      "expect": {
+        "count": 1
+      }
+    },
+    {
+      "id": "mathAndCode-6",
+      "name": "Formeln, Code und Umgebungen mit Inhalt, der kein Text ist",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 50,
+      "input": {
+        "op": "wordCount",
+        "text": "\\begin{lstlisting}\nprint(1)\n\\end{lstlisting}\nEnde"
+      },
+      "expect": {
+        "count": 1
+      }
+    },
+    {
+      "id": "mathAndCode-7",
+      "name": "Formeln, Code und Umgebungen mit Inhalt, der kein Text ist",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 50,
+      "input": {
+        "op": "wordCount",
+        "text": "\\begin{program}\\caption{Beispiel}\\begin{PythonCode}\nx = 1\n\\end{PythonCode}\\end{program}"
+      },
+      "expect": {
+        "count": 1
+      }
+    },
+    {
+      "id": "mathAndCode-8",
+      "name": "Formeln, Code und Umgebungen mit Inhalt, der kein Text ist",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 50,
+      "input": {
+        "op": "wordCount",
+        "text": "Der Preis ist 5\\$ hoch"
+      },
+      "expect": {
+        "count": 5
+      }
+    },
+    {
+      "id": "mathAndCode-9",
+      "name": "Formeln, Code und Umgebungen mit Inhalt, der kein Text ist",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 50,
+      "input": {
+        "op": "wordCount",
+        "text": "offen $x+y\n\nNeuer Absatz hier"
+      },
+      "expect": {
+        "count": 4
+      }
+    },
+    {
+      "id": "environments-1",
+      "name": "Umgebungen: Spaltenformat, Platzierung und Listen",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 63,
+      "input": {
+        "op": "wordCount",
+        "text": "\\begin{tabular}{@{}lr@{}}Name & Wert\\\\ A & B\\end{tabular}"
+      },
+      "expect": {
+        "count": 4
+      }
+    },
+    {
+      "id": "environments-2",
+      "name": "Umgebungen: Spaltenformat, Platzierung und Listen",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 63,
+      "input": {
+        "op": "wordCount",
+        "text": "\\begin{figure}[H]\\caption{Ein Bild}\\end{figure}"
+      },
+      "expect": {
+        "count": 2
+      }
+    },
+    {
+      "id": "environments-3",
+      "name": "Umgebungen: Spaltenformat, Platzierung und Listen",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 63,
+      "input": {
+        "op": "wordCount",
+        "text": "\\begin{itemize}\\item Eins\\item Zwei drei\\end{itemize}"
+      },
+      "expect": {
+        "count": 3
+      }
+    },
+    {
+      "id": "environments-4",
+      "name": "Umgebungen: Spaltenformat, Platzierung und Listen",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 63,
+      "input": {
+        "op": "wordCount",
+        "text": "\\begin{minipage}{0.5\\textwidth}Inhalt\\end{minipage}"
+      },
+      "expect": {
+        "count": 1
+      }
+    },
+    {
+      "id": "accents-1",
+      "name": "Akzente und Sonderbuchstaben trennen das Wort nicht",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 71,
+      "input": {
+        "op": "wordCount",
+        "text": "Schr\\\"oder"
+      },
+      "expect": {
+        "count": 1
+      }
+    },
+    {
+      "id": "accents-2",
+      "name": "Akzente und Sonderbuchstaben trennen das Wort nicht",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 71,
+      "input": {
+        "op": "wordCount",
+        "text": "Schr\\\"{o}der und Stra\\ss{}e"
+      },
+      "expect": {
+        "count": 3
+      }
+    },
+    {
+      "id": "accents-3",
+      "name": "Akzente und Sonderbuchstaben trennen das Wort nicht",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 71,
+      "input": {
+        "op": "wordCount",
+        "text": "Fran\\c{c}ais"
+      },
+      "expect": {
+        "count": 1
+      }
+    },
+    {
+      "id": "accents-4",
+      "name": "Akzente und Sonderbuchstaben trennen das Wort nicht",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 71,
+      "input": {
+        "op": "wordCount",
+        "text": "\\'Uber"
+      },
+      "expect": {
+        "count": 1
+      }
+    },
+    {
+      "id": "linebreakAndEscapes-1",
+      "name": "Zeilenumbruch mit Abstand, Dollar mit Escape in Formel",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 79,
+      "input": {
+        "op": "wordCount",
+        "text": "eins\\\\[1ex] zwei"
+      },
+      "expect": {
+        "count": 2
+      }
+    },
+    {
+      "id": "linebreakAndEscapes-2",
+      "name": "Zeilenumbruch mit Abstand, Dollar mit Escape in Formel",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 79,
+      "input": {
+        "op": "wordCount",
+        "text": "$a\\$b$ Rest"
+      },
+      "expect": {
+        "count": 1
+      }
+    },
+    {
+      "id": "performance",
+      "name": "Schnell genug und linear: 2.000 Zeilen Text (nur die Wortzahl, das Zeitbudget gehört nicht in den Vektor)",
+      "source": "swift/Tests/LatexEditorTests/WordCounterTests.swift",
+      "sourceLine": 87,
+      "input": {
+        "op": "wordCount",
+        "text": "Das ist ein \\textbf{Satz} mit $x^2$ und \\cite{key} sowie einem Kommentar. % weg\n",
+        "repeat": 2000
+      },
+      "expect": {
+        "count": 18000
+      }
+    },
+    {
+      "id": "definitions",
+      "name": "Definitionen mit Kurzform und Langform, Kommentare zählen nicht",
+      "source": "swift/Tests/LatexEditorTests/AcronymTests.swift",
+      "sourceLine": 20,
+      "input": {
+        "op": "acronymDefinitions",
+        "text": "% \\newacronym{kommentar}{K}{Kommentar}\n\\newacronym{api}{API}{Application Programming Interface}\n\\newacronym[plural=ABs]{ab}{AB}{Abkürzung,\n  mit Umbruch}\n\\DeclareAcronym{cpu}{short = CPU, long = Central Processing Unit}\n\\newglossaryentry{algo}{name={Algorithmus}, description={Eine Folge von Schritten}}\n\\newabbreviation{ml}{ML}{Machine Learning}\nDie \\gls{api} und \\acrshort{cpu}, \\Gls{algo} \\ac{unbekannt}."
+      },
+      "expect": {
+        "keys": [
+          "api",
+          "ab",
+          "cpu",
+          "algo",
+          "ml"
+        ],
+        "entriesPartial": {
+          "0": {
+            "short": "API",
+            "long": "Application Programming Interface",
+            "line": 2
+          },
+          "1": {
+            "long": "Abkürzung, mit Umbruch"
+          },
+          "2": {
+            "short": "CPU",
+            "long": "Central Processing Unit"
+          },
+          "3": {
+            "short": "Algorithmus",
+            "long": "Eine Folge von Schritten"
+          },
+          "4": {
+            "summary": "ML – Machine Learning"
+          }
+        }
+      }
+    },
+    {
+      "id": "unknown-1",
+      "name": "Unbekannte Abkürzung wird gemeldet, Definitionen und bekannte nicht; ohne Definitionen keine Prüfung",
+      "source": "swift/Tests/LatexEditorTests/AcronymTests.swift",
+      "sourceLine": 42,
+      "input": {
+        "op": "acronymProblems",
+        "text": "% \\newacronym{kommentar}{K}{Kommentar}\n\\newacronym{api}{API}{Application Programming Interface}\n\\newacronym[plural=ABs]{ab}{AB}{Abkürzung,\n  mit Umbruch}\n\\DeclareAcronym{cpu}{short = CPU, long = Central Processing Unit}\n\\newglossaryentry{algo}{name={Algorithmus}, description={Eine Folge von Schritten}}\n\\newabbreviation{ml}{ML}{Machine Learning}\nDie \\gls{api} und \\acrshort{cpu}, \\Gls{algo} \\ac{unbekannt}.",
+        "known": [
+          "api",
+          "cpu",
+          "algo"
+        ]
+      },
+      "expect": {
+        "keys": [
+          "unbekannt"
+        ],
+        "firstKind": "unknownAcronym",
+        "firstMessageContains": "nicht definiert"
+      }
+    },
+    {
+      "id": "unknown-2",
+      "name": "Unbekannte Abkürzung wird gemeldet, Definitionen und bekannte nicht; ohne Definitionen keine Prüfung",
+      "source": "swift/Tests/LatexEditorTests/AcronymTests.swift",
+      "sourceLine": 42,
+      "input": {
+        "op": "acronymProblems",
+        "text": "% \\newacronym{kommentar}{K}{Kommentar}\n\\newacronym{api}{API}{Application Programming Interface}\n\\newacronym[plural=ABs]{ab}{AB}{Abkürzung,\n  mit Umbruch}\n\\DeclareAcronym{cpu}{short = CPU, long = Central Processing Unit}\n\\newglossaryentry{algo}{name={Algorithmus}, description={Eine Folge von Schritten}}\n\\newabbreviation{ml}{ML}{Machine Learning}\nDie \\gls{api} und \\acrshort{cpu}, \\Gls{algo} \\ac{unbekannt}.",
+        "known": null
+      },
+      "expect": {
+        "keys": []
+      }
+    },
+    {
+      "id": "baseForms-1",
+      "name": "Grundformen, egal ob groß oder klein geschrieben",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 14,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Eigenwert"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "baseForms-2",
+      "name": "Grundformen, egal ob groß oder klein geschrieben",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 14,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "eigenwert"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "baseForms-3",
+      "name": "Grundformen, egal ob groß oder klein geschrieben",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 14,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Hamiltonoperator"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "baseForms-4",
+      "name": "Grundformen, egal ob groß oder klein geschrieben",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 14,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Qubit"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "baseForms-5",
+      "name": "Grundformen, egal ob groß oder klein geschrieben",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 14,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Verschränkung"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "baseForms-6",
+      "name": "Grundformen, egal ob groß oder klein geschrieben",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 14,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Dekohärenz"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "baseForms-7",
+      "name": "Grundformen, egal ob groß oder klein geschrieben",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 14,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Kryptografie"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "baseForms-8",
+      "name": "Grundformen, egal ob groß oder klein geschrieben",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 14,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Mutex"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "baseForms-9",
+      "name": "Grundformen, egal ob groß oder klein geschrieben",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 14,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Hilbertraum"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "inflections-1",
+      "name": "Gebeugte Formen: Mehrzahl, Genitiv, Verbformen, Steigerung",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 21,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Eigenwerte"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "inflections-2",
+      "name": "Gebeugte Formen: Mehrzahl, Genitiv, Verbformen, Steigerung",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 21,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Eigenwerten"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "inflections-3",
+      "name": "Gebeugte Formen: Mehrzahl, Genitiv, Verbformen, Steigerung",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 21,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Eigenwertes"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "inflections-4",
+      "name": "Gebeugte Formen: Mehrzahl, Genitiv, Verbformen, Steigerung",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 21,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Qubits"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "inflections-5",
+      "name": "Gebeugte Formen: Mehrzahl, Genitiv, Verbformen, Steigerung",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 21,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Matrizen"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "inflections-6",
+      "name": "Gebeugte Formen: Mehrzahl, Genitiv, Verbformen, Steigerung",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 21,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Tensoren"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "inflections-7",
+      "name": "Gebeugte Formen: Mehrzahl, Genitiv, Verbformen, Steigerung",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 21,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Algorithmen"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "inflections-8",
+      "name": "Gebeugte Formen: Mehrzahl, Genitiv, Verbformen, Steigerung",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 21,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "optimiert"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "inflections-9",
+      "name": "Gebeugte Formen: Mehrzahl, Genitiv, Verbformen, Steigerung",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 21,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Optimierung"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "inflections-10",
+      "name": "Gebeugte Formen: Mehrzahl, Genitiv, Verbformen, Steigerung",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 21,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "optimierte"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "inflections-11",
+      "name": "Gebeugte Formen: Mehrzahl, Genitiv, Verbformen, Steigerung",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 21,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "diagonalisierbare"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "inflections-12",
+      "name": "Gebeugte Formen: Mehrzahl, Genitiv, Verbformen, Steigerung",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 21,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Stetigkeit"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "inflections-13",
+      "name": "Gebeugte Formen: Mehrzahl, Genitiv, Verbformen, Steigerung",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 21,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Gaußsche"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "inflections-14",
+      "name": "Gebeugte Formen: Mehrzahl, Genitiv, Verbformen, Steigerung",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 21,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Hamiltonsches"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "compounds-1",
+      "name": "Zusammensetzungen aus Vokabelwörtern, mit und ohne Fugenelement",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 29,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Matrixmultiplikation"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "compounds-2",
+      "name": "Zusammensetzungen aus Vokabelwörtern, mit und ohne Fugenelement",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 29,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Eigenwertproblem"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "compounds-3",
+      "name": "Zusammensetzungen aus Vokabelwörtern, mit und ohne Fugenelement",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 29,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Zufallszahlengenerator"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "compounds-4",
+      "name": "Zusammensetzungen aus Vokabelwörtern, mit und ohne Fugenelement",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 29,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Quantenfouriertransformation"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "compounds-5",
+      "name": "Zusammensetzungen aus Vokabelwörtern, mit und ohne Fugenelement",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 29,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Quantenalgorithmus"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "compounds-6",
+      "name": "Zusammensetzungen aus Vokabelwörtern, mit und ohne Fugenelement",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 29,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Fehlerkorrekturcode"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "compounds-7",
+      "name": "Zusammensetzungen aus Vokabelwörtern, mit und ohne Fugenelement",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 29,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Wahrscheinlichkeitsverteilung"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "compounds-8",
+      "name": "Zusammensetzungen aus Vokabelwörtern, mit und ohne Fugenelement",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 29,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Laufzeitanalyse"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "compounds-9",
+      "name": "Zusammensetzungen aus Vokabelwörtern, mit und ohne Fugenelement",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 29,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Gaußverfahren"
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "compoundsWithSystemWords-1",
+      "name": "Zusammensetzung mit einem Teil, den nur die Systemprüfung kennt (vorn oder hinten)",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 37,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Matrixschublade",
+        "known": []
+      },
+      "expect": {
+        "accepted": false
+      }
+    },
+    {
+      "id": "compoundsWithSystemWords-2",
+      "name": "Zusammensetzung mit einem Teil, den nur die Systemprüfung kennt (vorn oder hinten)",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 37,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Matrixschublade",
+        "known": [
+          "Schublade"
+        ]
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "compoundsWithSystemWords-3",
+      "name": "Zusammensetzung mit einem Teil, den nur die Systemprüfung kennt (vorn oder hinten)",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 37,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Schaltkreisgröße",
+        "known": [
+          "Größe"
+        ]
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "compoundsWithSystemWords-4",
+      "name": "Zusammensetzung mit einem Teil, den nur die Systemprüfung kennt (vorn oder hinten)",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 37,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Zeitplanqubit",
+        "known": [
+          "Zeitplan"
+        ]
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "compoundsWithSystemWords-5",
+      "name": "Zusammensetzung mit einem Teil, den nur die Systemprüfung kennt (vorn oder hinten)",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 37,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Hausmatrix",
+        "known": [
+          "Haus"
+        ]
+      },
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "rejectsMisspellings-1",
+      "name": "Tippfehler und zufällige Buchstabenfolgen werden nicht durchgewunken",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 46,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Eigenwertt"
+      },
+      "expect": {
+        "accepted": false
+      }
+    },
+    {
+      "id": "rejectsMisspellings-2",
+      "name": "Tippfehler und zufällige Buchstabenfolgen werden nicht durchgewunken",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 46,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Matrixmultiplikazion"
+      },
+      "expect": {
+        "accepted": false
+      }
+    },
+    {
+      "id": "rejectsMisspellings-3",
+      "name": "Tippfehler und zufällige Buchstabenfolgen werden nicht durchgewunken",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 46,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Qbit"
+      },
+      "expect": {
+        "accepted": false
+      }
+    },
+    {
+      "id": "rejectsMisspellings-4",
+      "name": "Tippfehler und zufällige Buchstabenfolgen werden nicht durchgewunken",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 46,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Algoritmus"
+      },
+      "expect": {
+        "accepted": false
+      }
+    },
+    {
+      "id": "rejectsMisspellings-5",
+      "name": "Tippfehler und zufällige Buchstabenfolgen werden nicht durchgewunken",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 46,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Xyzzy"
+      },
+      "expect": {
+        "accepted": false
+      }
+    },
+    {
+      "id": "rejectsMisspellings-6",
+      "name": "Tippfehler und zufällige Buchstabenfolgen werden nicht durchgewunken",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 46,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Hallo"
+      },
+      "expect": {
+        "accepted": false
+      }
+    },
+    {
+      "id": "rejectsMisspellings-7",
+      "name": "Tippfehler und zufällige Buchstabenfolgen werden nicht durchgewunken",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 46,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Tisch"
+      },
+      "expect": {
+        "accepted": false
+      }
+    },
+    {
+      "id": "rejectsMisspellings-8",
+      "name": "Tippfehler und zufällige Buchstabenfolgen werden nicht durchgewunken",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 46,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "abc"
+      },
+      "expect": {
+        "accepted": false
+      }
+    },
+    {
+      "id": "rejectsMisspellings-9",
+      "name": "Tippfehler und zufällige Buchstabenfolgen werden nicht durchgewunken",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 46,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Haus"
+      },
+      "expect": {
+        "accepted": false
+      }
+    },
+    {
+      "id": "rejectsMisspellings-10",
+      "name": "Tippfehler und zufällige Buchstabenfolgen werden nicht durchgewunken",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 46,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Matrixmultiplikazion",
+        "known": [
+          "Berechnung",
+          "Haus"
+        ]
+      },
+      "expect": {
+        "accepted": false
+      }
+    },
+    {
+      "id": "shortWords-1",
+      "name": "Zu kurze Wörter und Wortteile zählen nicht",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 54,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Ab"
+      },
+      "expect": {
+        "accepted": false
+      }
+    },
+    {
+      "id": "shortWords-2",
+      "name": "Zu kurze Wörter und Wortteile zählen nicht",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 54,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Ich"
+      },
+      "expect": {
+        "accepted": false
+      }
+    },
+    {
+      "id": "shortWords-3",
+      "name": "Zu kurze Wörter und Wortteile zählen nicht",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 54,
+      "input": {
+        "op": "vocabularyAccepts",
+        "word": "Rang​"
+      },
+      "expect": {
+        "accepted": false
+      }
+    },
+    {
+      "id": "size",
+      "name": "Umfang des Vokabulars und keine Leerlisten",
+      "source": "swift/Tests/LatexEditorTests/TechnicalVocabularyTests.swift",
+      "sourceLine": 61,
+      "input": {
+        "op": "vocabularySize"
+      },
+      "expect": {
+        "wordCountGreaterThan": 4000
+      }
+    }
+  ]
+}

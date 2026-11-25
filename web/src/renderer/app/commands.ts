@@ -1,6 +1,6 @@
 // Befehlsregister: commandId → Funktion. Quelle der IDs ist das Menü (`main/menuTemplate.ts`, `menu:command`).
 // Jedes Kürzel hat genau einen Weg (sonst feuerte es doppelt):
-// - Menü-Accelerator (Strg+W, Strg+P, Strg+G, Strg+N, Strg+Umschalt+O): löst `menu:command` aus, hier registriert.
+// - Menü-Accelerator (Strg+W, Strg+P, Strg+G, Strg+N, Strg+Umschalt+O, Strg+J): löst `menu:command` aus, hier registriert.
 // - Renderer (`app/shortcuts.ts` und CodeMirror): Strg+O/S/Umschalt+S/B/., F8, Strg+Tab, Zoom, Suchen, Ersetzen,
 //   Rückgängig/Wiederholen; das Menü zeigt sie nur an (`displayOnly`), die Befehle hier gelten für Mausklicks im Menü.
 // - Ausschneiden/Kopieren/Einfügen/Alles auswählen: Electron-Rollen, nicht hier.
@@ -24,6 +24,8 @@ import { createNewFile } from './newFile';
 import { chooseAndOpenProject } from './projectFlow';
 import type { RevealDeps } from './revealLine';
 import type { ProjectFlowDeps } from './projectFlow';
+import { revealCursorInPdf, SYNCTEX_TEXTS } from './synctexFlow';
+import type { SyncTeXFlowDeps } from './synctexFlow';
 import { closeActiveTabWithPrompt } from './tabClose';
 import type { TabCloseDeps } from './tabClose';
 import { changeEditorZoom } from './zoom';
@@ -33,11 +35,11 @@ import type { ZoomDirection, ZoomSettingsStore } from './zoom';
 export type CommandHandler = () => void | Promise<void>;
 export type CommandRegistry = ReadonlyMap<string, CommandHandler>;
 
-/** Einstellungen, die Befehle brauchen: Zoom und „Beim Speichern kompilieren“ (ein gemeinsamer Zustandstyp) */
+/** Einstellungen, die Befehle brauchen: Zoom, „Beim Speichern kompilieren“, „PDF folgt Cursor“ (ein gemeinsamer Zustandstyp) */
 export interface CommandSettingsStore {
     getState(): ReturnType<ZoomSettingsStore['getState']> & {
-        readonly values: { readonly compilesOnSave: boolean };
-        set(key: 'compilesOnSave', value: boolean): Promise<void>;
+        readonly values: { readonly compilesOnSave: boolean; readonly pdfFollowsCursor: boolean };
+        set(key: 'compilesOnSave' | 'pdfFollowsCursor', value: boolean): Promise<void>;
     };
 }
 
@@ -58,6 +60,8 @@ export interface CommandDeps {
     readonly report: (message: StatusMessage) => void;
     /** Rückfrage vor „Hilfsdateien löschen“; `true` = löschen */
     readonly confirmClean: () => boolean;
+    /** Abhängigkeiten der SyncTeX-Abläufe (Strg+J) */
+    readonly syncTeX: () => SyncTeXFlowDeps;
 }
 
 function fileCommands(deps: CommandDeps): [string, CommandHandler][] {
@@ -124,9 +128,29 @@ function viewCommands(deps: CommandDeps): [string, CommandHandler][] {
         ['view.sidebarFiles', sidebarCommand(deps, 'files')],
         ['view.sidebarOutline', sidebarCommand(deps, 'outline')],
         ['view.sidebarIssues', sidebarCommand(deps, 'issues')],
+        ['view.synctexForward', async () => void (await revealCursorInPdf(deps.syncTeX(), 'explicit'))],
+        ['view.toggleFollowCursor', () => toggleFollowCursor(deps)],
         ['view.nextTab', () => deps.editor.getState().activateNext()],
         ['view.previousTab', () => deps.editor.getState().activatePrevious()],
     ];
+}
+
+function reportSettingFailure(deps: CommandDeps, error: unknown): void {
+    const detail = error instanceof Error ? error.message : String(error);
+    deps.report({ text: `Einstellung nicht gespeichert: ${detail}`, kind: 'error' });
+}
+
+/** „PDF folgt Cursor“ ein/aus (Standard aus wie Swift); die Statusleiste nennt den neuen Zustand */
+async function toggleFollowCursor(deps: CommandDeps): Promise<void> {
+    const state = deps.settings.getState();
+    const next = !state.values.pdfFollowsCursor;
+    try {
+        await state.set('pdfFollowsCursor', next);
+    } catch (error) {
+        reportSettingFailure(deps, error);
+        return;
+    }
+    deps.report({ text: next ? SYNCTEX_TEXTS.followOn : SYNCTEX_TEXTS.followOff, kind: 'info' });
 }
 
 function toggleCompileOnSave(deps: CommandDeps): Promise<void> {

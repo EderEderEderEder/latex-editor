@@ -49,6 +49,14 @@ describe('Verdrahtung der echten Handler', () => {
         await expect(handlers['settings:set']('__proto__', 1)).rejects.toThrow(IpcFailure);
     });
 
+    it('„PDF folgt Cursor“ ist standardmäßig aus, nimmt nur Wahrheitswerte an und bleibt gespeichert (W3-5)', async () => {
+        const { handlers } = setup();
+        expect((await handlers['settings:get']()).pdfFollowsCursor).toBe(false);
+        await expect(handlers['settings:set']('pdfFollowsCursor', 'ja')).rejects.toThrow(IpcFailure);
+        await handlers['settings:set']('pdfFollowsCursor', true);
+        expect((await handlers['settings:get']()).pdfFollowsCursor).toBe(true);
+    });
+
     it('beim Beenden schreibt flush die ausstehende Änderung sofort', async () => {
         const { handlers, quitTasks, log } = setup();
         expect(quitTasks.size).toBeGreaterThanOrEqual(1);

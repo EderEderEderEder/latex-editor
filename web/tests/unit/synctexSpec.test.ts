@@ -12,7 +12,7 @@ import {
     type SyncTeXIndex,
     unionRect,
 } from '../../src/main/synctex';
-import { type PdfPoint, pdfRectFromSyncTeX, syncTeXPointFromPdf } from '../../src/main/synctexCoordinates';
+import { type PdfPoint, pdfRectFromSyncTeX, syncTeXPointFromPdf } from '../../src/shared/core/synctexCoordinates';
 import { loadSpec, type SpecCase, specDirectory } from '../support/specVectors';
 
 // Gemeinsame Vektoren `shared/spec/synctex.json` (Format: `notes` der Datei, `shared/spec/README.md`).

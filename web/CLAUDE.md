@@ -37,6 +37,7 @@ Regeln (Thesis, Prozesse, Subagents, Code-Stil): `../CLAUDE.md`, nicht doppelt h
 | `core/latex/` | `tokenizer`, `comments`, `masking`, `environments`, `foldRegions` (`FoldState`), `syntaxChecker`, `duplicateLabels` |
 | `core/bib/tokenizer.ts` | BibTeX-Tokenizer |
 | `core/tabs.ts`, `core/textEditing.ts` | Tab-Logik (Vorschau/fest, Reihenfolge); Tipp-Logik (Klammern, Enter, Kommentar, Einrücken, Zeilen, Formatierung) |
+| `core/synctexCoordinates.ts` | SyncTeX ↔ PDF-Benutzerraum (Media-Box), `unionRect`, `mediaBoxFromViewBox`, `containsRect`; Main (Vektoren) und PDF-Ansicht teilen sie |
 
 ### `src/main/` (Node; nur `index.ts` und der Preload importieren `electron` zur Laufzeit)
 
@@ -63,9 +64,10 @@ Regeln (Thesis, Prozesse, Subagents, Code-Stil): `../CLAUDE.md`, nicht doppelt h
 |---|---|
 | `index.html`, `main.tsx`, `App.tsx`, `global.d.ts`, `css.d.ts` | Einstieg (strikte CSP), Rahmen |
 | `ipc/` | `api.ts` (dünner Zugriff auf `window.api`), `events.ts` |
-| `app/` | `fileActions.ts` (Öffnen, Speichern, Speichern unter, Nachspeichern), `closeFlow.ts` (Nachfrage beim Schließen), `shortcuts.ts` (Strg+O/S/⇧S, Zoom), `commands.ts` (Befehlsregister zu `menu:command`, Kommentar zu Kürzel-Wegen) + `commandsRuntime.ts`, `newFile.ts`, `quickOpenFiles.ts`, `gotoLine.ts`, `zoom.ts`, `startup.ts`, `statusText.ts`, `tabBarData.ts`, `useCursorPosition.ts`, `debounce.ts` |
+| `app/` | `fileActions.ts` (Öffnen, Speichern, Speichern unter, Nachspeichern), `closeFlow.ts` (Nachfrage beim Schließen), `shortcuts.ts` (Strg+O/S/⇧S, Zoom), `commands.ts` (Befehlsregister zu `menu:command`, Kommentar zu Kürzel-Wegen) + `commandsRuntime.ts` (auch SyncTeX-Verdrahtung, `syncTeXViewerSlot`), `synctexFlow.ts` (Strg+J, Strg/⌘-Klick ins PDF, „PDF folgt Cursor“; reine Abläufe), `newFile.ts`, `quickOpenFiles.ts`, `gotoLine.ts`, `zoom.ts`, `startup.ts`, `statusText.ts`, `tabBarData.ts`, `useCursorPosition.ts`, `debounce.ts` |
 | `editor/` | `EditorHost.tsx` (ein `EditorView`, Testzugang im E2E-Modus), `session.ts` (`EditorSession`, `SessionRegistry`, `SessionView`), `extensions.ts` (Liste aller Funktionen), `language.ts` + `lineStateCache.ts` (Einfärbung), `folding.ts`, `gutter.ts`, `diagnostics.ts`, `typing.ts`, `search.ts`, `cursorEvents.ts`, `theme.ts`, `themeController.ts`, `appearance.ts`, `appearanceController.ts`, `domAppearanceHost.ts` (Farbschema, Einstellungen als Compartments) |
-| `stores/` | `editor.ts` (Tabs, `isDirty`; nie Text), `settings.ts`, `status.ts` |
+| `stores/` | `editor.ts` (Tabs, `isDirty`; nie Text), `settings.ts`, `status.ts`, `synctex.ts` (bereit nach `synctex:ready`, letzte Anfrage; nie Bytes) |
+| `pdf/` | `viewer.ts` (pdf.js-Viewer; SyncTeX: Stelle mittig sichtbar machen, Sichtbarkeitsprüfung, Strg/⌘-Klick → Seite + SyncTeX-Punkt) |
 | `ui/` | `WorkspaceSplit.tsx` + `workspaceSplit.css` (Editor/Geteilt/PDF, 14-px-Teiler, beide immer eingehängt; Logik `app/viewModeLogic.ts`, Zustand `stores/viewMode.ts`), `EditorPane.tsx`, `EditorTabs.tsx`, `EditorToolbar.tsx`, `StatusBar.tsx`, `CloseConfirmDialog.tsx`, `editorPane.css` |
 | `workers/` | `analysis.worker.ts` + `analysisLogic.ts` (Syntaxprüfung, doppelte Labels), `analysisClient.ts` (entprellt 0,6 s) |
 
@@ -74,7 +76,7 @@ Regeln (Thesis, Prozesse, Subagents, Code-Stil): `../CLAUDE.md`, nicht doppelt h
 | Ordner | Inhalt |
 |---|---|
 | `tests/unit/` | Vitest `*.test.ts` (System-Node, ohne Electron) |
-| `tests/e2e/` | Playwright mit Electron und Stub-Preload: `view-mode`, `stub-smoke`, `editor-basic`, `session`, `gutter`, `folding`, `diagnostics`, `typing`, `closeConfirm` |
+| `tests/e2e/` | Playwright mit Electron und Stub-Preload: `view-mode`, `synctex`, `stub-smoke`, `editor-basic`, `session`, `gutter`, `folding`, `diagnostics`, `typing`, `closeConfirm` |
 | `tests/perf/` | Leistungsmessung: `editorPerf.perf.spec.ts`, `budgets.ts`, `measureRun.ts`, `pageProbe.ts`, `stats.ts`, `syntheticDocument.ts`, `playwright.perf.config.ts` |
 | `tests/support/` | `preloadStub.ts` (gefälschte `window.api`), `fakeLatexmk.mjs`, `specVectors.ts`, `synctexWorkerClient.ts` |
 | `tests/slow/`, `tests/smoke.test.ts` | langsame Tests (`*.slow.test.ts`, nur ohne `--fast`); Rauchtest |

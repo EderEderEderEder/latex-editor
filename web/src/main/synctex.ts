@@ -478,14 +478,8 @@ function sameRect(first: PdfRect, second: PdfRect): boolean {
     return first.x === second.x && first.y === second.y && first.width === second.width && first.height === second.height;
 }
 
-export function unionRect(rects: readonly PdfRect[]): PdfRect | null {
-    if (rects.length === 0) return null;
-    const minX = Math.min(...rects.map((rect) => rect.x));
-    const minY = Math.min(...rects.map((rect) => rect.y));
-    const maxX = Math.max(...rects.map((rect) => rect.x + rect.width));
-    const maxY = Math.max(...rects.map((rect) => rect.y + rect.height));
-    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
-}
+// Liegt in `shared/core/synctexCoordinates.ts`, damit die PDF-Ansicht im Renderer dieselbe Vereinigung nutzt.
+export { unionRect } from '../shared/core/synctexCoordinates';
 
 // ---------- Vorwärtssuche ----------
 

@@ -77,6 +77,14 @@ describe('Menüvorlage', () => {
         }
     });
 
+    it('SyncTeX (W3-5): Strg/⌘+J besitzt das Menü, „PDF folgt Cursor“ ohne Kürzel', () => {
+        const commands = allCommands(buildMenuEntries(win));
+        const forward = commands.find((entry) => entry.commandId === 'view.synctexForward');
+        expect(forward).toMatchObject({ accelerator: 'CommandOrControl+J', label: 'Zur PDF-Stelle springen' });
+        expect(forward?.displayOnly).toBeUndefined();
+        expect(commands.find((entry) => entry.commandId === 'view.toggleFollowCursor')?.accelerator).toBeUndefined();
+    });
+
     it('Windows: kein App-Menü, Beenden in Datei; macOS: App-Menü, kein Beenden in Datei', () => {
         const winEntries = buildMenuEntries(win);
         const macEntries = buildMenuEntries(mac);

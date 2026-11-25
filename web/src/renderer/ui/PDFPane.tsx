@@ -1,7 +1,9 @@
 // PDF-Ansicht (W3-3): Zoom-Leiste (Minus, Plus, Breite, Seite, Prozentwert), Seitenwechsel mit „Seite x / n“ und der
 // pdf.js-Viewer. Der Zustand liegt im PDF-Store; hier stehen nur die Darstellung und das Ein- und Aushängen des Viewers.
+// Die Ansicht ist immer eingehängt und trägt deshalb auch die SyncTeX-Verdrahtung (W3-5, `app/synctexFlow.ts`).
 import { useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
+import { connectAppSyncTeX, showPdfPointInEditorFromApp, syncTeXViewerSlot } from '../app/commandsRuntime';
 import { createPdfViewer } from '../pdf/viewer';
 import { pdfStore, usePdfStore } from '../stores/pdf';
 import type { PdfZoom } from '../stores/pdf';
@@ -91,9 +93,17 @@ function usePdfViewer(): PdfViewerRefs {
         const container = containerRef.current;
         const viewerElement = viewerRef.current;
         if (container === null || viewerElement === null) return;
-        const viewer = createPdfViewer({ container, viewer: viewerElement }, (report) => pdfStore.getState().noteView(report));
+        const viewer = createPdfViewer(
+            { container, viewer: viewerElement },
+            (report) => pdfStore.getState().noteView(report),
+            showPdfPointInEditorFromApp,
+        );
         pdfStore.getState().attachViewer(viewer);
+        syncTeXViewerSlot.set(viewer);
+        const disconnectSyncTeX = connectAppSyncTeX();
         return () => {
+            disconnectSyncTeX();
+            syncTeXViewerSlot.set(null);
             pdfStore.getState().attachViewer(null);
             viewer.destroy();
         };

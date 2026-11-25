@@ -95,6 +95,22 @@ describe('Befehlsregister', () => {
         expect(clean).toHaveBeenCalledOnce();
     });
 
+    it('„PDF folgt Cursor“ schaltet die Einstellung um und nennt den neuen Zustand (W3-5)', async () => {
+        const { deps, messages } = setup();
+        const values = { compilesOnSave: true, pdfFollowsCursor: false };
+        const set = vi.fn((key: 'compilesOnSave' | 'pdfFollowsCursor', value: boolean) => {
+            values[key] = value;
+            return Promise.resolve();
+        });
+        const settings = { getState: () => ({ values, set }) } as unknown as CommandDeps['settings'];
+        const registry = createCommandRegistry({ ...deps, settings });
+        await runCommand(registry, 'view.toggleFollowCursor', deps.report);
+        expect(set).toHaveBeenCalledWith('pdfFollowsCursor', true);
+        await runCommand(registry, 'view.toggleFollowCursor', deps.report);
+        expect(values.pdfFollowsCursor).toBe(false);
+        expect(messages.map((message) => message.text)).toEqual(['PDF folgt dem Cursor.', 'PDF folgt dem Cursor nicht mehr.']);
+    });
+
     it('unbekannte IDs werden ignoriert, Fehler als Meldung gezeigt', async () => {
         const { deps, messages } = setup();
         await runCommand(new Map(), 'gibt.es.nicht', deps.report);

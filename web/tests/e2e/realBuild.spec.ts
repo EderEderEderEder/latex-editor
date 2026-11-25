@@ -16,6 +16,14 @@ const TEX_PATHS = ['/Library/TeX/texbin', '/usr/local/bin', '/usr/bin'];
 const OPEN_TIMEOUT_MS = 15_000;
 const BUILD_TIMEOUT_MS = 180_000;
 const BUILD_FILE_PATTERN = /\.(aux|log|pdf|toc|out|bbl|blg|bcf|lof|lot|fls|fdb_latexmk|xml)$|\.synctex\.gz$/;
+const SYNCTEX_MENU_LABEL = 'Zur PDF-Stelle springen';
+const SYNCTEX_SOURCE_LINE = 20;
+const SYNCTEX_LINE_TOLERANCE = 3;
+const SYNCTEX_READY_TIMEOUT_MS = 20_000;
+const SYNCTEX_ATTEMPT_TIMEOUT_MS = 2_000;
+const FIRST_PAGE_PATTERN = /^Seite 1 \//;
+const POSITION_LINE_PATTERN = /^Zeile (\d+),/;
+const SYNC_MODIFIER = 'ControlOrMeta';
 
 const enabled = process.env[REAL_TEX_ENV] === '1' && existsSync(DEMO_DIR);
 
@@ -23,6 +31,22 @@ let app: ElectronApplication;
 let page: Page;
 let userDataDir: string;
 let projectDir: string;
+
+/** Native Menü-Kürzel erreichen Playwright nicht: den Menüeintrag im Main auslösen (wie ein Klick ins Menü) */
+async function clickMenuItem(label: string): Promise<boolean> {
+    return app.evaluate(({ Menu }, wanted) => {
+        const stack = [...(Menu.getApplicationMenu()?.items ?? [])];
+        while (stack.length > 0) {
+            const item = stack.pop()!;
+            if (item.label === wanted) {
+                item.click();
+                return true;
+            }
+            stack.push(...(item.submenu?.items ?? []));
+        }
+        return false;
+    }, label);
+}
 
 function copyDemoWithoutBuildFiles(target: string): void {
     cpSync(DEMO_DIR, target, { recursive: true, filter: (source) => !BUILD_FILE_PATTERN.test(source) });
@@ -79,4 +103,38 @@ test('Nach dem Kompilieren zeigt die PDF-Ansicht die Seiten der echten Ausgabe',
     await expect(pane.locator('.pdfViewer .page .textLayer').first()).toBeAttached();
     const pageCount = await pane.locator('.pdfViewer .page').count();
     expect(pageCount).toBeGreaterThan(3);
+});
+
+// W3-5: Strg+J (Menü „Zur PDF-Stelle springen“) aus `chapters/einleitung.tex`, Zeile 20 (Cursor steht nach dem Sprung
+// zur Meldung dort). Der Main lädt SyncTeX nach dem Build im Hintergrund; bis dahin meldet Strg+J nur „keine Daten“,
+// deshalb wird bis zur Frist wiederholt.
+test('Strg+J springt im PDF auf die Seite der Cursorzeile (nicht Seite 1)', async () => {
+    const indicator = page.getByRole('region', { name: /PDF/i }).locator('.pdf-page-indicator');
+    await expect(page.getByText(new RegExp(`Zeile ${SYNCTEX_SOURCE_LINE}, Spalte`))).toBeVisible();
+    await expect(async () => {
+        expect(await clickMenuItem(SYNCTEX_MENU_LABEL)).toBe(true);
+        await expect(indicator).not.toHaveText(FIRST_PAGE_PATTERN, { timeout: SYNCTEX_ATTEMPT_TIMEOUT_MS });
+    }).toPass({ timeout: SYNCTEX_READY_TIMEOUT_MS });
+    await expect(indicator).toHaveText(/^Seite \d+ \/ \d+$/);
+});
+
+// Nach Strg+J steht die Stelle senkrecht mittig: ⌘-/Strg-Klick in die Mitte der Ansicht führt zurück. Vorher eine
+// andere Datei zeigen. Pfadform: SyncTeX nennt `/private/var/…`, das Projekt heißt `/var/…`; nur wenn der Main den
+// Pfad in Projektform liefert, öffnet der Renderer die Datei (sonst „keine .tex-Datei des Projekts“).
+test('⌘-/Strg-Klick ins PDF an diese Stelle öffnet einleitung.tex in der Nähe von Zeile 20', async () => {
+    // main.tex ist seit dem ersten Test als Tab offen (die Seitenleiste zeigt inzwischen die Meldungen)
+    await page.getByRole('tab', { name: 'main.tex' }).click();
+    await expect(page.getByRole('tab', { name: 'main.tex' })).toHaveAttribute('aria-selected', 'true');
+    const container = page.getByRole('region', { name: /PDF/i }).locator('.pdf-container');
+    const box = await container.boundingBox();
+    expect(box).not.toBeNull();
+    await container.click({ position: { x: box!.width / 2, y: box!.height / 2 }, modifiers: [SYNC_MODIFIER] });
+    await expect(page.getByRole('tab', { name: 'einleitung.tex' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('navigation', { name: 'Pfad der Datei' })).toContainText('chapters/einleitung.tex');
+    // Die Statusleiste zeigt die Cursorposition entprellt: abfragen, bis sie stimmt (NaN zählt als „noch nicht“).
+    const distanceToSource = async (): Promise<number> => {
+        const position = await page.locator('.status-position').textContent();
+        return Math.abs(Number(POSITION_LINE_PATTERN.exec(position ?? '')?.[1]) - SYNCTEX_SOURCE_LINE);
+    };
+    await expect.poll(distanceToSource).toBeLessThanOrEqual(SYNCTEX_LINE_TOLERANCE);
 });

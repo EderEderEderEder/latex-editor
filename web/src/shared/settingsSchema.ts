@@ -38,6 +38,8 @@ export const SETTING_SPECS = {
     colorScheme: { kind: 'text', default: 'standard', maxLength: MAX_SCHEME_NAME_LENGTH, pattern: SCHEME_NAME_PATTERN },
     savesAutomatically: { kind: 'boolean', default: true },
     compilesOnSave: { kind: 'boolean', default: true },
+    // „PDF folgt Cursor“ (Swift `pdfFollowsCursor`, Standard aus)
+    pdfFollowsCursor: { kind: 'boolean', default: false },
 } as const satisfies Readonly<Record<string, SettingSpec>>;
 
 export type SettingKey = keyof typeof SETTING_SPECS;

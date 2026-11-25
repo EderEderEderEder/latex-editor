@@ -3,11 +3,20 @@
 // nicht erhöhen), `maxCanvasPixels` 2^24, Hilfsdaten offline aus `out/renderer/pdfjs/`, eigenes l10n (sonst lädt
 // `GenericL10n` Sprachdateien nach), Textebene und Annotationen (Links) an. Neuladen ersetzt das Dokument im selben
 // Viewer, stellt Seite, Zoom und Scrollposition wieder her und gibt das alte Dokument erst nach dem ersten Paint frei.
+// SyncTeX (W3-5): Stelle etwa mittig sichtbar machen (ohne Markierung), Sichtbarkeitsprüfung für „PDF folgt Cursor“
+// und ⌘-Klick (macOS) bzw. Strg-Klick → Seite + SyncTeX-Punkt; normale Klicks, Auswahl und Links bleiben unberührt.
 import './pdfjsGlobal';
 import { AnnotationMode, getDocument, GlobalWorkerOptions, PDFWorker } from 'pdfjs-dist';
-import type { PDFDocumentLoadingTask, PDFDocumentProxy } from 'pdfjs-dist';
+import type { PageViewport, PDFDocumentLoadingTask, PDFDocumentProxy } from 'pdfjs-dist';
 import { EventBus, PDFLinkService, PDFViewer } from 'pdfjs-dist/web/pdf_viewer.mjs';
 import 'pdfjs-dist/web/pdf_viewer.css';
+import type { PdfRect } from '../../shared/contract';
+import {
+    containsRect, mediaBoxFromViewBox, pdfRectFromSyncTeX, syncTeXPointFromPdf,
+} from '../../shared/core/synctexCoordinates';
+import type { PdfPoint } from '../../shared/core/synctexCoordinates';
+import { isSyncTeXClick } from '../app/synctexFlow';
+import type { SyncTeXTarget, SyncTeXViewerPort, ViewerRevealResult } from '../app/synctexFlow';
 import type { PdfViewerPort, PdfViewReport, PdfZoom } from '../stores/pdf';
 import { PDFJS_ASSET_DIRECTORY, PDFJS_WORKER_FILE } from './pdfjsAssets';
 
@@ -20,6 +29,12 @@ const PRESET_ZOOM_VALUES: Readonly<Record<Exclude<PdfZoom, number>, string>> = {
 const XYZ_DESTINATION = { name: 'XYZ' } as const;
 const L10N_LANGUAGE = 'de';
 const L10N_DIRECTION = 'ltr';
+/** Abstand links neben der Stelle beim Hinscrollen (Swift `horizontalMargin`), PDF-Punkte */
+const REVEAL_HORIZONTAL_MARGIN = 20;
+const REVEAL_CENTER = 'vertical';
+const HALF = 2;
+const FIRST_PAGE = 1;
+const IS_MAC = /Mac/i.test(navigator.platform);
 
 export const PDF_VIEWER_MESSAGES = {
     pagesInitTimeout: 'Seiten des PDFs wurden nicht rechtzeitig aufgebaut',
@@ -58,8 +73,48 @@ export interface PdfViewerElements {
     readonly viewer: HTMLDivElement;
 }
 
-export interface PdfJsViewer extends PdfViewerPort {
+export interface PdfJsViewer extends PdfViewerPort, SyncTeXViewerPort {
     destroy(): void;
+}
+
+/** ⌘-Klick bzw. Strg-Klick ins PDF: Seite (1-basiert) und Punkt in SyncTeX-Koordinaten */
+export type SyncTeXClickHandler = (page: number, point: PdfPoint) => void;
+
+/** Was SyncTeX von `PDFPageView` braucht (pdf.js typisiert `getPageView` nur als `any`) */
+interface PageViewLike {
+    readonly id: number;
+    readonly div: HTMLDivElement;
+    readonly viewport: PageViewport;
+}
+
+/** Linke obere Ecke des Seiteninhalts (ohne Rahmen) im Fenster */
+function pageOrigin(div: HTMLDivElement): PdfPoint {
+    const box = div.getBoundingClientRect();
+    return { x: box.left + div.clientLeft, y: box.top + div.clientTop };
+}
+
+function viewportPoint(viewport: PageViewport, x: number, y: number): PdfPoint {
+    const [viewX, viewY] = viewport.convertToViewportPoint(x, y);
+    return { x: Number(viewX), y: Number(viewY) };
+}
+
+/** Rechteck im PDF-Benutzerraum → Fensterkoordinaten (CSS-Pixel) */
+function clientRectOf(pageView: PageViewLike, rect: PdfRect): PdfRect {
+    const origin = pageOrigin(pageView.div);
+    const first = viewportPoint(pageView.viewport, rect.x, rect.y);
+    const second = viewportPoint(pageView.viewport, rect.x + rect.width, rect.y + rect.height);
+    return {
+        x: origin.x + Math.min(first.x, second.x),
+        y: origin.y + Math.min(first.y, second.y),
+        width: Math.abs(second.x - first.x),
+        height: Math.abs(second.y - first.y),
+    };
+}
+
+function distanceToBox(box: DOMRect, x: number, y: number): number {
+    const dx = Math.max(box.left - x, 0, x - box.right);
+    const dy = Math.max(box.top - y, 0, y - box.bottom);
+    return Math.hypot(dx, dy);
 }
 
 function assetUrl(relative: string): string {
@@ -110,8 +165,15 @@ class PdfJsViewerImpl implements PdfJsViewer {
     private location: SavedLocation | null = null;
     private zoomValue = zoomValueOf('pageWidth');
     private isDestroyed = false;
+    private readonly container: HTMLDivElement;
+    private readonly domListeners = new AbortController();
 
-    constructor(elements: PdfViewerElements, private readonly onView: (report: PdfViewReport) => void) {
+    constructor(
+        elements: PdfViewerElements,
+        private readonly onView: (report: PdfViewReport) => void,
+        private readonly onSyncTeXClick: SyncTeXClickHandler | null,
+    ) {
+        this.container = elements.container;
         this.viewer = new PDFViewer({
             container: elements.container,
             viewer: elements.viewer,
@@ -124,6 +186,82 @@ class PdfJsViewerImpl implements PdfJsViewer {
         });
         this.linkService.setViewer(this.viewer);
         this.listen();
+        this.listenForSyncTeXClicks();
+    }
+
+    // In der Einfangphase, damit Textebene und Links die Geste nicht zuerst sehen: `mousedown` verhindert das Starten
+    // einer Auswahl, `click` das Folgen eines Links (Strg-Klick öffnete sonst ein neues Fenster).
+    private listenForSyncTeXClicks(): void {
+        if (this.onSyncTeXClick === null) return;
+        const options = { capture: true, signal: this.domListeners.signal };
+        this.container.addEventListener('mousedown', (event) => this.handleSyncTeXMouseDown(event), options);
+        this.container.addEventListener('click', (event) => {
+            if (!isSyncTeXClick(event, IS_MAC)) return;
+            event.preventDefault();
+            event.stopPropagation();
+        }, options);
+    }
+
+    private handleSyncTeXMouseDown(event: MouseEvent): void {
+        if (this.onSyncTeXClick === null || !isSyncTeXClick(event, IS_MAC)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const hit = this.syncTeXPointAt(event.clientX, event.clientY);
+        if (hit !== null) this.onSyncTeXClick(hit.page, hit.point);
+    }
+
+    /** Wie Swift `page(for:nearest: true)`: ein Klick neben die Seiten zählt zur nächsten Seite */
+    private pageViewAt(clientX: number, clientY: number): PageViewLike | null {
+        let nearest: PageViewLike | null = null;
+        let nearestDistance = Number.POSITIVE_INFINITY;
+        for (let index = 0; index < this.viewer.pagesCount; index++) {
+            const pageView = this.viewer.getPageView(index) as PageViewLike | undefined;
+            if (pageView === undefined) continue;
+            const distance = distanceToBox(pageView.div.getBoundingClientRect(), clientX, clientY);
+            if (distance === 0) return pageView;
+            if (distance < nearestDistance) {
+                nearest = pageView;
+                nearestDistance = distance;
+            }
+        }
+        return nearest;
+    }
+
+    private syncTeXPointAt(clientX: number, clientY: number): { page: number; point: PdfPoint } | null {
+        if (this.current === null) return null;
+        const pageView = this.pageViewAt(clientX, clientY);
+        const mediaBox = pageView === null ? null : mediaBoxFromViewBox(pageView.viewport.viewBox);
+        if (pageView === null || mediaBox === null) return null;
+        const origin = pageOrigin(pageView.div);
+        const [pdfX, pdfY] = pageView.viewport.convertToPdfPoint(clientX - origin.x, clientY - origin.y);
+        return { page: pageView.id, point: syncTeXPointFromPdf({ x: Number(pdfX), y: Number(pdfY) }, mediaBox) };
+    }
+
+    private pageViewFor(pageNumber: number): PageViewLike | null {
+        const pageCount = this.viewer.pagesCount;
+        if (this.current === null || pageCount < FIRST_PAGE) return null;
+        const clamped = Math.min(Math.max(Math.round(pageNumber), FIRST_PAGE), pageCount);
+        return (this.viewer.getPageView(clamped - FIRST_PAGE) as PageViewLike | undefined) ?? null;
+    }
+
+    /** Ganz im sichtbaren Bereich des Scrollcontainers? (Swift: `pdfView.bounds.contains(rect)`) */
+    private isVisible(pageView: PageViewLike, rect: PdfRect): boolean {
+        const box = this.container.getBoundingClientRect();
+        const visible = { x: box.left, y: box.top, width: this.container.clientWidth, height: this.container.clientHeight };
+        return containsRect(visible, clientRectOf(pageView, rect));
+    }
+
+    // Ohne Markierung und ohne Aufblitzen (Nutzerwunsch, wie Swift): nur hinscrollen, Stelle senkrecht mittig.
+    reveal(target: SyncTeXTarget, onlyIfHidden: boolean): ViewerRevealResult {
+        const pageView = this.pageViewFor(target.page);
+        const mediaBox = pageView === null ? null : mediaBoxFromViewBox(pageView.viewport.viewBox);
+        if (pageView === null || mediaBox === null) return 'unavailable';
+        const rect = pdfRectFromSyncTeX(target.rect, mediaBox);
+        if (onlyIfHidden && this.isVisible(pageView, rect)) return 'visible';
+        // XYZ ohne Zoom (`null`): Punkt im PDF-Benutzerraum, `center` rückt ihn senkrecht in die Mitte.
+        const destArray = [null, XYZ_DESTINATION, rect.x - REVEAL_HORIZONTAL_MARGIN, rect.y + rect.height / HALF, null];
+        this.viewer.scrollPageIntoView({ pageNumber: pageView.id, destArray, center: REVEAL_CENTER });
+        return 'scrolled';
     }
 
     private listen(): void {
@@ -213,12 +351,17 @@ class PdfJsViewerImpl implements PdfJsViewer {
 
     destroy(): void {
         this.isDestroyed = true;
+        this.domListeners.abort();
         this.close();
         this.worker?.destroy();
         this.worker = null;
     }
 }
 
-export function createPdfViewer(elements: PdfViewerElements, onView: (report: PdfViewReport) => void): PdfJsViewer {
-    return new PdfJsViewerImpl(elements, onView);
+export function createPdfViewer(
+    elements: PdfViewerElements,
+    onView: (report: PdfViewReport) => void,
+    onSyncTeXClick: SyncTeXClickHandler | null = null,
+): PdfJsViewer {
+    return new PdfJsViewerImpl(elements, onView, onSyncTeXClick);
 }

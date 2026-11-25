@@ -16,6 +16,8 @@ import type {
     ProjectInfo,
     RecoveryDiskState,
     RecoveryItem,
+    SyncTexBackwardResult,
+    SyncTexForwardResult,
     TabMemory,
     TreeNode,
     TextFile,
@@ -87,6 +89,11 @@ export interface StubControl {
     setPdf(path: string, base64: string | null): void;
     /** Lässt `pdf:open` mit diesem Fehler antworten (z. B. unvollständiges PDF); `null` schaltet es wieder aus */
     failPdf(kind: GeneralErrorKind | null, message?: string): void;
+    /**
+     * Antworten von `synctex:forward` und `synctex:backward` für alle folgenden Anfragen (Standard: beide `null` wie
+     * ohne geladene Daten); die Anfragen selbst stehen in `calls()`. `synctex:ready` schickt der Test mit `emit`.
+     */
+    setSyncTeX(forward: SyncTexForwardResult | null, backward: SyncTexBackwardResult | null): void;
 }
 
 export interface PreloadStub {
@@ -406,6 +413,24 @@ class VirtualPdfs implements Pick<StubControl, 'setPdf' | 'failPdf'> {
     };
 }
 
+// ---------- SyncTeX (W3-5) ----------
+
+/** Feste Antworten der beiden SyncTeX-Kanäle (der Stub hat keinen Index) */
+class VirtualSyncTeX implements Pick<StubControl, 'setSyncTeX'> {
+    private forward: SyncTexForwardResult | null = null;
+    private backward: SyncTexBackwardResult | null = null;
+
+    setSyncTeX(forward: SyncTexForwardResult | null, backward: SyncTexBackwardResult | null): void {
+        this.forward = forward;
+        this.backward = backward;
+    }
+
+    readonly responders: Pick<StubResponders, 'synctex:forward' | 'synctex:backward'> = {
+        'synctex:forward': () => this.forward,
+        'synctex:backward': () => this.backward,
+    };
+}
+
 // ---------- Beispielprojekt (W2-3) ----------
 
 const PROJECT_GRANT: GrantedPath = { grantId: 'stub-project-grant', name: 'projekt' };
@@ -547,6 +572,7 @@ export function createPreloadStub(overrides: Partial<StubResponders> = {}): Prel
     const virtualTabMemory = new VirtualTabMemory();
     const virtualRecovery = new VirtualRecovery((path) => virtualFiles.displayNameOf(path));
     const virtualPdfs = new VirtualPdfs();
+    const virtualSyncTeX = new VirtualSyncTeX();
     const listeners = new Map<EventChannel, Set<AnyListener>>();
     const virtualBuild = new VirtualBuild((event, payload) => emitEvent(listeners, event, payload));
     const responders: Record<string, unknown> = {
@@ -555,6 +581,7 @@ export function createPreloadStub(overrides: Partial<StubResponders> = {}): Prel
         ...virtualTabMemory.responders,
         ...virtualRecovery.responders,
         ...virtualPdfs.responders,
+        ...virtualSyncTeX.responders,
         'tools:detect': () => virtualBuild.tools,
         'build:start': () => virtualBuild.start(),
         'build:cancel': () => virtualBuild.cancel(),
@@ -601,6 +628,7 @@ export function createPreloadStub(overrides: Partial<StubResponders> = {}): Prel
         finishBuild: () => virtualBuild.finish(false),
         setPdf: (path, base64) => virtualPdfs.setPdf(path, base64),
         failPdf: (kind, message) => virtualPdfs.failPdf(kind, message),
+        setSyncTeX: (forward, backward) => virtualSyncTeX.setSyncTeX(forward, backward),
         calls: () => calls.map((call) => ({ channel: call.channel, args: [...call.args] })),
         clearCalls: () => {
             calls.length = 0;

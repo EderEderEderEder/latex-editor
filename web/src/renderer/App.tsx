@@ -17,6 +17,7 @@ import { PDFPane } from './ui/PDFPane';
 import { RecoveryDialog } from './ui/RecoveryDialog';
 import { Sidebar } from './ui/Sidebar';
 import { SidebarShell } from './ui/SidebarShell';
+import { WorkspaceSplit } from './ui/WorkspaceSplit';
 
 const PING_PENDING = '…';
 
@@ -64,9 +65,10 @@ export function App() {
             <SidebarShell>
                 <Sidebar onFocusEditor={focusEditor} />
             </SidebarShell>
-            <EditorPane heading={<h1>LatexEditor</h1>} onSessionView={handleSessionView} />
-            {/* Vorläufig zwei Spalten mit festem Teiler; W3-4 ersetzt diese Stelle durch Editor/Geteilt/PDF. */}
-            <PDFPane />
+            <WorkspaceSplit
+                editor={<EditorPane heading={<h1>LatexEditor</h1>} onSessionView={handleSessionView} />}
+                pdf={<PDFPane />}
+            />
             <AppOverlays focusEditor={focusEditor} />
             <RecoveryDialog />
         </main>

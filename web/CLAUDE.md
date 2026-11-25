@@ -66,7 +66,7 @@ Regeln (Thesis, Prozesse, Subagents, Code-Stil): `../CLAUDE.md`, nicht doppelt h
 | `app/` | `fileActions.ts` (Öffnen, Speichern, Speichern unter, Nachspeichern), `closeFlow.ts` (Nachfrage beim Schließen), `shortcuts.ts` (Strg+O/S/⇧S, Zoom), `commands.ts` (Befehlsregister zu `menu:command`, Kommentar zu Kürzel-Wegen) + `commandsRuntime.ts`, `newFile.ts`, `quickOpenFiles.ts`, `gotoLine.ts`, `zoom.ts`, `startup.ts`, `statusText.ts`, `tabBarData.ts`, `useCursorPosition.ts`, `debounce.ts` |
 | `editor/` | `EditorHost.tsx` (ein `EditorView`, Testzugang im E2E-Modus), `session.ts` (`EditorSession`, `SessionRegistry`, `SessionView`), `extensions.ts` (Liste aller Funktionen), `language.ts` + `lineStateCache.ts` (Einfärbung), `folding.ts`, `gutter.ts`, `diagnostics.ts`, `typing.ts`, `search.ts`, `cursorEvents.ts`, `theme.ts`, `themeController.ts`, `appearance.ts`, `appearanceController.ts`, `domAppearanceHost.ts` (Farbschema, Einstellungen als Compartments) |
 | `stores/` | `editor.ts` (Tabs, `isDirty`; nie Text), `settings.ts`, `status.ts` |
-| `ui/` | `EditorPane.tsx`, `EditorTabs.tsx`, `EditorToolbar.tsx`, `StatusBar.tsx`, `CloseConfirmDialog.tsx`, `editorPane.css` |
+| `ui/` | `WorkspaceSplit.tsx` + `workspaceSplit.css` (Editor/Geteilt/PDF, 14-px-Teiler, beide immer eingehängt; Logik `app/viewModeLogic.ts`, Zustand `stores/viewMode.ts`), `EditorPane.tsx`, `EditorTabs.tsx`, `EditorToolbar.tsx`, `StatusBar.tsx`, `CloseConfirmDialog.tsx`, `editorPane.css` |
 | `workers/` | `analysis.worker.ts` + `analysisLogic.ts` (Syntaxprüfung, doppelte Labels), `analysisClient.ts` (entprellt 0,6 s) |
 
 ### Tests, Skripte, Spikes
@@ -74,7 +74,7 @@ Regeln (Thesis, Prozesse, Subagents, Code-Stil): `../CLAUDE.md`, nicht doppelt h
 | Ordner | Inhalt |
 |---|---|
 | `tests/unit/` | Vitest `*.test.ts` (System-Node, ohne Electron) |
-| `tests/e2e/` | Playwright mit Electron und Stub-Preload: `stub-smoke`, `editor-basic`, `session`, `gutter`, `folding`, `diagnostics`, `typing`, `closeConfirm` |
+| `tests/e2e/` | Playwright mit Electron und Stub-Preload: `view-mode`, `stub-smoke`, `editor-basic`, `session`, `gutter`, `folding`, `diagnostics`, `typing`, `closeConfirm` |
 | `tests/perf/` | Leistungsmessung: `editorPerf.perf.spec.ts`, `budgets.ts`, `measureRun.ts`, `pageProbe.ts`, `stats.ts`, `syntheticDocument.ts`, `playwright.perf.config.ts` |
 | `tests/support/` | `preloadStub.ts` (gefälschte `window.api`), `fakeLatexmk.mjs`, `specVectors.ts`, `synctexWorkerClient.ts` |
 | `tests/slow/`, `tests/smoke.test.ts` | langsame Tests (`*.slow.test.ts`, nur ohne `--fast`); Rauchtest |

@@ -103,6 +103,10 @@ function viewMenu(): SubmenuEntry {
         kind: 'submenu',
         label: 'Ansicht',
         submenu: [
+            command('Editor', 'view.mode.editor', `${MOD}+1`),
+            command('Geteilt', 'view.mode.split', `${MOD}+2`),
+            command('PDF', 'view.mode.pdf', `${MOD}+3`),
+            SEPARATOR,
             command('Zoom größer', 'view.zoomIn', `${MOD}+Plus`, true),
             command('Zoom kleiner', 'view.zoomOut', `${MOD}+-`, true),
             command('Originalgröße', 'view.zoomReset', `${MOD}+0`, true),

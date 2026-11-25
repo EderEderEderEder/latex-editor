@@ -6,6 +6,7 @@ import { overlayStore } from '../stores/overlays';
 import { sidebarStore } from '../stores/sidebar';
 import { useSettingsStore } from '../stores/settings';
 import { statusStore } from '../stores/status';
+import { viewModeStore } from '../stores/viewMode';
 import type { StatusMessage } from '../stores/status';
 import { BUILD_TOOLBAR_TEXTS } from '../ui/BuildToolbar';
 import { buildStore, compileOnSave } from './buildRuntime';
@@ -35,6 +36,7 @@ export function createAppCommandDeps(activeView: () => EditorView | null): Comma
         build: buildStore,
         overlays: overlayStore,
         sidebar: sidebarStore,
+        viewMode: viewModeStore,
         settings: useSettingsStore,
         activeView,
         focusEditor,

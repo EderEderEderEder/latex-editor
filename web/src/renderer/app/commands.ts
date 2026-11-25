@@ -14,6 +14,7 @@ import type { EditorStore } from '../stores/editor';
 import type { OverlayStore } from '../stores/overlays';
 import type { SidebarStore, SidebarTab } from '../stores/sidebar';
 import type { StatusMessage } from '../stores/status';
+import type { ViewModeStore } from '../stores/viewMode';
 import type { BuildStore } from '../stores/build';
 import { saveActiveFile, saveActiveFileAs, saveFile, openFilesFromDialog } from './fileActions';
 import type { FileActionDeps } from './fileActions';
@@ -26,6 +27,7 @@ import type { ProjectFlowDeps } from './projectFlow';
 import { closeActiveTabWithPrompt } from './tabClose';
 import type { TabCloseDeps } from './tabClose';
 import { changeEditorZoom } from './zoom';
+import type { ViewMode } from './viewModeLogic';
 import type { ZoomDirection, ZoomSettingsStore } from './zoom';
 
 export type CommandHandler = () => void | Promise<void>;
@@ -47,6 +49,7 @@ export interface CommandDeps {
     readonly build: Pick<BuildStore, 'getState'>;
     readonly overlays: OverlayStore;
     readonly sidebar: SidebarStore;
+    readonly viewMode: ViewModeStore;
     readonly settings: CommandSettingsStore;
     readonly activeView: () => EditorView | null;
     readonly focusEditor: () => void;
@@ -106,8 +109,15 @@ function sidebarCommand(deps: CommandDeps, tab: SidebarTab): CommandHandler {
     return () => deps.sidebar.getState().setTab(tab);
 }
 
+function viewModeCommand(deps: CommandDeps, mode: ViewMode): CommandHandler {
+    return () => deps.viewMode.getState().setMode(mode);
+}
+
 function viewCommands(deps: CommandDeps): [string, CommandHandler][] {
     return [
+        ['view.mode.editor', viewModeCommand(deps, 'editor')],
+        ['view.mode.split', viewModeCommand(deps, 'split')],
+        ['view.mode.pdf', viewModeCommand(deps, 'pdf')],
         ['view.zoomIn', zoomCommand(deps, 'in')],
         ['view.zoomOut', zoomCommand(deps, 'out')],
         ['view.zoomReset', zoomCommand(deps, 'reset')],

@@ -1,0 +1,32 @@
+/* Arbeitsbereich (W3-4): Editor und PDF liegen absolut nebeneinander; die nicht gezeigte Seite bleibt eingehängt
+   (`visibility: hidden`, Breite unverändert), damit nichts neu aufgebaut wird. */
+.workspace { flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+
+.workspace-modebar {
+    display: flex; justify-content: center; padding: 0.3em 0.8em; border-bottom: 1px solid var(--chrome-border);
+}
+.workspace-mode-switch { display: inline-flex; }
+.workspace-mode-switch button {
+    font: inherit; color: inherit; background: transparent; border: 1px solid var(--chrome-border);
+    padding: 0.15em 0.9em; cursor: pointer; margin-left: -1px; border-radius: 0;
+}
+.workspace-mode-switch button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
+.workspace-mode-switch button:last-child { border-radius: 0 4px 4px 0; }
+.workspace-mode-switch button[aria-pressed='true'] { background: var(--chrome-active); box-shadow: inset 0 -2px 0 var(--chrome-accent); }
+.workspace-mode-switch button:focus-visible { outline: 2px solid var(--chrome-accent); outline-offset: 1px; z-index: 1; }
+
+.workspace-body { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+
+.workspace-pane { position: absolute; top: 0; bottom: 0; display: flex; min-width: 0; overflow: hidden; }
+.workspace-pane.is-hidden, .workspace-handle.is-hidden { visibility: hidden; pointer-events: none; }
+
+.workspace-handle {
+    position: absolute; top: 0; bottom: 0; cursor: col-resize; touch-action: none; user-select: none; z-index: 2;
+    background: var(--chrome-background);
+}
+.workspace-handle::before {
+    content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: var(--chrome-border);
+}
+.workspace-handle:hover, .workspace-handle:focus-visible, .workspace-handle.is-dragging {
+    background: color-mix(in srgb, var(--chrome-accent) 25%, var(--chrome-background)); outline: none;
+}

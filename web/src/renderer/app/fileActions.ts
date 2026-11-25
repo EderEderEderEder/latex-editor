@@ -4,6 +4,7 @@
 import type { FileFilter, GrantedPath, IpcError, IpcResult, RendererApi, TextFile, WriteResult } from '../../shared/contract';
 import type { EditorSession } from '../editor/session';
 import type { EditorStore } from '../stores/editor';
+import { diskConflictStore } from '../stores/diskConflict';
 import type { StatusMessage } from '../stores/status';
 
 export interface FileActionDeps {
@@ -89,12 +90,17 @@ function failureMessage(name: string, error: IpcError): StatusMessage {
 async function writeAndMark(deps: FileActionDeps, session: EditorSession): Promise<SaveOutcome> {
     const { path, name, encoding, eol, hash } = session.file;
     const snapshot = session.snapshotForSave();
-    const written = await deps.api.fs.writeText(path, snapshot.text, encoding, eol, hash);
+    // Auf der Platte gelöscht (Konfliktleiste): neu anlegen, ohne erwarteten Hash
+    const isDeleted = diskConflictStore.getState().conflicts[path]?.kind === 'deleted';
+    const written = isDeleted
+        ? await deps.api.fs.writeText(path, snapshot.text, encoding, eol)
+        : await deps.api.fs.writeText(path, snapshot.text, encoding, eol, hash);
     if (!written.ok) {
         deps.report(failureMessage(name, written.error));
         return written.error.kind === 'conflict' ? 'conflict' : 'failed';
     }
     deps.store.getState().markSaved(path, snapshot, written.value);
+    if (isDeleted) diskConflictStore.getState().clear(path);
     deps.report({ text: SAVE_TEXTS.saved(name), kind: 'info' });
     deps.onSaved?.(path);
     return 'saved';

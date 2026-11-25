@@ -58,6 +58,8 @@ const FIRST_REVISION = 0;
 
 const languageCompartment = new Compartment();
 const lineSeparatorCompartment = new Compartment();
+/** Nur zum Leeren des Undo-Verlaufs nach stillem Neuladen (`replaceFromDisk`) */
+const historyCompartment = new Compartment();
 
 // ---------- Änderungszähler aus dem Verlauf ----------
 
@@ -301,6 +303,29 @@ export class EditorSession {
         this.markRevisionSaved(revisionOf(this.state), file);
     }
 
+    /**
+     * Stilles Neuladen eines unveränderten Tabs nach externer Änderung (W2-13): minimaler Ersatz wie `reloadFromDisk`,
+     * danach ist der Undo-Verlauf leer wie in der Swift-Version (`DocumentSession.syncWithDisk`); „geändert“ bleibt aus.
+     */
+    replaceFromDisk(file: TextFile): void {
+        // Der Ersatz zählt kurz als Änderung; der Tab soll dabei nicht flackern, also keine Meldung dazwischen.
+        const onDirtyChange = this.onDirtyChange;
+        this.onDirtyChange = undefined;
+        try {
+            this.reloadFromDisk(file);
+        } finally {
+            this.onDirtyChange = onDirtyChange;
+            this.lastDirty = this.isDirty;
+        }
+        this.dispatch({ effects: historyCompartment.reconfigure([]) });
+        this.dispatch({ effects: historyCompartment.reconfigure(history()) });
+    }
+
+    /** „Meine Version behalten“: dieser Plattenstand gilt als bekannt, der Text bleibt geändert; Speichern überschreibt ihn */
+    acceptDiskVersion(disk: WriteResult): void {
+        this.info = { ...this.info, hash: disk.hash, mtime: disk.mtime };
+    }
+
     /** Umbenennen, Verschieben, „Speichern unter“; wechselt die Endung die Sprache, wird die Einfärbung getauscht */
     relocate(newPath: AbsolutePath, newName: string = fileNameOfPath(newPath)): void {
         const languageChanged = languageFromPath(newName) !== this.language;
@@ -349,7 +374,7 @@ export class EditorSession {
 
     private extensions(): Extension[] {
         return [
-            history(),
+            historyCompartment.of(history()),
             revisionField,
             revisionHistory,
             keymap.of([...defaultKeymap, ...historyKeymap]),

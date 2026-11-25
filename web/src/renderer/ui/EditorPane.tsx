@@ -20,6 +20,7 @@ import { editorStore, useEditorStore } from '../stores/editor';
 import { useSettingsStore } from '../stores/settings';
 import { statusStore } from '../stores/status';
 import { CloseConfirmDialog } from './CloseConfirmDialog';
+import { ConflictBar } from './ConflictBar';
 import { BuildToolbar } from './BuildToolbar';
 import { EditorToolbar } from './EditorToolbar';
 import { PathBar } from './PathBar';
@@ -146,6 +147,7 @@ export function EditorPane({ heading, onSessionView }: EditorPaneProps) {
             />
             <TabBar />
             <PathBar />
+            <ConflictBar />
             <EditorHost onSessionView={handleSessionView} />
             <StatusBar sessionView={sessionView} />
             <CloseConfirmDialog />

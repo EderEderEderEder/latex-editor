@@ -1,0 +1,38 @@
+/* Dialoge der Datei-Aktionen (W2-9); Rahmen von `.close-confirm` (editorPane.css). Dazu das Kontextmenü (ui/ContextMenu.tsx). */
+.file-action-dialog { width: min(30em, 90vw); }
+.file-action-location { margin: -0.3em 0 0.8em; font-size: 0.9em; color: var(--chrome-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-action-dialog input, .file-action-dialog select {
+    width: 100%; box-sizing: border-box; padding: 0.4em 0.6em; font: inherit;
+    background: var(--chrome-background); color: var(--chrome-text); border: 1px solid var(--chrome-border); border-radius: 6px;
+}
+.file-action-dialog input[aria-invalid="true"] { border-color: var(--chrome-error); }
+.file-action-dialog label { display: block; margin-bottom: 0.3em; }
+.file-action-dialog select { margin-bottom: 1em; }
+/* Platz für die Meldung bleibt immer reserviert, damit der Dialog beim Tippen nicht springt */
+.file-action-error { min-height: 1.3em; margin: 0.4em 0 0.8em; font-size: 0.9em; color: var(--chrome-error); }
+.file-action-detail p { margin: 0 0 0.6em; }
+.file-action-warning { color: var(--chrome-error); }
+.reference-list {
+    margin: 0 0 1em; padding: 0.5em 0.6em; max-height: 10em; overflow: auto; white-space: pre;
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.85em;
+    background: var(--chrome-background); border: 1px solid var(--chrome-border); border-radius: 6px;
+}
+.close-confirm-buttons button.is-default { font-weight: 600; }
+
+.context-menu {
+    position: fixed; z-index: 50; min-width: 14em; padding: 0.3em 0;
+    background: var(--chrome-active); color: var(--chrome-text); border: 1px solid var(--chrome-border); border-radius: 6px;
+    box-shadow: 0 4px 16px rgb(0 0 0 / 25%);
+}
+.context-menu-item {
+    display: flex; width: 100%; justify-content: space-between; gap: 2em; padding: 0.3em 0.9em;
+    background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: default;
+}
+.context-menu-item:hover:not(:disabled), .context-menu-item:focus-visible { background: var(--chrome-accent); color: #fff; outline: none; }
+.context-menu-item:disabled { opacity: 0.5; }
+.context-menu-shortcut { opacity: 0.7; }
+.context-menu-separator { height: 1px; margin: 0.3em 0; background: var(--chrome-border); }
+
+/* Ziehen im Dateibaum: Zielordner bzw. ganzer Baum (Projektordner) */
+.file-tree-row.is-drop-target { outline: 2px solid var(--chrome-accent); outline-offset: -2px; }
+.file-tree.is-drop-root { outline: 2px solid var(--chrome-accent); outline-offset: -2px; }

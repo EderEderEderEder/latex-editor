@@ -7,6 +7,7 @@ import { useOutlineSync } from './app/outlineSync';
 import { usePdfSync } from './app/usePdfSync';
 import { useProjectSync } from './app/useProjectSync';
 import { useRecovery } from './app/useRecovery';
+import { useDiskSync } from './app/useDiskSync';
 import type { SessionView } from './editor/session';
 import { getApi } from './ipc/api';
 import { useSettingsStore } from './stores/settings';
@@ -15,6 +16,7 @@ import { EditorPane } from './ui/EditorPane';
 import { AppOverlays } from './ui/AppOverlays';
 import { PDFPane } from './ui/PDFPane';
 import { RecoveryDialog } from './ui/RecoveryDialog';
+import { FileActionDialogs } from './ui/dialogs/FileActionDialogs';
 import { Sidebar } from './ui/Sidebar';
 import { SidebarShell } from './ui/SidebarShell';
 import { WorkspaceSplit } from './ui/WorkspaceSplit';
@@ -54,6 +56,7 @@ export function App() {
 
     useProjectSync();
     useRecovery();
+    useDiskSync();
     useBuildSync();
     useOutlineSync(sessionView);
     usePdfSync();
@@ -71,6 +74,7 @@ export function App() {
             />
             <AppOverlays focusEditor={focusEditor} />
             <RecoveryDialog />
+            <FileActionDialogs />
         </main>
     );
 }

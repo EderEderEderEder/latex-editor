@@ -1,6 +1,7 @@
 // Befehlsregister: commandId → Funktion. Quelle der IDs ist das Menü (`main/menuTemplate.ts`, `menu:command`).
 // Jedes Kürzel hat genau einen Weg (sonst feuerte es doppelt):
-// - Menü-Accelerator (Strg+W, Strg+P, Strg+G, Strg+N, Strg+Umschalt+O, Strg+J): löst `menu:command` aus, hier registriert.
+// - Menü-Accelerator (Strg+W, Strg+P, Strg+G, Strg+N, Strg+Umschalt+O, Strg+J, Strg+Umschalt+N; macOS ⌥⌘Z/⌥⇧⌘Z für
+//   Datei-Aktionen): löst `menu:command` aus, hier registriert. Im Dateibaum gilt Strg+Z zusätzlich den Datei-Aktionen.
 // - Renderer (`app/shortcuts.ts` und CodeMirror): Strg+O/S/Umschalt+S/B/., F8, Strg+Tab, Zoom, Suchen, Ersetzen,
 //   Rückgängig/Wiederholen; das Menü zeigt sie nur an (`displayOnly`), die Befehle hier gelten für Mausklicks im Menü.
 // - Ausschneiden/Kopieren/Einfügen/Alles auswählen: Electron-Rollen, nicht hier.
@@ -21,6 +22,8 @@ import type { FileActionDeps } from './fileActions';
 import { dirtyPaths } from './closeFlow';
 import { goToIssue } from './issueActions';
 import { createNewFile } from './newFile';
+import { beginNewEntry, redoFileAction, undoFileAction } from './projectFileActions';
+import type { ProjectFileActionDeps } from './projectFileActions';
 import { chooseAndOpenProject } from './projectFlow';
 import type { RevealDeps } from './revealLine';
 import type { ProjectFlowDeps } from './projectFlow';
@@ -62,6 +65,8 @@ export interface CommandDeps {
     readonly confirmClean: () => boolean;
     /** Abhängigkeiten der SyncTeX-Abläufe (Strg+J) */
     readonly syncTeX: () => SyncTeXFlowDeps;
+    /** Datei-Aktionen im Projekt und ihr App-Rückgängig (W2-9) */
+    readonly projectFileActions: () => ProjectFileActionDeps;
 }
 
 function fileCommands(deps: CommandDeps): [string, CommandHandler][] {
@@ -73,6 +78,10 @@ function fileCommands(deps: CommandDeps): [string, CommandHandler][] {
         ['file.saveAs', async () => void (await saveActiveFileAs(deps.fileActions()))],
         ['file.saveAll', () => saveAllDirtyTabs(deps.fileActions())],
         ['file.closeTab', async () => void (await closeActiveTabWithPrompt(deps.tabClose()))],
+        ['file.newProjectFile', () => beginNewEntry(deps.projectFileActions(), 'file')],
+        ['file.newFolder', () => beginNewEntry(deps.projectFileActions(), 'directory')],
+        ['file.undoFileAction', async () => void (await undoFileAction(deps.projectFileActions()))],
+        ['file.redoFileAction', async () => void (await redoFileAction(deps.projectFileActions()))],
     ];
 }
 

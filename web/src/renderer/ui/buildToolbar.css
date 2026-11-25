@@ -1,7 +1,7 @@
 /* Kompilieren-Leiste (W2-12). Farben aus den `--chrome-*`-Variablen; Statusfarben nur als Zusatz zu Symbol und Text. */
 .build-toolbar {
     --build-ok: #1e7d32; --build-warn: #9a5b00; --build-busy: var(--chrome-accent);
-    flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 0.5em; margin-left: auto; justify-content: flex-end;
+    flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 0.5em; margin-left: auto; justify-content: flex-end;
 }
 
 @media (prefers-color-scheme: dark) {

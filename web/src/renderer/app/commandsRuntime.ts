@@ -21,6 +21,7 @@ import { buildStore, compileOnSave } from './buildRuntime';
 import { createCommandRegistry } from './commands';
 import type { CommandDeps, CommandRegistry } from './commands';
 import type { FileActionDeps } from './fileActions';
+import { projectFileActionDeps } from './projectFileActionsRuntime';
 import { projectFlowDeps, revealDeps } from './projectRuntime';
 import { connectSyncTeX, createViewerSlot, showPdfPointInEditor } from './synctexFlow';
 import type { SyncTeXFlowDeps } from './synctexFlow';
@@ -95,6 +96,7 @@ export function createAppCommandDeps(activeView: () => EditorView | null): Comma
         report: reportStatus,
         confirmClean: () => window.confirm(BUILD_TOOLBAR_TEXTS.cleanQuestion),
         syncTeX: () => syncTeXFlowDeps(focusEditor),
+        projectFileActions: projectFileActionDeps,
     };
 }
 

@@ -3,6 +3,7 @@ import type {
     BuildIssue,
     ToolsInfo,
     EventChannel,
+    FsChangeKind,
     IpcEvents,
     IpcResult,
     RendererApi,
@@ -24,6 +25,7 @@ import type {
     Unsubscribe,
 } from '../../src/shared/contract';
 import { IpcFailure, fail, ok, toIpcError } from '../../src/shared/ipcResult';
+import { copyName, newFileName, renamedFileName, assertValidFileName } from '../../src/shared/core/fileNames';
 
 // Bildet `window.api` vollständig nach (gleiche Form wie der Preload, über `buildRendererApi`),
 // damit Renderer-Code ohne Electron testbar ist. Antworten sind gefälschte, feste Daten und lassen
@@ -74,6 +76,13 @@ export interface StubControl {
     installSampleProject(extraFileCount?: number): void;
     /** Fügt dem Beispielprojekt eine Datei hinzu (relativer Pfad mit `/`); der Baum ändert sich beim nächsten `project:open` */
     addProjectFile(relativePath: string, text: string): void;
+    /**
+     * Einträge des Beispielprojekts (relative Pfade, Ordner mit `/` am Ende), sortiert; `fs:create/rename/move/duplicate/
+     * trash/restore` ändern sie wie der Main (W2-9)
+     */
+    projectEntries(): string[];
+    /** Aktueller Text einer Datei des Beispielprojekts (relativer Pfad) oder `null` */
+    projectFileText(relativePath: string): string | null;
     /** Werkzeuge, die `tools:detect` meldet (Standard: latexmk fehlt); die Aufrufe stehen in `calls()` */
     setTools(tools: ToolsInfo): void;
     /**
@@ -94,6 +103,13 @@ export interface StubControl {
      * ohne geladene Daten); die Anfragen selbst stehen in `calls()`. `synctex:ready` schickt der Test mit `emit`.
      */
     setSyncTeX(forward: SyncTexForwardResult | null, backward: SyncTexBackwardResult | null): void;
+    /**
+     * W2-13: ändert eine Datei „außerhalb der App“ (neuer Text, eigener Hash) und schickt `fs:changed` wie der Main.
+     * Danach antwortet `fs:writeText` mit erwartetem Hash nur bei diesem Hash, sonst mit `conflict`.
+     */
+    changeFileExternally(path: string, text: string): void;
+    /** W2-13: löscht eine Datei „außerhalb der App“ (`fs:readText` meldet `notFound`) und schickt `fs:changed` */
+    deleteFileExternally(path: string): void;
 }
 
 export interface PreloadStub {
@@ -204,7 +220,13 @@ interface VirtualFile {
     readonly grant: GrantedPath;
     readonly path: string;
     text: string;
+    /** Hash nach einer externen Änderung (W2-13); sonst gilt `STUB_HASH` */
+    externalHash?: string;
+    /** Extern gelöscht (W2-13): Lesen meldet `notFound`, Schreiben legt die Datei wieder an */
+    deleted?: boolean;
 }
+
+const EXTERNAL_HASH_PREFIX = 'extern-';
 
 const VIRTUAL_FILE_DIRECTORY = `${STUB_ROOT}/`;
 
@@ -235,6 +257,11 @@ class VirtualFiles implements Pick<StubControl, 'prepareFile' | 'failWrites' | '
         this.files.set(path, { grant: { grantId: `stub-file-${path}`, name: baseName(path) }, path, text });
     }
 
+    /** Entfernt eine Projektdatei (Umbenennen, Verschieben, Papierkorb im Stub) */
+    unregisterFile(path: string): void {
+        this.files.delete(path);
+    }
+
     failWrites(kind: GeneralErrorKind | null, message = 'Schreiben abgelehnt (Stub)'): void {
         this.writeFailure = kind === null ? null : { kind, message };
     }
@@ -248,9 +275,36 @@ class VirtualFiles implements Pick<StubControl, 'prepareFile' | 'failWrites' | '
         return this.files.get(target)?.grant.name ?? baseName(target);
     }
 
+    private externalChanges = 0;
+
+    /** W2-13: Text und Hash ändern sich wie nach dem Speichern in einem anderen Programm */
+    changeExternally(path: string, text: string): void {
+        this.registerFile(path, text);
+        const file = this.files.get(path);
+        if (file === undefined) return;
+        file.deleted = false;
+        file.externalHash = `${EXTERNAL_HASH_PREFIX}${++this.externalChanges}`;
+    }
+
+    /** W2-13: Datei verschwindet von der Platte */
+    deleteExternally(path: string): void {
+        const file = this.files.get(path);
+        if (file !== undefined) file.deleted = true;
+    }
+
     private readText(target: string): TextFile {
         const file = this.files.get(target);
-        return file === undefined ? textFile(target) : { ...textFile(target, file.grant.name), text: file.text };
+        if (file?.deleted === true) throw new IpcFailure({ kind: 'notFound', message: `Datei nicht gefunden: ${target}` });
+        if (file === undefined) return textFile(target);
+        return { ...textFile(target, file.grant.name), text: file.text, hash: file.externalHash ?? STUB_HASH };
+    }
+
+    /** Nach einer externen Änderung wie der Main: fremder erwarteter Hash ergibt `conflict` */
+    private assertWritable(file: VirtualFile | undefined, expectedHash: string | undefined): void {
+        if (file?.externalHash === undefined || expectedHash === undefined || file.deleted === true) return;
+        if (expectedHash !== file.externalHash) {
+            throw new IpcFailure({ kind: 'conflict', message: `Die Datei wurde seit dem Laden geändert: ${file.path}` });
+        }
     }
 
     readonly responders: Pick<StubResponders, 'dialog:pickFiles' | 'fs:readText' | 'fs:readMany' | 'fs:writeText'> = {
@@ -262,13 +316,22 @@ class VirtualFiles implements Pick<StubControl, 'prepareFile' | 'failWrites' | '
         'fs:readText': (target) => this.readText(target),
         'fs:readMany': (targets) =>
             targets.map((target) => {
-                const file = this.readText(target);
-                return { path: target, name: file.name, result: ok(file) };
+                try {
+                    const file = this.readText(target);
+                    return { path: target, name: file.name, result: ok(file) };
+                } catch (error) {
+                    return { path: target, name: this.displayNameOf(target), result: fail<TextFile>(toIpcError(error)) };
+                }
             }),
-        'fs:writeText': (path, text) => {
+        'fs:writeText': (path, text, _encoding, _eol, expectedHash) => {
             if (this.writeFailure !== null) throw new IpcFailure(this.writeFailure);
             const file = this.files.get(path);
-            if (file !== undefined) file.text = text;
+            this.assertWritable(file, expectedHash);
+            if (file !== undefined) {
+                file.text = text;
+                file.externalHash = undefined;
+                file.deleted = false;
+            }
             return { hash: STUB_HASH, mtime: STUB_TIME };
         },
     };
@@ -472,8 +535,18 @@ function sortTree(folder: MutableFolder): void {
     for (const child of folder.children) if (child.kind === 'directory') sortTree(child);
 }
 
-function buildSampleTree(files: readonly string[]): DirectoryNode {
+function addFolderChain(root: MutableFolder, relative: string): MutableFolder {
+    const parts = relative.split('/');
+    let folder = root;
+    parts.forEach((part, depth) => {
+        folder = folderIn(folder, part, `${STUB_ROOT}/${parts.slice(0, depth + 1).join('/')}`);
+    });
+    return folder;
+}
+
+function buildSampleTree(files: readonly string[], folders: readonly string[] = []): DirectoryNode {
     const root: MutableFolder = { kind: 'directory', name: PROJECT_GRANT.name, path: STUB_ROOT, children: [] };
+    for (const folder of folders) addFolderChain(root, folder);
     for (const relative of files) {
         const parts = relative.split('/');
         let folder = root;
@@ -489,11 +562,12 @@ function buildSampleTree(files: readonly string[]): DirectoryNode {
     return root;
 }
 
-/** Beispielprojekt im Speicher: Dateiliste mit Texten, daraus Baum und `ProjectInfo` */
+/** Beispielprojekt im Speicher: Dateiliste (Texte in `VirtualFiles`) und leere Ordner, daraus Baum und `ProjectInfo` */
 class SampleProject {
-    private readonly texts = new Map<string, string>();
+    readonly files = new Set<string>();
+    readonly folders = new Set<string>();
 
-    constructor(private readonly virtualFiles: VirtualFiles, extraFileCount: number) {
+    constructor(readonly virtualFiles: VirtualFiles, extraFileCount: number) {
         for (const [relative, text] of Object.entries(SAMPLE_FILES)) this.addFile(relative, text);
         for (let index = 1; index <= extraFileCount; index++) {
             this.addFile(`${EXTRA_FOLDER}/datei-${String(index).padStart(EXTRA_NAME_DIGITS, '0')}.txt`, '');
@@ -501,13 +575,203 @@ class SampleProject {
     }
 
     addFile(relative: string, text: string): void {
-        this.texts.set(relative, text);
+        this.files.add(relative);
         this.virtualFiles.registerFile(`${STUB_ROOT}/${relative}`, text);
     }
 
-    info(): ProjectInfo {
-        return { root: STUB_ROOT, mainFile: `${STUB_ROOT}/main.tex`, tree: buildSampleTree([...this.texts.keys()]) };
+    removeFile(relative: string): void {
+        this.files.delete(relative);
+        this.virtualFiles.unregisterFile(`${STUB_ROOT}/${relative}`);
     }
+
+    textOf(relative: string): string | null {
+        return this.files.has(relative) ? this.virtualFiles.writtenText(`${STUB_ROOT}/${relative}`) ?? '' : null;
+    }
+
+    entries(): string[] {
+        return [...this.files, ...[...this.folders].map((folder) => `${folder}/`)].sort();
+    }
+
+    info(): ProjectInfo {
+        return { root: STUB_ROOT, mainFile: `${STUB_ROOT}/main.tex`, tree: buildSampleTree([...this.files], [...this.folders]) };
+    }
+}
+
+// ---------- Dateiaktionen im Beispielprojekt (W2-9) ----------
+
+/** Stand eines Eintrags samt Inhalt (für Papierkorb und Wiederherstellen) */
+interface EntrySnapshot {
+    readonly files: readonly (readonly [string, string])[];
+    readonly folders: readonly string[];
+}
+
+type StubUndoRecord =
+    | { readonly kind: 'created'; readonly relative: string }
+    | { readonly kind: 'trashed'; readonly relative: string; readonly snapshot: EntrySnapshot }
+    | { readonly kind: 'relocated'; readonly from: string; readonly to: string };
+
+const STUB_PLATFORM = { windows: false } as const;
+
+function relativeOf(path: string): string {
+    if (path === STUB_ROOT) return '';
+    if (!path.startsWith(`${STUB_ROOT}/`)) throw new IpcFailure({ kind: 'forbiddenPath', message: `Nicht im Projekt (Stub): ${path}` });
+    return path.slice(STUB_ROOT.length + 1);
+}
+
+function under(relative: string, base: string): boolean {
+    return relative === base || relative.startsWith(`${base}/`);
+}
+
+function joinRelative(directory: string, name: string): string {
+    return directory === '' ? name : `${directory}/${name}`;
+}
+
+function parentRelative(relative: string): string {
+    const cut = relative.lastIndexOf('/');
+    return cut < 0 ? '' : relative.slice(0, cut);
+}
+
+/** Spielt `main/fsOps.ts` auf dem Beispielprojekt nach: dieselben Namensregeln, Kennungen mit Gegenschritt */
+class VirtualFileOps {
+    private readonly records = new Map<string, StubUndoRecord>();
+    private nextToken = 1;
+
+    constructor(private readonly project: () => SampleProject | null) {}
+
+    private requireProject(): SampleProject {
+        const project = this.project();
+        if (project === null) throw new IpcFailure({ kind: 'notFound', message: 'Kein Beispielprojekt (Stub)' });
+        return project;
+    }
+
+    private exists(relative: string): boolean {
+        const project = this.requireProject();
+        return project.files.has(relative) || project.folders.has(relative) ||
+            [...project.files].some((file) => file.startsWith(`${relative}/`));
+    }
+
+    private isDirectory(relative: string): boolean {
+        return relative === '' || (this.exists(relative) && !this.requireProject().files.has(relative));
+    }
+
+    private assertFree(relative: string): void {
+        if (this.exists(relative)) {
+            throw new IpcFailure({ kind: 'alreadyExists', message: `„${baseName(relative)}“ existiert an dieser Stelle bereits.` });
+        }
+    }
+
+    private assertExists(relative: string): void {
+        if (relative === '' || !this.exists(relative)) {
+            throw new IpcFailure({ kind: 'notFound', message: `„${baseName(relative)}“ wurde nicht gefunden.` });
+        }
+    }
+
+    private register(record: StubUndoRecord): string {
+        const token = `stub-undo-${this.nextToken++}`;
+        this.records.set(token, record);
+        return token;
+    }
+
+    private snapshot(relative: string): EntrySnapshot {
+        const project = this.requireProject();
+        const files = [...project.files].filter((file) => under(file, relative)).map((file) => [file, project.textOf(file) ?? ''] as const);
+        const folders = [...project.folders].filter((folder) => under(folder, relative));
+        return { files, folders: this.isDirectory(relative) ? [...new Set([relative, ...folders])] : folders };
+    }
+
+    private remove(relative: string): EntrySnapshot {
+        const project = this.requireProject();
+        const snapshot = this.snapshot(relative);
+        for (const [file] of snapshot.files) project.removeFile(file);
+        for (const folder of snapshot.folders) project.folders.delete(folder);
+        return snapshot;
+    }
+
+    private place(snapshot: EntrySnapshot, from: string, to: string): void {
+        const project = this.requireProject();
+        const map = (path: string): string => to + path.slice(from.length);
+        for (const folder of snapshot.folders) project.folders.add(map(folder));
+        for (const [file, text] of snapshot.files) project.addFile(map(file), text);
+    }
+
+    private relocate(from: string, to: string): void {
+        this.assertExists(from);
+        if (from.toLowerCase() !== to.toLowerCase()) this.assertFree(to);
+        this.place(this.remove(from), from, to);
+    }
+
+    private relocated(from: string, to: string) {
+        if (from !== to) this.relocate(from, to);
+        return { path: `${STUB_ROOT}/${to}`, undoToken: this.register({ kind: 'relocated', from, to }) };
+    }
+
+    create(parentDir: string, rawName: string, kind: 'file' | 'directory') {
+        const parent = relativeOf(parentDir);
+        const name = kind === 'file' ? newFileName(rawName, STUB_PLATFORM) : assertValidFileName(rawName, STUB_PLATFORM);
+        const relative = joinRelative(parent, name);
+        this.assertFree(relative);
+        if (kind === 'file') this.requireProject().addFile(relative, '');
+        else this.requireProject().folders.add(relative);
+        return { path: `${STUB_ROOT}/${relative}`, undoToken: this.register({ kind: 'created', relative }) };
+    }
+
+    rename(path: string, rawName: string) {
+        const from = relativeOf(path);
+        this.assertExists(from);
+        const name = renamedFileName(rawName, baseName(from), this.isDirectory(from), STUB_PLATFORM);
+        return this.relocated(from, joinRelative(parentRelative(from), name));
+    }
+
+    move(path: string, targetDir: string) {
+        const from = relativeOf(path);
+        const directory = relativeOf(targetDir);
+        if (under(directory, from)) throw new IpcFailure({ kind: 'invalidInput', message: 'Ein Ordner kann nicht in sich selbst verschoben werden.' });
+        return this.relocated(from, joinRelative(directory, baseName(from)));
+    }
+
+    duplicate(path: string) {
+        const source = relativeOf(path);
+        this.assertExists(source);
+        const name = baseName(source);
+        const dot = name.lastIndexOf('.');
+        const [stem, extension] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
+        let number = 1;
+        while (this.exists(joinRelative(parentRelative(source), copyName(stem, extension, number)))) number++;
+        const target = joinRelative(parentRelative(source), copyName(stem, extension, number));
+        this.place(this.snapshot(source), source, target);
+        return { path: `${STUB_ROOT}/${target}`, undoToken: this.register({ kind: 'created', relative: target }) };
+    }
+
+    trash(path: string): string {
+        const relative = relativeOf(path);
+        this.assertExists(relative);
+        return this.register({ kind: 'trashed', relative, snapshot: this.remove(relative) });
+    }
+
+    restore(token: string): string {
+        const record = this.records.get(token);
+        if (record === undefined) throw new IpcFailure({ kind: 'notFound', message: 'Dieser Schritt ist unbekannt oder schon zurückgenommen.' });
+        this.records.delete(token);
+        if (record.kind === 'created') return this.register({ kind: 'trashed', relative: record.relative, snapshot: this.remove(record.relative) });
+        if (record.kind === 'trashed') {
+            if (this.exists(record.relative)) {
+                throw new IpcFailure({ kind: 'conflict', message: `„${baseName(record.relative)}“ existiert schon; nichts wurde überschrieben.` });
+            }
+            this.place(record.snapshot, record.relative, record.relative);
+            return this.register({ kind: 'created', relative: record.relative });
+        }
+        this.relocate(record.to, record.from);
+        return this.register({ kind: 'relocated', from: record.to, to: record.from });
+    }
+
+    readonly responders: Pick<StubResponders, 'fs:create' | 'fs:rename' | 'fs:move' | 'fs:duplicate' | 'fs:trash' | 'fs:restore'> = {
+        'fs:create': (parentDir, name, kind) => this.create(parentDir, name, kind),
+        'fs:rename': (path, newName) => this.rename(path, newName),
+        'fs:move': (path, targetDir) => this.move(path, targetDir),
+        'fs:duplicate': (path) => this.duplicate(path),
+        'fs:trash': (path) => this.trash(path),
+        'fs:restore': (token) => this.restore(token),
+    };
 }
 
 // ---------- Build (W2-12) ----------
@@ -590,6 +854,7 @@ export function createPreloadStub(overrides: Partial<StubResponders> = {}): Prel
     let sampleProject: SampleProject | null = null;
     const installSampleProject = (extraFileCount = 0): void => {
         sampleProject = new SampleProject(virtualFiles, extraFileCount);
+        Object.assign(responders, new VirtualFileOps(() => sampleProject).responders);
         responders['dialog:openProject'] = () => PROJECT_GRANT;
         responders['project:recent'] = () => [{ ...PROJECT_GRANT, openedAt: STUB_TIME }];
         responders['project:open'] = (grantId: string) => {
@@ -620,6 +885,8 @@ export function createPreloadStub(overrides: Partial<StubResponders> = {}): Prel
         emit: (event, payload) => emitEvent(listeners, event, payload),
         installSampleProject,
         addProjectFile: (relativePath, text) => sampleProject?.addFile(relativePath, text),
+        projectEntries: () => sampleProject?.entries() ?? [],
+        projectFileText: (relativePath) => sampleProject?.textOf(relativePath) ?? null,
         setTools: (tools) => {
             virtualBuild.tools = tools;
         },
@@ -629,6 +896,14 @@ export function createPreloadStub(overrides: Partial<StubResponders> = {}): Prel
         setPdf: (path, base64) => virtualPdfs.setPdf(path, base64),
         failPdf: (kind, message) => virtualPdfs.failPdf(kind, message),
         setSyncTeX: (forward, backward) => virtualSyncTeX.setSyncTeX(forward, backward),
+        changeFileExternally: (path, text) => {
+            virtualFiles.changeExternally(path, text);
+            emitEvent(listeners, 'fs:changed', externalChange(path, 'changed'));
+        },
+        deleteFileExternally: (path) => {
+            virtualFiles.deleteExternally(path);
+            emitEvent(listeners, 'fs:changed', externalChange(path, 'deleted'));
+        },
         calls: () => calls.map((call) => ({ channel: call.channel, args: [...call.args] })),
         clearCalls: () => {
             calls.length = 0;
@@ -645,6 +920,11 @@ export function createPreloadStub(overrides: Partial<StubResponders> = {}): Prel
         listenerCount: (event) => listeners.get(event)?.size ?? 0,
         setPathForFile: (file, path) => filePaths.set(file, path),
     };
+}
+
+/** `fs:changed` wie der Main nach einer Änderung außerhalb der App (W2-13) */
+function externalChange(path: string, kind: FsChangeKind): IpcEvents['fs:changed'] {
+    return { paths: [path], kinds: [kind], treeChanged: kind === 'deleted', gitChanged: false };
 }
 
 function emitEvent(listeners: Map<EventChannel, Set<AnyListener>>, event: EventChannel, payload: unknown): void {

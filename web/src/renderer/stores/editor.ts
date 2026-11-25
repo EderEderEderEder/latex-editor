@@ -44,6 +44,8 @@ export interface EditorStoreState {
     /** Zieht Tabs um; `name` ist der neue Anzeigename von `from` (bei „Speichern unter“ der Name der Gewährung) */
     relocate(from: AbsolutePath, to: AbsolutePath, name?: string): void;
     markSaved(path: AbsolutePath, snapshot: SaveSnapshot, result: WriteResult): void;
+    /** Übernimmt Hash, mtime, Kodierung und Zeilenenden der Sitzung nach einem Abgleich mit der Platte (W2-13) */
+    refreshFile(path: AbsolutePath): void;
     session(path: AbsolutePath): EditorSession | undefined;
     activeSession(): EditorSession | null;
 }
@@ -149,6 +151,17 @@ function fileActions(set: SetState, get: GetState, registry: SessionRegistry) {
     };
 }
 
+// Abgleich mit der Platte (W2-13, `app/diskSync.ts`): Neuladen ohne Wechsel von „geändert“ meldet die Sitzung nicht.
+function diskActions(set: SetState, get: GetState, registry: SessionRegistry) {
+    return {
+        refreshFile: (path: AbsolutePath): void => {
+            const session = registry.get(path);
+            if (session === undefined) return;
+            applyChanges(set, get, get().tabs, withInfo(get().files, tabInfo(session.file, session.isDirty)));
+        },
+    };
+}
+
 /** Eigener Store je Aufruf (Tests); die App nutzt `editorStore`. */
 export function createEditorStore(registry: SessionRegistry = new SessionRegistry()): EditorStore {
     return createStore<EditorStoreState>()((set, get) => ({
@@ -158,6 +171,7 @@ export function createEditorStore(registry: SessionRegistry = new SessionRegistr
         ...tabActions(set, get),
         ...closingActions(set, get, registry),
         ...fileActions(set, get, registry),
+        ...diskActions(set, get, registry),
         session: (path) => registry.get(path),
         activeSession: () => {
             const active = get().tabs.active;

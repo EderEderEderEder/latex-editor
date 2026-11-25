@@ -54,6 +54,20 @@ function role(menuRole: MenuRoleName, label?: string): RoleEntry {
     return { kind: 'role', role: menuRole, label };
 }
 
+// Datei-Aktionen im Projekt (W2-9). Kürzel wie in Swift: ⇧⌘N „Neuer Ordner“; ⌥⌘Z / ⌥⇧⌘Z nur unter macOS
+// (Strg+Alt+Z wäre unter Windows AltGr+Z), „Neue Datei im Projekt“ ohne Kürzel (Strg+N gehört „Neu …“).
+function projectFileEntries(isMac: boolean): MenuEntry[] {
+    const undo = isMac ? 'Alt+Command+Z' : undefined;
+    const redo = isMac ? 'Alt+Shift+Command+Z' : undefined;
+    return [
+        command('Neue Datei im Projekt …', 'file.newProjectFile'),
+        command('Neuer Ordner …', 'file.newFolder', `${MOD}+Shift+N`),
+        SEPARATOR,
+        command('Datei-Aktion rückgängig', 'file.undoFileAction', undo),
+        command('Datei-Aktion wiederholen', 'file.redoFileAction', redo),
+    ];
+}
+
 function fileMenu(isMac: boolean): SubmenuEntry {
     const quit: readonly MenuEntry[] = isMac ? [] : [SEPARATOR, role('quit', 'Beenden')];
     return {
@@ -63,6 +77,7 @@ function fileMenu(isMac: boolean): SubmenuEntry {
             command('Projekt öffnen …', 'file.openProject', `${MOD}+Shift+O`),
             command('Datei öffnen …', 'file.openFile', `${MOD}+O`, true),
             command('Neu …', 'file.new', `${MOD}+N`),
+            ...projectFileEntries(isMac),
             SEPARATOR,
             command('Speichern', 'file.save', `${MOD}+S`, true),
             command('Speichern unter …', 'file.saveAs', `${MOD}+Shift+S`, true),

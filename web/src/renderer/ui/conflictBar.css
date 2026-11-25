@@ -1,0 +1,18 @@
+/* Konfliktleiste über dem Editor (W2-13). Farben aus den Variablen des Rahmens, Warnton mit Rückfall für Hell/Dunkel. */
+.conflict-bar {
+    --conflict-background: #fff4d6;
+    --conflict-border: #c98a00;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.4em 0.8em; padding: 0.35em 0.8em;
+    background: var(--conflict-background); color: var(--chrome-text);
+    border-bottom: 1px solid var(--conflict-border); border-left: 4px solid var(--conflict-border);
+}
+.conflict-bar.is-deleted { --conflict-background: #fde7e5; --conflict-border: var(--chrome-error); }
+
+@media (prefers-color-scheme: dark) {
+    .conflict-bar { --conflict-background: #3a2f12; --conflict-border: #e0a526; }
+    .conflict-bar.is-deleted { --conflict-background: #3b1f1d; --conflict-border: var(--chrome-error); }
+}
+
+.conflict-bar-message { flex: 1 1 18em; min-width: 0; overflow-wrap: anywhere; }
+.conflict-bar-actions { display: flex; flex-wrap: wrap; gap: 0.4em; }
+.editor-pane .conflict-bar button { background: var(--chrome-active); }

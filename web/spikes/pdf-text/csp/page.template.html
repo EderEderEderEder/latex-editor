@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="de" data-pdf-worker="./pdf.worker.min.mjs" data-pdf-renderer="./pdf.renderer.min.mjs">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="%%CSP%%">
+    <title>W3-3a: PDF-Rendern unter RENDERER_CSP</title>
+    <link rel="stylesheet" href="./pdf_viewer.css">
+    <style>
+        html, body { margin: 0; height: 100%; overflow: hidden; font: 13px system-ui, sans-serif; }
+        #editor { position: absolute; left: 0; top: 0; width: 50%; height: 100%; }
+        #editor .cm-editor { height: 100%; }
+        #pdfPane { position: absolute; left: 50%; top: 0; width: 50%; height: 100%; background: #888; }
+        #renderPane { position: absolute; inset: 0; overflow: hidden; }
+        #renderPane canvas { display: block; margin: 8px auto; background: #fff; }
+        #viewerContainer { position: absolute; inset: 0; overflow: auto; }
+        #host { position: absolute; left: 0; top: 0; }
+    </style>
+</head>
+<body>
+    <div id="editor"></div>
+    <div id="pdfPane">
+        <div id="renderPane"></div>
+        <div id="viewerContainer" hidden><div id="viewer" class="pdfViewer"></div></div>
+    </div>
+    <div id="host"></div>
+    <script type="module" src="./page.js"></script>
+</body>
+</html>

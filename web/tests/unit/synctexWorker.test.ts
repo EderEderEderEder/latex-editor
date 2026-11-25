@@ -12,8 +12,8 @@ import {
 } from '../../src/main/workers/synctex.worker';
 import { bundleSyncTeXWorker, WorkerClient, withWorker } from '../support/synctexWorkerClient';
 
-// Echter worker_threads-Worker, mit Vites build-API nach $TMPDIR gebündelt (nicht der Produkt-Build,
-// der Einstieg in electron.vite.config.ts folgt mit W3-2). Langsame Messungen: tests/slow/.
+// Echter worker_threads-Worker, mit Vites build-API nach $TMPDIR gebündelt (nicht der Produkt-Build mit dem
+// Einstieg in electron.vite.config.ts). Langsame Messungen: tests/slow/. Main-Client: synctexClient.test.ts.
 const FIXTURE = fileURLToPath(new URL('../../../shared/spec/fixtures/two-chapters.synctex.gz', import.meta.url));
 const CHAPTER_TWO = '/tmp/LatexEditor SyncTeX Fixture/chapters/zwei.tex';
 const CRASH_EXIT_CODE = 3;

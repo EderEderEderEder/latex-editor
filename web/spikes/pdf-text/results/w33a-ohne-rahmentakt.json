@@ -1,0 +1,898 @@
+{
+  "vsync": false,
+  "pdfPages": 303,
+  "platform": "darwin 25.6.0",
+  "cpu": "Intel(R) Core(TM) i9-9880H CPU @ 2.30GHz",
+  "bytes": 634549,
+  "csp": {
+    "wasm": "nein (CompileError)",
+    "baseURI": "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/index.html",
+    "xhr ./cmaps/Adobe-Japan1-UCS2.bcmap": "Status 200, 40951 Bytes",
+    "fetch ./cmaps/Adobe-Japan1-UCS2.bcmap": "Status 200, 40951 Bytes",
+    "xhr ./standard_fonts/FoxitSerif.pfb": "Status 200, 19469 Bytes",
+    "fetch ./standard_fonts/FoxitSerif.pfb": "Status 200, 19469 Bytes",
+    "xhr ./wasm/openjpeg.wasm": "Status 200, 220817 Bytes",
+    "fetch ./wasm/openjpeg.wasm": "Status 200, 220817 Bytes"
+  },
+  "typing": [
+    {
+      "round": 0,
+      "mode": "none",
+      "devicePixelRatio": 2,
+      "workerRenderingActive": false,
+      "inputDelay": {
+        "count": 120,
+        "p50": 0.20000001788139343,
+        "p95": 0.4000000059604645,
+        "max": 0.5999999940395355,
+        "mean": 0.25500000019868213
+      },
+      "latency": {
+        "count": 120,
+        "p50": 4.200000017881393,
+        "p95": 5.4000000059604645,
+        "max": 10.899999976158142,
+        "mean": 4.23666666696469
+      },
+      "pageRender": {
+        "count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "geometry": {
+        "count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "pagesRendered": 0,
+      "longTasks": {
+        "count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "fontFaces": 0,
+      "charactersInserted": 120
+    },
+    {
+      "round": 0,
+      "mode": "mainThread",
+      "devicePixelRatio": 2,
+      "workerRenderingActive": false,
+      "inputDelay": {
+        "count": 120,
+        "p50": 1.699999988079071,
+        "p95": 6.4000000059604645,
+        "max": 9.400000005960464,
+        "mean": 2.8133333337803683
+      },
+      "latency": {
+        "count": 120,
+        "p50": 8.299999982118607,
+        "p95": 13.199999988079071,
+        "max": 15.700000017881393,
+        "mean": 7.73166666602095
+      },
+      "pageRender": {
+        "count": 326,
+        "p50": 9.800000011920929,
+        "p95": 19.899999976158142,
+        "max": 51.5,
+        "mean": 11.83680981589607
+      },
+      "geometry": {
+        "count": 326,
+        "p50": 6.299999982118607,
+        "p95": 9.799999982118607,
+        "max": 19.400000005960464,
+        "mean": 6.2395705519461195
+      },
+      "pagesRendered": 326,
+      "longTasks": {
+        "count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "fontFaces": 19,
+      "charactersInserted": 120
+    },
+    {
+      "round": 0,
+      "mode": "worker",
+      "devicePixelRatio": 2,
+      "workerRenderingActive": true,
+      "inputDelay": {
+        "count": 120,
+        "p50": 0.19999998807907104,
+        "p95": 5.5999999940395355,
+        "max": 7.800000011920929,
+        "mean": 0.7974999991556009
+      },
+      "latency": {
+        "count": 120,
+        "p50": 8.200000017881393,
+        "p95": 23.30000001192093,
+        "max": 27.69999998807907,
+        "mean": 9.119999999304612
+      },
+      "pageRender": {
+        "count": 244,
+        "p50": 17.900000005960464,
+        "p95": 29.69999998807907,
+        "max": 41.89999997615814,
+        "mean": 20.1549180321029
+      },
+      "geometry": {
+        "count": 244,
+        "p50": 1.9000000059604645,
+        "p95": 8.900000005960464,
+        "max": 14.200000017881393,
+        "mean": 3.5766393438470168
+      },
+      "pagesRendered": 244,
+      "longTasks": {
+        "count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "fontFaces": 18,
+      "charactersInserted": 120
+    },
+    {
+      "round": 0,
+      "mode": "mainThread",
+      "devicePixelRatio": 1,
+      "workerRenderingActive": false,
+      "inputDelay": {
+        "count": 120,
+        "p50": 1.199999988079071,
+        "p95": 2.2000000178813934,
+        "max": 8.199999988079071,
+        "mean": 1.1216666646301747
+      },
+      "latency": {
+        "count": 120,
+        "p50": 5.4000000059604645,
+        "p95": 6.9000000059604645,
+        "max": 12.400000005960464,
+        "mean": 5.441666665424903
+      },
+      "pageRender": {
+        "count": 731,
+        "p50": 4,
+        "p95": 9.299999982118607,
+        "max": 31.599999994039536,
+        "mean": 4.954582763272662
+      },
+      "geometry": {
+        "count": 731,
+        "p50": 2.5999999940395355,
+        "p95": 5.300000011920929,
+        "max": 14.700000017881393,
+        "mean": 2.84911080685262
+      },
+      "pagesRendered": 731,
+      "longTasks": {
+        "count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "fontFaces": 19,
+      "charactersInserted": 120
+    },
+    {
+      "round": 1,
+      "mode": "none",
+      "devicePixelRatio": 2,
+      "workerRenderingActive": false,
+      "inputDelay": {
+        "count": 120,
+        "p50": 0.29999998211860657,
+        "p95": 0.4000000059604645,
+        "max": 0.5999999940395355,
+        "mean": 0.2641666675607363
+      },
+      "latency": {
+        "count": 120,
+        "p50": 4.0999999940395355,
+        "p95": 4.800000011920929,
+        "max": 5.5999999940395355,
+        "mean": 4.079166667163372
+      },
+      "pageRender": {
+        "count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "geometry": {
+        "count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "pagesRendered": 0,
+      "longTasks": {
+        "count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "fontFaces": 0,
+      "charactersInserted": 120
+    },
+    {
+      "round": 1,
+      "mode": "mainThread",
+      "devicePixelRatio": 2,
+      "workerRenderingActive": false,
+      "inputDelay": {
+        "count": 120,
+        "p50": 4.5,
+        "p95": 6.799999982118607,
+        "max": 11.800000011920929,
+        "mean": 3.3600000011424225
+      },
+      "latency": {
+        "count": 120,
+        "p50": 8.5,
+        "p95": 13.800000011920929,
+        "max": 17,
+        "mean": 8.667500000198682
+      },
+      "pageRender": {
+        "count": 324,
+        "p50": 10.599999994039536,
+        "p95": 19.900000005960464,
+        "max": 38.400000005960464,
+        "mean": 12.130555556236226
+      },
+      "geometry": {
+        "count": 324,
+        "p50": 6.299999982118607,
+        "p95": 10.100000023841858,
+        "max": 23.400000005960464,
+        "mean": 6.2379629627606015
+      },
+      "pagesRendered": 324,
+      "longTasks": {
+        "count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "fontFaces": 19,
+      "charactersInserted": 120
+    },
+    {
+      "round": 1,
+      "mode": "worker",
+      "devicePixelRatio": 2,
+      "workerRenderingActive": true,
+      "inputDelay": {
+        "count": 120,
+        "p50": 0.19999998807907104,
+        "p95": 4.699999988079071,
+        "max": 7.0999999940395355,
+        "mean": 0.6433333332339922
+      },
+      "latency": {
+        "count": 120,
+        "p50": 7.800000011920929,
+        "p95": 25.19999998807907,
+        "max": 28.599999994039536,
+        "mean": 9.069999999801318
+      },
+      "pageRender": {
+        "count": 249,
+        "p50": 17.5,
+        "p95": 30.700000017881393,
+        "max": 40.400000005960464,
+        "mean": 19.631325299720686
+      },
+      "geometry": {
+        "count": 249,
+        "p50": 1.7999999821186066,
+        "p95": 8.700000017881393,
+        "max": 16.299999982118607,
+        "mean": 3.2337349409080414
+      },
+      "pagesRendered": 249,
+      "longTasks": {
+        "count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "fontFaces": 18,
+      "charactersInserted": 120
+    },
+    {
+      "round": 1,
+      "mode": "mainThread",
+      "devicePixelRatio": 1,
+      "workerRenderingActive": false,
+      "inputDelay": {
+        "count": 120,
+        "p50": 1.199999988079071,
+        "p95": 2.2000000178813934,
+        "max": 22.900000005960464,
+        "mean": 1.3391666658222676
+      },
+      "latency": {
+        "count": 120,
+        "p50": 5.5999999940395355,
+        "p95": 7,
+        "max": 26.69999998807907,
+        "mean": 5.864999999850989
+      },
+      "pageRender": {
+        "count": 722,
+        "p50": 4,
+        "p95": 9.699999988079071,
+        "max": 36.900000005960464,
+        "mean": 5.054986150063306
+      },
+      "geometry": {
+        "count": 722,
+        "p50": 2.699999988079071,
+        "p95": 5.5,
+        "max": 24.5,
+        "mean": 2.945983379212443
+      },
+      "pagesRendered": 722,
+      "longTasks": {
+        "count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "fontFaces": 19,
+      "charactersInserted": 120
+    },
+    {
+      "round": 2,
+      "mode": "none",
+      "devicePixelRatio": 2,
+      "workerRenderingActive": false,
+      "inputDelay": {
+        "count": 120,
+        "p50": 0.29999998211860657,
+        "p95": 0.4000000059604645,
+        "max": 0.5,
+        "mean": 0.27416666721304256
+      },
+      "latency": {
+        "count": 120,
+        "p50": 4.199999988079071,
+        "p95": 4.699999988079071,
+        "max": 6.4000000059604645,
+        "mean": 4.182500001539787
+      },
+      "pageRender": {
+        "count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "geometry": {
+        "count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "pagesRendered": 0,
+      "longTasks": {
+        "count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "fontFaces": 0,
+      "charactersInserted": 120
+    },
+    {
+      "round": 2,
+      "mode": "mainThread",
+      "devicePixelRatio": 2,
+      "workerRenderingActive": false,
+      "inputDelay": {
+        "count": 120,
+        "p50": 3.9000000059604645,
+        "p95": 6.699999988079071,
+        "max": 12.5,
+        "mean": 3.0091666671137016
+      },
+      "latency": {
+        "count": 120,
+        "p50": 8.199999988079071,
+        "p95": 14.300000011920929,
+        "max": 21.30000001192093,
+        "mean": 8.151666667064031
+      },
+      "pageRender": {
+        "count": 328,
+        "p50": 10.400000005960464,
+        "p95": 21.19999998807907,
+        "max": 37.599999994039536,
+        "mean": 12.17286585462166
+      },
+      "geometry": {
+        "count": 328,
+        "p50": 6.200000017881393,
+        "p95": 9.799999982118607,
+        "max": 20.599999994039536,
+        "mean": 6.125304877485444
+      },
+      "pagesRendered": 328,
+      "longTasks": {
+        "count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "fontFaces": 19,
+      "charactersInserted": 120
+    },
+    {
+      "round": 2,
+      "mode": "worker",
+      "devicePixelRatio": 2,
+      "workerRenderingActive": true,
+      "inputDelay": {
+        "count": 120,
+        "p50": 0.19999998807907104,
+        "p95": 4.9000000059604645,
+        "max": 9,
+        "mean": 0.7608333336810271
+      },
+      "latency": {
+        "count": 120,
+        "p50": 8.5,
+        "p95": 22.900000005960464,
+        "max": 28.30000001192093,
+        "mean": 10.471666666616995
+      },
+      "pageRender": {
+        "count": 243,
+        "p50": 17.400000005960464,
+        "p95": 30.80000001192093,
+        "max": 46.79999998211861,
+        "mean": 20.280246913801005
+      },
+      "geometry": {
+        "count": 243,
+        "p50": 1.9000000059604645,
+        "p95": 9,
+        "max": 15.599999994039536,
+        "mean": 3.4069958836944014
+      },
+      "pagesRendered": 243,
+      "longTasks": {
+        "count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "fontFaces": 18,
+      "charactersInserted": 120
+    },
+    {
+      "round": 2,
+      "mode": "mainThread",
+      "devicePixelRatio": 1,
+      "workerRenderingActive": false,
+      "inputDelay": {
+        "count": 120,
+        "p50": 1.2999999821186066,
+        "p95": 2.800000011920929,
+        "max": 3.600000023841858,
+        "mean": 1.187499999254942
+      },
+      "latency": {
+        "count": 120,
+        "p50": 5.5999999940395355,
+        "p95": 9,
+        "max": 12,
+        "mean": 5.869166666269303
+      },
+      "pageRender": {
+        "count": 689,
+        "p50": 4.399999976158142,
+        "p95": 10.799999982118607,
+        "max": 32,
+        "mean": 5.381277214546508
+      },
+      "geometry": {
+        "count": 689,
+        "p50": 2.7000000178813934,
+        "p95": 5.9000000059604645,
+        "max": 23.400000005960464,
+        "mean": 3.032510884787417
+      },
+      "pagesRendered": 689,
+      "longTasks": {
+        "count": 0,
+        "p50": 0,
+        "p95": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "fontFaces": 19,
+      "charactersInserted": 120
+    }
+  ],
+  "scrolling": [
+    {
+      "round": 0,
+      "mode": "mainThread",
+      "opened": {
+        "mode": "mainThread",
+        "pages": 303,
+        "documentMs": 86.09999999403954,
+        "firstVisibleMs": 174.09999999403954,
+        "workerRenderingActive": false,
+        "devicePixelRatio": 2
+      },
+      "scroll": {
+        "distancePx": 285072,
+        "durationMs": 35687.19999998808,
+        "frames": 84329,
+        "framesOverBudget": 164,
+        "framesDropped": 15,
+        "frameGap": {
+          "count": 84329,
+          "p50": 0.29999999998835847,
+          "p95": 0.6999999999970896,
+          "max": 51.5,
+          "mean": 0.4229956479977232
+        },
+        "frameWork": {
+          "count": 84329,
+          "p50": 0.29999999403662514,
+          "p95": 0.900000017878483,
+          "max": 75.2000000178814,
+          "mean": 0.5052662844754923
+        },
+        "longTasks": {
+          "count": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0,
+          "mean": 0
+        },
+        "pagesRendered": 300,
+        "renderErrors": 0,
+        "lastPageVisibleMs": 0,
+        "jsHeapMb": 37.7655029296875
+      },
+      "jumps": [
+        35,
+        55.599999994039536,
+        35.5,
+        37.20000001788139,
+        39.29999998211861,
+        54.400000005960464,
+        48.70000001788139
+      ],
+      "memory": {
+        "before": {
+          "totalMb": 644.828125,
+          "rendererMb": 396.1875,
+          "gpuMb": 91.734375
+        },
+        "opened": {
+          "totalMb": 633.2265625,
+          "rendererMb": 385.52734375,
+          "gpuMb": 90.5390625
+        },
+        "peakWhileScrolling": {
+          "totalMb": 902.83984375,
+          "rendererMb": 644.984375,
+          "gpuMb": 98.59765625
+        },
+        "end": {
+          "totalMb": 857.03515625,
+          "rendererMb": 590.69140625,
+          "gpuMb": 107.0859375
+        }
+      }
+    },
+    {
+      "round": 0,
+      "mode": "worker",
+      "opened": {
+        "mode": "worker",
+        "pages": 303,
+        "documentMs": 88.2000000178814,
+        "firstVisibleMs": 153.60000002384186,
+        "workerRenderingActive": true,
+        "devicePixelRatio": 2
+      },
+      "scroll": {
+        "distancePx": 285071,
+        "durationMs": 35634.19999998808,
+        "frames": 105905,
+        "framesOverBudget": 103,
+        "framesDropped": 18,
+        "frameGap": {
+          "count": 105905,
+          "p50": 0.20000000001164153,
+          "p95": 0.40000000000873115,
+          "max": 66.5,
+          "mean": 0.33647042160426793
+        },
+        "frameWork": {
+          "count": 105905,
+          "p50": 0.29999999405117705,
+          "p95": 0.5,
+          "max": 101.10000001787557,
+          "mean": 0.44077239630873044
+        },
+        "longTasks": {
+          "count": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0,
+          "mean": 0
+        },
+        "pagesRendered": 300,
+        "renderErrors": 0,
+        "lastPageVisibleMs": 0,
+        "jsHeapMb": 37.7655029296875
+      },
+      "jumps": [
+        47.79999998211861,
+        55.70000001788139,
+        49.5,
+        48.5,
+        43.19999998807907,
+        36.400000005960464,
+        43.80000001192093
+      ],
+      "memory": {
+        "before": {
+          "totalMb": 814.83203125,
+          "rendererMb": 548.48828125,
+          "gpuMb": 107.0859375
+        },
+        "opened": {
+          "totalMb": 877.6328125,
+          "rendererMb": 611.48828125,
+          "gpuMb": 106.76171875
+        },
+        "peakWhileScrolling": {
+          "totalMb": 1036.69140625,
+          "rendererMb": 768.421875,
+          "gpuMb": 108.89453125
+        },
+        "end": {
+          "totalMb": 989.796875,
+          "rendererMb": 722.50390625,
+          "gpuMb": 107.88671875
+        }
+      }
+    },
+    {
+      "round": 1,
+      "mode": "mainThread",
+      "opened": {
+        "mode": "mainThread",
+        "pages": 303,
+        "documentMs": 93.40000000596046,
+        "firstVisibleMs": 152.10000002384186,
+        "workerRenderingActive": false,
+        "devicePixelRatio": 2
+      },
+      "scroll": {
+        "distancePx": 285072,
+        "durationMs": 35634.19999998808,
+        "frames": 107174,
+        "framesOverBudget": 108,
+        "framesDropped": 18,
+        "frameGap": {
+          "count": 107174,
+          "p50": 0.20000000001164153,
+          "p95": 0.40000000002328306,
+          "max": 50.29999999998836,
+          "mean": 0.3324873570082296
+        },
+        "frameWork": {
+          "count": 107174,
+          "p50": 0.29999999405117705,
+          "p95": 0.49999999403371476,
+          "max": 77.89999999999418,
+          "mean": 0.4250601884655832
+        },
+        "longTasks": {
+          "count": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0,
+          "mean": 0
+        },
+        "pagesRendered": 300,
+        "renderErrors": 0,
+        "lastPageVisibleMs": 0,
+        "jsHeapMb": 37.7655029296875
+      },
+      "jumps": [
+        55.79999998211861,
+        41.30000001192093,
+        40.30000001192093,
+        31.099999994039536,
+        33.19999998807907,
+        40.20000001788139,
+        45.599999994039536
+      ],
+      "memory": {
+        "before": {
+          "totalMb": 965.14453125,
+          "rendererMb": 697.80859375,
+          "gpuMb": 107.88671875
+        },
+        "opened": {
+          "totalMb": 963.0625,
+          "rendererMb": 695.73828125,
+          "gpuMb": 107.76171875
+        },
+        "peakWhileScrolling": {
+          "totalMb": 958.64453125,
+          "rendererMb": 701.6171875,
+          "gpuMb": 97.37890625
+        },
+        "end": {
+          "totalMb": 764.2890625,
+          "rendererMb": 575.09765625,
+          "gpuMb": 89.7421875
+        }
+      }
+    },
+    {
+      "round": 1,
+      "mode": "worker",
+      "opened": {
+        "mode": "worker",
+        "pages": 303,
+        "documentMs": 83.7999999821186,
+        "firstVisibleMs": 148.5,
+        "workerRenderingActive": true,
+        "devicePixelRatio": 2
+      },
+      "scroll": {
+        "distancePx": 285071,
+        "durationMs": 35634.20000001788,
+        "frames": 99819,
+        "framesOverBudget": 46,
+        "framesDropped": 13,
+        "frameGap": {
+          "count": 99819,
+          "p50": 0.29999999998835847,
+          "p95": 0.5,
+          "max": 52,
+          "mean": 0.3569851431090273
+        },
+        "frameWork": {
+          "count": 99819,
+          "p50": 0.20000001788139343,
+          "p95": 0.4000000119267497,
+          "max": 66.60000001787557,
+          "mean": 0.3814995200826775
+        },
+        "longTasks": {
+          "count": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0,
+          "mean": 0
+        },
+        "pagesRendered": 300,
+        "renderErrors": 0,
+        "lastPageVisibleMs": 0,
+        "jsHeapMb": 37.7655029296875
+      },
+      "jumps": [
+        30.69999998807907,
+        52,
+        48,
+        42.60000002384186,
+        37,
+        49.099999994039536,
+        50.400000005960464
+      ],
+      "memory": {
+        "before": {
+          "totalMb": 750.35546875,
+          "rendererMb": 561.12109375,
+          "gpuMb": 89.7421875
+        },
+        "opened": {
+          "totalMb": 738.859375,
+          "rendererMb": 548.68359375,
+          "gpuMb": 90.3125
+        },
+        "peakWhileScrolling": {
+          "totalMb": 938.7890625,
+          "rendererMb": 746.15625,
+          "gpuMb": 92.81640625
+        },
+        "end": {
+          "totalMb": 909.91796875,
+          "rendererMb": 718.24609375,
+          "gpuMb": 91.80859375
+        }
+      }
+    }
+  ],
+  "violations": [
+    {
+      "directive": "script-src",
+      "blocked": "wasm-eval",
+      "source": "file"
+    },
+    {
+      "directive": "script-src",
+      "blocked": "wasm-eval",
+      "source": "file"
+    }
+  ],
+  "main": {
+    "headerUrls": [
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/index.html",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/pdf_viewer.css",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/page.js",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/cmaps/Adobe-Japan1-UCS2.bcmap",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/cmaps/Adobe-Japan1-UCS2.bcmap",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/standard_fonts/FoxitSerif.pfb",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/standard_fonts/FoxitSerif.pfb",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/wasm/openjpeg.wasm",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/wasm/openjpeg.wasm",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/pdf.worker.min.mjs",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/pdf.worker.min.mjs",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/pdf.renderer.min.mjs",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/pdf.worker.min.mjs",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/pdf.worker.min.mjs",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/pdf.worker.min.mjs",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/pdf.renderer.min.mjs",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/pdf.worker.min.mjs",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/pdf.worker.min.mjs",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/pdf.worker.min.mjs",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/pdf.renderer.min.mjs",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/pdf.worker.min.mjs",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/pdf.worker.min.mjs",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/images/loading-icon.gif",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/pdf.worker.min.mjs",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/pdf.renderer.min.mjs",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/pdf.worker.min.mjs",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/pdf.worker.min.mjs",
+      "file:///Users/maxieder/Desktop/FH/5%20Semster/Bachelorarbeit/LatexEditor/web/spikes/pdf-text/csp/out/pdf.renderer.min.mjs"
+    ],
+    "securityLog": []
+  },
+  "console": [
+    "warning: CSP-Verstoß: {\"directive\":\"script-src\",\"blocked\":\"wasm-eval\",\"source\":\"file\"}",
+    "warning: CSP-Verstoß: {\"directive\":\"script-src\",\"blocked\":\"wasm-eval\",\"source\":\"file\"}"
+  ]
+}

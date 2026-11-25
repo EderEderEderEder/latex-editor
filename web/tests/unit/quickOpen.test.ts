@@ -19,6 +19,9 @@ interface QuickOpenExpect {
 
 const cases = loadSpec('misc').cases.filter((specCase) => (specCase.input as { op?: string }).op === 'quickOpenRank');
 
+/** Typisch deutlich unter 50 ms; dreifacher Puffer gegen Fehlalarme unter Last */
+const RANK_BUDGET_MS = 150;
+
 describe('quickOpenRank (Testvektoren misc.json)', () => {
     it('findet die Fälle', () => {
         expect(cases.length).toBeGreaterThan(0);
@@ -79,16 +82,16 @@ describe('quickOpen Randfälle', () => {
         expect(matchPositions('main.tex', normalizeQuery(''))).toEqual([]);
     });
 
-    it('10.000 Pfade in unter 50 ms', () => {
+    it(`10.000 Pfade in unter ${RANK_BUDGET_MS} ms`, () => {
         const big: QuickOpenFile[] = Array.from({ length: 10_000 }, (_, index) => ({ path: `kapitel${index % 50}/abschnitt-${index}.tex` }));
         rankQuickOpen(big, 'abs');
         const start = performance.now();
         rankQuickOpen(big, 'k3abs9');
         rankQuickOpen(big, 'abschnitt-12');
         const perCall = (performance.now() - start) / 2;
-        expect(perCall).toBeLessThan(50);
+        expect(perCall).toBeLessThan(RANK_BUDGET_MS);
         const startEmpty = performance.now();
         rankQuickOpen(big, '');
-        expect(performance.now() - startEmpty).toBeLessThan(50);
+        expect(performance.now() - startEmpty).toBeLessThan(RANK_BUDGET_MS);
     });
 });

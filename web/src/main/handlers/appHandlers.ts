@@ -9,11 +9,13 @@ import { createLogParser, type ParseWorkerFactory, workerThreadFactory } from '.
 import type { PathPlatform } from '../paths';
 import { RecentProjectsStore } from '../project';
 import { createSettingsHandlers, SettingsService } from '../settings';
+import { type SyncTeXWorkerFactory, syncTeXWorkerThreadFactory } from '../synctexClient';
 import { createProjectHandlers } from './projectHandlers';
 import { createBuildHandlers } from './buildHandlers';
 import { createDialogHandlers, type DialogLike } from './dialogHandlers';
 import { createFsHandlers } from './fsHandlers';
 import { createFsOpsHandlers } from './fsOpsHandlers';
+import { createSyncTeXFeature, type SyncTeXFeature } from './synctexHandlers';
 import { createTabMemoryHandlers, TabMemoryStore } from './tabMemoryHandlers';
 import { createProjectWatch, type ProjectWatch, type ProjectWatchOptions } from './watchHandlers';
 
@@ -35,8 +37,11 @@ export interface AppHandlerOptions<W> {
     readonly trashItem?: TrashItem;
     // Gebündelte `parse.worker`-Datei; ohne bleibt `build:finished.report` ohne Meldungen aus dem Log.
     readonly parseWorkerScript?: string;
+    // Gebündelte `synctex.worker`-Datei; ohne bleiben `synctex:forward`/`synctex:backward` Platzhalter.
+    readonly synctexWorkerScript?: string;
     // Nur für Tests: Worker und Überwacher ohne echten Thread bzw. ohne `fs.watch`.
     readonly createParseWorker?: ParseWorkerFactory;
+    readonly createSyncTeXWorker?: SyncTeXWorkerFactory;
     readonly createWatcher?: ProjectWatchOptions['createWatcher'];
 }
 
@@ -80,6 +85,14 @@ function createWatch<W>(options: AppHandlerOptions<W>, grants: GrantStore): Proj
     return createProjectWatch({ grants, emit, quitTasks, log, createWatcher: options.createWatcher });
 }
 
+// Ohne Worker (Tests ohne Bündel) gibt es kein SyncTeX; Projektöffnen und Build laufen dann unverändert.
+function createSyncTeX<W>(options: AppHandlerOptions<W>, grants: GrantStore, emit: EventSender): SyncTeXFeature | null {
+    const createWorker = options.createSyncTeXWorker
+        ?? (options.synctexWorkerScript === undefined ? undefined : syncTeXWorkerThreadFactory(options.synctexWorkerScript));
+    if (createWorker === undefined) return null;
+    return createSyncTeXFeature({ grants, emit, quitTasks: options.quitTasks, log: options.log, createWorker });
+}
+
 function createSettings<W>(options: AppHandlerOptions<W>): SettingsService {
     const settings = new SettingsService(options.userDataDir, {
         onSaveError: (error) => options.log(`Einstellungen nicht gespeichert: ${describeError(error)}`),
@@ -96,6 +109,8 @@ export function createAppHandlers<W>(options: AppHandlerOptions<W>): AppHandlers
     const watch = createWatch(options, grants);
     const emit = options.emit ?? (() => undefined);
     const parseLog = createBuildLogParser(options);
+    const synctex = createSyncTeX(options, grants, emit);
+    const projectHandlers = createProjectHandlers({ grants, recent: new RecentProjectsStore(userDataDir, platform), log });
     const handlers = createHandlerRegistry({
         'app:confirmClose': () => Promise.resolve(options.confirmClose()),
         ...createSettingsHandlers(settings),
@@ -103,8 +118,10 @@ export function createAppHandlers<W>(options: AppHandlerOptions<W>): AppHandlers
         ...createFsHandlers({ grants, watch }),
         ...createFsOpsHandlers({ grants, userDataDir, trashItem: options.trashItem }),
         ...createTabMemoryHandlers(new TabMemoryStore({ userDataDir, grants })),
-        ...createProjectHandlers({ grants, recent: new RecentProjectsStore(userDataDir, platform), log }),
-        ...createBuildHandlers({ grants, emit, quitTasks, userDataDir, log, watch, parseLog }),
+        ...projectHandlers,
+        ...(synctex === null ? {} : { 'project:open': synctex.reloadOnProjectOpen(projectHandlers['project:open']) }),
+        ...createBuildHandlers({ grants, emit: synctex?.observeBuildEvents(emit) ?? emit, quitTasks, userDataDir, log, watch, parseLog }),
+        ...synctex?.handlers,
     });
     return { handlers, grants, settings, watch };
 }

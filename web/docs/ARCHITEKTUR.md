@@ -33,9 +33,22 @@ Regeln für `pdf/textGeometry.ts` (W5-4):
 - Normalisierung von pdf.js lassen (Ligaturen kommen als „fi“, „ffi“), Wörter wie `MarkText` (NFKC, klein, `[\p{L}\p{N}\p{M}]+`), `hasEOL` als Trenner ohne Lage, Leerzeichen nicht in Zeilenrechtecke.
 - Ergebnis je Seite und PDF-Stand zwischenspeichern; ohne Treffer bleibt die Zeile (`Precision.lines`).
 
-Nebenbefund Swift (nicht in der App geprüft): `PDFPage.characterBounds(at:)` und `page.string` laufen nach Ligaturen auseinander; `MarkResolver` nutzt beides zusammen. Ungeprüft: Windows/Linux, Rendern im Worker, Type3-Schriften, Fremd-PDFs, mehrspaltiger Satz, Markierungen über Seitengrenzen. **Offen (Review H2):** `disableWorkerRendering` rendert im Renderer-Hauptthread; ungemessen gegen das Tippbudget und 300 Seiten, Spike-Seite ohne CSP → Messung W3-3a, Wiederholung unter `RENDERER_CSP` und auf Windows in W5-4.
+Nebenbefund Swift (nicht in der App geprüft): `PDFPage.characterBounds(at:)` und `page.string` laufen nach Ligaturen auseinander; `MarkResolver` nutzt beides zusammen. Ungeprüft: Windows/Linux, Type3-Schriften, Fremd-PDFs, mehrspaltiger Satz, Markierungen über Seitengrenzen.
 
-Alle Zahlen: `spikes/pdf-text/ERGEBNIS.md`.
+**W3-3a (Review H2, 2026-11-25, Intel-Mac, DPR 2; Windows: Handmessung W-H17): Seiten im Renderer-Hauptthread rendern (`disableWorkerRendering: true`) genügt; kein Render-Worker, keine CSP-Änderung.** Messseite `spikes/pdf-text/csp/` unter exakt `RENDERER_CSP` (Meta) plus `PACKAGED_CSP_HEADER` (Kopf, kam an allen `file:`-Antworten inklusive Worker-Skripten an) und dem Anfragefilter aus `security.ts`; Editor mit den App-Erweiterungen und 10.000 Zeilen; 303-Seiten-PDF aus einer HgbDemo-Kopie.
+- Tippen (120 echte Tasten, Taste bis Paint p95, ohne Rahmentakt wie `tests/perf`): ohne PDF 4,7–5,6 ms; während pdf.js **ohne Pause** Seiten rendert (Worst Case) 13,2–17,1 ms bei DPR 2 (2 von 6 Runden ≥ 16), 6,9–9,0 ms bei DPR 1. pdf.js zeichnet in Scheiben von höchstens 15 ms; keine Long Task > 50 ms. Mit Rahmentakt nur +1–2 ms gegenüber ohne PDF.
+- Der Render-Worker von pdf.js 6.5 ist **schlechter** (p95 20–26 ms): Er schickt jedes Zwischenbild als `ImageBitmap` zurück, der Hauptthread zeichnet es per `drawImage`. Schriften liegen in beiden Modi im Dokument (S2-Ergebnis unter CSP in beiden Modi je Markierung identisch).
+- 303 Seiten im `PDFViewer` (mit Textebene): erste Seite nach 146–211 ms (ab `getDocument`, Bytes im Renderer; IPC aus S9 kommt dazu), Scrollen mit 8.000 px/s rendert alle Seiten rechtzeitig, mit Rahmentakt 0–1 Rahmen > 33 ms in 35 s, Sprung auf ferne Seite 39–76 ms, Renderer-Prozess +130–260 MB beim Scrollen (Spitze aller Prozesse < 1 GB).
+- CSP: `cMapUrl`/`standardFontDataUrl`/`wasmUrl` als `file:` neben der `index.html` laden per XHR unter `connect-src 'self'`; Wasm bleibt blockiert (JPX/JBIG2 haben JS-Rückfälle, ICC nicht). Einzige mögliche Änderung: `'wasm-unsafe-eval'` in `script-src`, nur wenn W-H10 scheitert.
+
+Folgen für W3-3 (`pdf/viewer.ts`):
+- `getDocument({ data, disableWorkerRendering: true, cMapUrl, cMapPacked: true, standardFontDataUrl, wasmUrl, iccUrl })`; `cmaps/`, `standard_fonts/`, `wasm/`, `iccs/` (~4 MB) aus `pdfjs-dist` offline ins Renderer-Paket kopieren (unter `out/renderer/`, sonst blockiert der Anfragefilter), `GlobalWorkerOptions.workerSrc` auf das gebündelte `pdf.worker.min.mjs`, **kein** `rendererSrc`.
+- `PDFViewer` mit Standard-Warteschlange nutzen: sichtbare Seiten zuerst, eine Seite vorrendern, Puffer 10 Seiten; nicht erhöhen. Abbruch beim Scrollen leistet der Viewer selbst (Rendern nicht vorrangiger Seiten pausiert zwischen den Scheiben, Seiten außerhalb des Puffers werden zerstört); kein eigener Abbruch nötig.
+- Canvas: `maxCanvasPixels: 2 ** 24` (16,8 MP statt 2^25; bei DPR 2 und 900 CSS-px Seitenbreite greift es erst ab ~200 % Zoom, darüber zeichnet `enableDetailCanvas` nur den sichtbaren Ausschnitt scharf), `maxCanvasDim` Standard. Das Pixelverhältnis nimmt pdf.js fest aus `devicePixelRatio` (keine Viewer-Option); bei DPR > 2 begrenzt `maxCanvasPixels` Speicher und Renderzeit (DPR 1 halbiert die Tipp-Latenz unter Last). Zwischenbilder klein halten: nach einem Build nur die sichtbaren Seiten neu rendern, altes Dokument erst nach dem Paint des neuen mit `destroy()` freigeben.
+- Eigenes `l10n` übergeben (sonst lädt `GenericL10n` Sprachdateien nach), Textebene an (`textLayerMode: 1`, mitgemessen).
+- W5-4: Geometrie (`getTextContent` + `fontSpaces`) nur für sichtbare Seiten mit Markierungen und nachträglich im Leerlauf (`requestIdleCallback`), je PDF-Stand zwischenspeichern; unter Rendern kostet sie 6–8 ms Wandzeit je Seite.
+
+Alle Zahlen: `spikes/pdf-text/ERGEBNIS.md` (Abschnitt „W3-3a“).
 
 ### S3 SyncTeX in Node
 

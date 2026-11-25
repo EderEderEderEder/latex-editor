@@ -148,6 +148,13 @@ function stripMacPrivatePrefix(key: string): string {
     return key.slice(MACOS_PRIVATE.length);
 }
 
+// Plattformname zur Pfadlogik aus `paths.ts`: der Worker bekommt nur den Namen (eine `PathPlatform` enthält
+// Funktionen und ist nicht klonbar), unter macOS hängt zusätzlich das Abschneiden von `/private` daran.
+export function pathPlatformName(platform: PathPlatform): NodeJS.Platform {
+    if (platform.windows) return 'win32';
+    return platform.unicodeInsensitive ? 'darwin' : 'linux';
+}
+
 // Vergleichsschlüssel für Quelldateien (aus der SyncTeX-Datei wie vom Editor): Trenner, `./`, `..`,
 // Laufwerk und Groß-/Kleinschreibung wie `paths.comparisonKey`, Unicode NFC auf allen Plattformen
 // (nur Nachschlagen, keine Sicherheitsprüfung: ein von macOS kopierter NFD-Name soll trotzdem passen).

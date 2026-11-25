@@ -10,7 +10,8 @@ const PROJECT = '/Users/x/5 Semster/Projekt';
 const SYNTHETIC_LOG_BYTES = 5 * 1024 * 1024;
 const PERF_RUNS = 5;
 // Großzügig für einen belasteten Rechner; gemessen wird der schnellste Lauf (Parsen eines 5-MB-Logs).
-const PERF_BUDGET_MS = 100;
+/** Typisch rund 100 ms; der dreifache Puffer verhindert Fehlalarme unter Last (Plan: Budgets mit ~3-fachem Puffer) */
+const PERF_BUDGET_MS = 300;
 const LONG_LINE_LENGTH = 10_000;
 
 interface LogInput {

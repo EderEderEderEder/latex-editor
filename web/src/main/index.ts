@@ -4,6 +4,7 @@ import { createAppHandlers } from './handlers/appHandlers';
 import type { ProjectWatch } from './handlers/watchHandlers';
 import { createEventSender, registerIpcHandlers } from './ipc';
 import { bringToFront, CloseGuard, createBeforeQuitHandler, createGuardedQuitHandler, QuitTasks } from './lifecycle';
+import { installApplicationMenu } from './menu';
 import { currentPathPlatform, type PathPlatform, pathToFileUrl } from './paths';
 import { choosePreloadPath } from './preloadChoice';
 import { applySessionSecurity, lockNavigation, type RendererLocation } from './security';
@@ -16,9 +17,10 @@ const STUB_PRELOAD_PATH = join(__dirname, '../preload/stub.js');
 const DEV_SERVER_ENV = 'ELECTRON_RENDERER_URL';
 // Eigene Einstiege von `electron.vite.config.ts` neben `index.js` (`out/main/`).
 const PARSE_WORKER_FILE_NAME = 'parse.worker.js';
+const SYNCTEX_WORKER_FILE_NAME = 'synctex.worker.js';
 
 let mainWindow: BrowserWindow | null = null;
-// Aufräumen beim Beenden: Einstellungen sichern, Build abbrechen, Überwachung beenden, Log-Worker beenden
+// Aufräumen beim Beenden: Einstellungen sichern, Build abbrechen, Überwachung beenden, Log- und SyncTeX-Worker beenden
 // (jeweils in `createAppHandlers` eingetragen).
 const quitTasks = new QuitTasks();
 let stubPreloadActive = false;
@@ -124,6 +126,7 @@ function registerHandlers(location: RendererLocation, platform: PathPlatform): P
         emit: sendEvent,
         trashItem: (path) => shell.trashItem(path),
         parseWorkerScript: workerScriptPath(PARSE_WORKER_FILE_NAME),
+        synctexWorkerScript: workerScriptPath(SYNCTEX_WORKER_FILE_NAME),
     });
     registerIpcHandlers(ipcMain, {
         handlers,
@@ -135,8 +138,13 @@ function registerHandlers(location: RendererLocation, platform: PathPlatform): P
 
 async function start(): Promise<void> {
     await app.whenReady();
-    // Bis W2-16 kein Menü: das Standardmenü böte „Toggle Developer Tools“ und Neuladen.
-    Menu.setApplicationMenu(null);
+    // Eigenes Menü statt Standardmenü (das böte „Toggle Developer Tools“ auch im Paket).
+    installApplicationMenu({
+        menu: Menu,
+        platform: process.platform,
+        isPackaged: app.isPackaged,
+        sendCommand: (commandId) => sendEvent('menu:command', { commandId }),
+    });
     const location = getRendererLocation();
     const platform = currentPathPlatform();
     applySessionSecurity(session.defaultSession, { location, platform, allowDevTools: !app.isPackaged }, logSecurity);

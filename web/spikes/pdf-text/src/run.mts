@@ -1,6 +1,8 @@
 // Ablauf des Spikes S2 (Node): vorbereiten → PDFKit-Referenz → pdf.js in Electron (Playwright) → auswerten.
-//   node build/run.mjs [Wiederholungen]
-// Ergebnisse: results/results.json und results/table.md im Spike-Ordner.
+//   node build/run.mjs [Wiederholungen] [--csp]
+// Ergebnisse: results/results.json und results/table.md im Spike-Ordner. Mit `--csp` (W3-3a) läuft die Messseite aus
+// `csp/out/` unter RENDERER_CSP, einmal mit Hauptthread- und einmal mit Worker-Rendern; Ergebnisse dann
+// results/results-csp-<Modus>.json und results/table-csp-<Modus>.md.
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -20,6 +22,21 @@ const DEFAULT_REPETITIONS = 7;
 const TEXT_LAYER_SCALE = 1.5;
 const REFERENCE_BUFFER = 32 * 1024 * 1024;
 const spikeDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const CSP_FLAG = "--csp";
+const CSP_MAIN = path.join(spikeDirectory, "csp", "out", "main.cjs");
+const PLAIN_MAIN = path.join(spikeDirectory, "build", "main.mjs");
+
+interface RunMode {
+    name: string;
+    main: string;
+    workerRendering: boolean;
+}
+
+const PLAIN_MODES: RunMode[] = [{ name: "", main: PLAIN_MAIN, workerRendering: false }];
+const CSP_MODES: RunMode[] = [
+    { name: "csp-hauptthread", main: CSP_MAIN, workerRendering: false },
+    { name: "csp-worker", main: CSP_MAIN, workerRendering: true },
+];
 
 async function referenceBinary(): Promise<string> {
     const binary = path.join(workDirectory, "pdfkitReference");
@@ -37,9 +54,9 @@ async function pdfKitReference(inputs: MarkInput[], documents: TestDocument[]): 
     return JSON.parse(stdout) as MarkOutput[];
 }
 
-async function measureWithPdfJs(request: SpikeRequest): Promise<{ response: SpikeResponse; console: string[] }> {
+async function measureWithPdfJs(request: SpikeRequest, mainFile: string): Promise<{ response: SpikeResponse; console: string[] }> {
     const electronPath = createRequire(import.meta.url)("electron") as string;
-    const application = await _electron.launch({ executablePath: electronPath, args: [path.join(spikeDirectory, "build", "main.mjs")] });
+    const application = await _electron.launch({ executablePath: electronPath, args: [mainFile] });
     const messages: string[] = [];
     try {
         const page = await application.firstWindow();
@@ -76,22 +93,26 @@ async function pdfPayload(documents: TestDocument[]): Promise<Record<string, str
 }
 
 async function main(): Promise<void> {
-    const repetitions = Number(process.argv[2] ?? DEFAULT_REPETITIONS);
+    const repetitions = Number(process.argv.slice(2).find((argument) => argument !== CSP_FLAG) ?? DEFAULT_REPETITIONS);
+    const modes = process.argv.includes(CSP_FLAG) ? CSP_MODES : PLAIN_MODES;
     const documents = await prepareDocuments(spikeDirectory);
     const { marks, inputs } = await markInputs(spikeDirectory, documents);
     const reference = await pdfKitReference(inputs, documents);
-    const request: SpikeRequest = { pdfs: await pdfPayload(documents), marks: inputs, repetitions, scale: TEXT_LAYER_SCALE };
-    const { response, console: messages } = await measureWithPdfJs(request);
-    const evaluations = response.runs.map((run) => ({
-        variant: run.variant,
-        timing: summarizeTimings(run),
-        notes: run.notes,
-        marks: marks.map((mark, index) => evaluate(mark, run.outputs[index] ?? emptyOutput(mark.id), reference[index] ?? emptyOutput(mark.id))),
-    }));
-    const markdown = table(evaluations);
-    await writeResults({ environment: response.environment, inputs, reference, runs: response.runs, evaluations, console: messages }, markdown);
-    console.log(JSON.stringify(response.environment));
-    console.log(markdown);
+    const pdfs = await pdfPayload(documents);
+    for (const mode of modes) {
+        const request: SpikeRequest = { pdfs, marks: inputs, repetitions, scale: TEXT_LAYER_SCALE, workerRendering: mode.workerRendering };
+        const { response, console: messages } = await measureWithPdfJs(request, mode.main);
+        const evaluations = response.runs.map((run) => ({
+            variant: run.variant,
+            timing: summarizeTimings(run),
+            notes: run.notes,
+            marks: marks.map((mark, index) => evaluate(mark, run.outputs[index] ?? emptyOutput(mark.id), reference[index] ?? emptyOutput(mark.id))),
+        }));
+        const markdown = table(evaluations);
+        await writeResults({ environment: response.environment, inputs, reference, runs: response.runs, evaluations, console: messages }, markdown, mode.name);
+        console.log(mode.name, JSON.stringify(response.environment));
+        console.log(markdown.split("\n").slice(0, 6).join("\n"));
+    }
 }
 
 function emptyOutput(id: string): MarkOutput {
@@ -105,11 +126,12 @@ interface Evaluated {
     marks: MarkEvaluation[];
 }
 
-async function writeResults(results: object, markdown: string): Promise<void> {
+async function writeResults(results: object, markdown: string, modeName: string): Promise<void> {
     const directory = path.join(spikeDirectory, "results");
+    const suffix = modeName === "" ? "" : `-${modeName}`;
     await mkdir(directory, { recursive: true });
-    await writeFile(path.join(directory, "results.json"), JSON.stringify(results, null, 2));
-    await writeFile(path.join(directory, "table.md"), `${markdown}\n`);
+    await writeFile(path.join(directory, `results${suffix}.json`), JSON.stringify(results, null, 2));
+    await writeFile(path.join(directory, `table${suffix}.md`), `${markdown}\n`);
 }
 
 function summaryLine(evaluation: Evaluated): string {

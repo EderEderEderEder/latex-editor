@@ -41,7 +41,6 @@ export const SEARCH_KEYS = [
     { key: 'Mod-f', run: openSearchPanel, scope: SEARCH_SCOPE, preventDefault: true },
     { key: REPLACE_KEY, mac: REPLACE_KEY_MAC, run: openReplacePanel, scope: SEARCH_SCOPE, preventDefault: true },
     { key: 'F3', run: findNext, shift: findPrevious, scope: SEARCH_SCOPE, preventDefault: true },
-    { key: 'Mod-g', run: findNext, shift: findPrevious, scope: SEARCH_SCOPE, preventDefault: true },
     { key: 'Escape', run: closeSearchPanel, scope: SEARCH_SCOPE },
 ];
 

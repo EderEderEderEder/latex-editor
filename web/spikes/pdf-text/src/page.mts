@@ -10,7 +10,13 @@ import type { PageGeometry, PageTiming, SpikeRequest, SpikeResponse, VariantName
 const VARIANTS: VariantName[] = ["textLayer", "uniform", "fontMetrics", "fontSpaces"];
 const RENDER_SCALE = 1;
 
-GlobalWorkerOptions.workerSrc = new URL("../../node_modules/pdfjs-dist/build/pdf.worker.mjs", document.baseURI).href;
+const DEFAULT_WORKER_SRC = "../../node_modules/pdfjs-dist/build/pdf.worker.mjs";
+const DEFAULT_RENDERER_SRC = "../../node_modules/pdfjs-dist/build/pdf.renderer.mjs";
+
+// Die CSP-Messseite (W3-3a, `csp/`) liefert die Worker aus ihrem eigenen Ordner aus und setzt die Pfade im <html>-Tag.
+const pageDataset = document.documentElement.dataset;
+GlobalWorkerOptions.workerSrc = new URL(pageDataset.pdfWorker ?? DEFAULT_WORKER_SRC, document.baseURI).href;
+const rendererSrc = new URL(pageDataset.pdfRenderer ?? DEFAULT_RENDERER_SRC, document.baseURI).href;
 
 interface LoadedPage {
     pdf: string;
@@ -25,10 +31,12 @@ function bytesOf(base64: string): Uint8Array {
     return bytes;
 }
 
-async function loadPages(pdfs: Record<string, string>): Promise<LoadedPage[]> {
+async function loadPages(pdfs: Record<string, string>, workerRendering: boolean): Promise<LoadedPage[]> {
     const pages: LoadedPage[] = [];
+    if (workerRendering) GlobalWorkerOptions.rendererSrc = rendererSrc;
     for (const [pdf, base64] of Object.entries(pdfs)) {
-        const document: PDFDocumentProxy = await getDocument({ data: bytesOf(base64), disableWorkerRendering: true }).promise;
+        const options = { data: bytesOf(base64), disableWorkerRendering: !workerRendering };
+        const document: PDFDocumentProxy = await getDocument(options).promise;
         for (let number = 1; number <= document.numPages; number += 1) {
             pages.push({ pdf, number, proxy: await document.getPage(number) });
         }
@@ -101,7 +109,7 @@ function describeStats(stats: FontMetricsStats): string {
 }
 
 async function spikeRun(request: SpikeRequest): Promise<SpikeResponse> {
-    const pages = await loadPages(request.pdfs);
+    const pages = await loadPages(request.pdfs, request.workerRendering === true);
     const renderMs = await renderAll(pages);
     const host = document.getElementById("host") ?? document.body;
     const measureContext = document.createElement("canvas").getContext("2d");
@@ -116,6 +124,8 @@ async function spikeRun(request: SpikeRequest): Promise<SpikeResponse> {
         pdfjs: version,
         pages: String(pages.length),
         renderAllMs: renderMs.toFixed(1),
+        workerRendering: String(request.workerRendering === true),
+        fontFaces: String(document.fonts.size),
     };
     return { runs, environment };
 }

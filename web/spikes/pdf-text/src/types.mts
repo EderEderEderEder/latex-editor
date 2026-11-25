@@ -70,6 +70,8 @@ export interface SpikeRequest {
     marks: MarkInput[];
     repetitions: number;
     scale: number;
+    /** W3-3a: Seiten im Render-Worker von pdf.js zeichnen (OffscreenCanvas) statt im Hauptthread */
+    workerRendering?: boolean;
 }
 
 export interface SpikeResponse {

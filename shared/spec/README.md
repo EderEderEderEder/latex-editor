@@ -178,6 +178,20 @@ Pfade sind relativ zur Projektwurzel (`""` = Wurzel), Dateiinhalte stehen als Te
 | `renameValidate` | `{newName, kind, old, existing: [..]}` | `error: null` / `error: "<Text>"` / `errorPresent: true` | `Renamer.validate`. `errorPresent`: irgendeine Fehlermeldung, Text nicht geprüft. |
 | `renameNormalize` | `{newName, kind}` | `{result}` | `Renamer.normalized`. |
 
+### `synctex.json`
+
+Alle Fälle nutzen `input.fixture` (`fixtures/two-chapters.synctex.gz`, relativ zu `shared/spec/`). Ausführliche Beschreibung (Pfadnormalisierung, Einheiten, Prüfschlüssel) in `notes` der Datei.
+
+| `op` | `input` | Bedeutung |
+|---|---|---|
+| `gzipDecompress` | `{fixture \| text \| original+fileName, truncateToHalf?}` | gzip entpacken; `expect`: `error`, `text`, `textPrefix`, `textContains` |
+| `parse` | `{fixture \| text}` | SyncTeX-Daten einlesen; `expect`: `error`, `inputCount`, `pages`, `magnification` |
+| `forward` | `{fixture, file, line, decompressFirst?}` | Quelltext → PDF; Ergebnis `{page, x, y, width, height}` oder `null`; `expect`: `page`, `left`, `width`, `baseline`, `tolerance`, `sameResultAsLine`, `found`, `result` |
+| `forwardPaths` | `{fixture, line, files[]}` | gleiche Zeile über mehrere Pfadschreibweisen; `expect.allFoundAndEqual` |
+| `backward` | `{fixture, page, x, y}` | PDF → Quelltext; Ergebnis `{file, line}` oder `null`; `expect`: `file`, `line`, `result` |
+| `roundTrip` | `{fixture, file, line}` | vorwärts, dann rückwärts am Boxmittelpunkt; `expect`: `file`, `lineTolerance` |
+| `pdfRectFromSyncTeX`, `syncTeXPointFromPDF` | `{rect \| point, mediaBox}` | Umrechnung oben-links ↔ unten-links; `expect` ist das Rechteck bzw. der Punkt |
+
 ## Teil-Prüfungen (Schlüssel in `expect`)
 
 Alle Schlüssel sind optional und unabhängig; mehrere in einem Fall müssen alle gelten. Listenelemente sind Token-Objekte `{kind, text}`, sofern nicht anders genannt.
@@ -222,6 +236,7 @@ Stand 2026-11-22. „Fälle“ = Einträge in `cases`, „übersprungen“ = Ein
 | `text-editing.json` | `TextEditingTests.swift` (Fälle), `TypingTests.swift` (nur übersprungen) | 50 | 8 | Schema und IDs geprüft, Swift-Gegenprobe offen |
 | `latex-log.json` | `LatexLogParserTests.swift` | 12 | 0 | Schema und IDs geprüft, Swift-Gegenprobe offen |
 | `misc.json` | `EditorTabsTests`, `QuickOpenTests`, `OutlineParserTests`, `ReferenceUpdaterTests`, `FileOperationsTests`, `JumpTargetTests`, `LinkPreviewTests`, `PDFJumpHistoryTests`, `FileTypeFilterTests`, `RenamingTests` (alle `.swift`) | 148 | 20 | Schema und IDs geprüft, Swift-Gegenprobe offen |
+| `synctex.json` | `SyncTeXTests.swift` | 30 | 3 | Schema und IDs geprüft, Swift-Gegenprobe offen; nutzt `fixtures/two-chapters.synctex.gz` |
 | `example.json` | `LatexTokenizerTests.swift` | 3 | 0 | nur Beispiel für das Format (ohne `op`) |
 
 ## Namen der Vektordateien

@@ -9,8 +9,8 @@ import {
 } from '../../src/main/workers/synctex.worker';
 
 // Hilfen für Tests mit einem echten worker_threads-Worker. Gebündelt wird mit Vites `build`-API nach
-// $TMPDIR (CommonJS für Node). Das ist nicht der Produkt-Build: einen eigenen Einstieg in
-// `electron.vite.config.ts` bekommt der Worker erst mit W3-2.
+// $TMPDIR (CommonJS für Node). Das ist nicht der Produkt-Build (eigener Einstieg `synctex.worker` in
+// `electron.vite.config.ts`); der Main-Client des Produkts ist `src/main/synctexClient.ts`.
 
 const WORKER_SOURCE = fileURLToPath(new URL('../../src/main/workers/synctex.worker.ts', import.meta.url));
 const WORKER_FILE_NAME = 'synctex.worker.cjs';

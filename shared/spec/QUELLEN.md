@@ -82,3 +82,7 @@ Zeitbudget, Zufall, Fenster, Pixel, Prozesse: PerformanceTests, RobustnessTests,
 ## Status W2-5 (2026-11-24)
 
 `latex-log.json` (LatexLogParserTests, 12 Fälle aus 10 Tests) und `misc.json` (10 Dateien, 148 Fälle, 20 übersprungen) sind umgesetzt; Swift-Gegenprobe offen.
+
+## Status W3-1 (2026-11-25)
+
+`synctex.json` (SyncTeXTests, 30 Fälle aus 14 Tests, 3 übersprungen: Store-Nachladen, UserDefaults, MacTeX-Integration mit Process) ist umgesetzt; Referenzwerte stammen unverändert aus dem Swift-Test, Fixture `fixtures/two-chapters.synctex.gz`. Swift-Gegenprobe offen.

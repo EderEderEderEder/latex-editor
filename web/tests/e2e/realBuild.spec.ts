@@ -72,3 +72,11 @@ test('Klick auf die Meldung springt in die Datei an die Zeile', async () => {
     await expect(page.getByText('einleitung.tex').first()).toBeVisible();
     await expect(page.getByText(/Zeile 20, Spalte/)).toBeVisible();
 });
+
+test('Nach dem Kompilieren zeigt die PDF-Ansicht die Seiten der echten Ausgabe', async () => {
+    const pane = page.getByRole('region', { name: /PDF/i });
+    await expect(pane.locator('.pdfViewer .page canvas').first()).toBeVisible({ timeout: OPEN_TIMEOUT_MS });
+    await expect(pane.locator('.pdfViewer .page .textLayer').first()).toBeAttached();
+    const pageCount = await pane.locator('.pdfViewer .page').count();
+    expect(pageCount).toBeGreaterThan(3);
+});

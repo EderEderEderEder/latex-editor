@@ -5,6 +5,7 @@ import type { RendererApi } from '../../shared/contract';
 import type { EditorStore } from '../stores/editor';
 import type { StatusMessage } from '../stores/status';
 import { saveFile } from './fileActions';
+import { recoveryRuntime } from './recovery';
 import { tabMemoryRuntime } from './tabMemoryRuntime';
 import type { FileActionDeps } from './fileActions';
 
@@ -20,6 +21,8 @@ export interface CloseFlowDeps {
     readonly ask: (names: readonly string[]) => Promise<CloseChoice>;
     /** Läuft vor der Bestätigung (Standard: Tab-Gedächtnis des Projekts schreiben); Fehler halten das Schließen nicht auf */
     readonly beforeConfirm?: () => Promise<void>;
+    /** „Nicht speichern“ (W2-14): sichert die ungespeicherten Texte noch einmal und löscht nichts; Standard: `recoveryRuntime.flush` */
+    readonly keepRecovery?: () => Promise<void>;
 }
 
 const NAME_SEPARATOR = ', ';
@@ -76,6 +79,7 @@ async function runClose(deps: CloseFlowDeps): Promise<CloseOutcome> {
     const choice = await deps.ask(namesOf(deps.store, dirty));
     if (choice === 'cancel') return 'kept';
     if (choice === 'save' && !(await saveAll(deps, dirty))) return 'kept';
+    if (choice === 'discard') await (deps.keepRecovery ?? (() => recoveryRuntime.flush()))().catch(() => undefined);
     return confirmClose(deps);
 }
 

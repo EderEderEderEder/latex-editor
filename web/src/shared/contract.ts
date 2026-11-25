@@ -282,11 +282,21 @@ export interface GitResetResult {
 
 // ---------- App-Daten, Bilder, PDF ----------
 
-// Gehört immer zum aktuell geöffneten Projekt (der Main kennt es, der Renderer nennt es nicht).
+// Gesicherter, ungespeicherter Text einer Datei (W2-14). `path` ist das Ziel wie bei `fs:*` (Projektpfad oder
+// `GrantId`); den echten Pfad, das Projekt und den Hash der Plattendatei hält der Main (`main/recovery.ts`).
 export interface RecoveryEntry {
-    readonly path: AbsolutePath;
+    readonly path: FileTarget;
     readonly text: string;
     readonly savedAt: EpochMillis;
+}
+
+/** Plattendatei beim Auflisten gegenüber dem Stand beim Sichern: unverändert, anders oder nicht mehr da */
+export type RecoveryDiskState = 'unchanged' | 'changed' | 'missing';
+
+/** Angebotene Sicherung eines früheren App-Laufs: `path` ist ein Projektpfad oder eine frisch gewährte `GrantId` */
+export interface RecoveryItem extends RecoveryEntry {
+    readonly name: string;
+    readonly diskState: RecoveryDiskState;
 }
 
 export type SettingsData = { readonly [key: string]: JsonValue };
@@ -374,8 +384,8 @@ export interface IpcRequests {
     'marks:load': Request<[], string | null>;
     'marks:save': Request<[json: string], void>;
     'recovery:save': Request<[entry: RecoveryEntry], void>;
-    'recovery:list': Request<[], RecoveryEntry[]>;
-    'recovery:delete': Request<[path: AbsolutePath], void>;
+    'recovery:list': Request<[], RecoveryItem[]>;
+    'recovery:delete': Request<[path: FileTarget], void>;
     'settings:get': Request<[], SettingsData>;
     'settings:set': Request<[key: string, value: JsonValue], void>;
     // Beide gehören zum aktuellen Projekt des Main; ohne Projekt liefert `memoryLoad` `null`, `memorySave` einen Fehler.

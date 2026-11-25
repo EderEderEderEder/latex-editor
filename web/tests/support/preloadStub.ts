@@ -14,6 +14,8 @@ import type {
     FileNode,
     GrantedPath,
     ProjectInfo,
+    RecoveryDiskState,
+    RecoveryItem,
     TabMemory,
     TreeNode,
     TextFile,
@@ -54,6 +56,13 @@ export interface StubControl {
     setTabMemory(memory: TabMemory | null): void;
     /** Zuletzt über `tabs:memorySave` gespeichertes Tab-Gedächtnis (oder das gesetzte) */
     tabMemory(): TabMemory | null;
+    /** Zustand der Plattendatei, den `recovery:list` für alle angebotenen Sicherungen meldet (Standard `unchanged`) */
+    setRecoveryDiskState(state: RecoveryDiskState): void;
+    /**
+     * Alle Sicherungen, die `recovery:save` gespeichert hat (auch die aus einem früheren Lauf mit demselben
+     * `--user-data-dir`, die noch nicht verworfen sind); Text und Ziel
+     */
+    recoveryBackups(): { path: string; text: string }[];
     /** Schickt ein Ereignis wie der Main (z. B. `app:closeRequested` beim Schließen des Fensters) */
     emit(event: EventChannel, payload: unknown): void;
     /**
@@ -74,6 +83,10 @@ export interface StubControl {
     holdBuilds(hold: boolean): void;
     /** Beendet einen gehaltenen Build regulär */
     finishBuild(): void;
+    /** Legt ein PDF ab, das `pdf:open` für diesen Pfad liefert (Bytes als Base64); `null` entfernt es (dann `notFound`) */
+    setPdf(path: string, base64: string | null): void;
+    /** Lässt `pdf:open` mit diesem Fehler antworten (z. B. unvollständiges PDF); `null` schaltet es wieder aus */
+    failPdf(kind: GeneralErrorKind | null, message?: string): void;
 }
 
 export interface PreloadStub {
@@ -223,6 +236,11 @@ class VirtualFiles implements Pick<StubControl, 'prepareFile' | 'failWrites' | '
         return this.files.get(path)?.text ?? null;
     }
 
+    /** Anzeigename einer Datei (Dialog-Datei: Name der Kennung), sonst der letzte Pfadteil */
+    displayNameOf(target: string): string {
+        return this.files.get(target)?.grant.name ?? baseName(target);
+    }
+
     private readText(target: string): TextFile {
         const file = this.files.get(target);
         return file === undefined ? textFile(target) : { ...textFile(target, file.grant.name), text: file.text };
@@ -265,6 +283,125 @@ class VirtualTabMemory implements Pick<StubControl, 'setTabMemory' | 'tabMemory'
         'tabs:memoryLoad': () => this.memory,
         'tabs:memorySave': (memory) => {
             this.memory = memory;
+        },
+    };
+}
+
+// ---------- Sicherung ungespeicherten Texts (W2-14) ----------
+
+const RECOVERY_STORAGE_KEY = 'latexeditor-stub-recovery';
+
+interface StoredBackup {
+    path: string;
+    name: string;
+    text: string;
+    savedAt: number;
+}
+
+/** `localStorage` des Fensters überlebt einen Neustart mit demselben `--user-data-dir` (simulierter Absturz) */
+function recoveryStorage(): Storage | null {
+    try {
+        return (globalThis as { localStorage?: Storage }).localStorage ?? null;
+    } catch {
+        return null;
+    }
+}
+
+interface StoredRecovery {
+    backups: StoredBackup[];
+    diskState: RecoveryDiskState;
+}
+
+function loadStoredRecovery(): StoredRecovery {
+    try {
+        const raw = recoveryStorage()?.getItem(RECOVERY_STORAGE_KEY);
+        if (raw !== null && raw !== undefined) return JSON.parse(raw) as StoredRecovery;
+    } catch {
+        // unlesbarer Speicher: wie leer
+    }
+    return { backups: [], diskState: 'unchanged' };
+}
+
+/**
+ * Wie der Main: Sicherungen früherer Läufe (`previous`) bietet `recovery:list` an, die des laufenden nicht; ein neues
+ * Sichern derselben Datei ersetzt die alte. Der Speicher ist `localStorage`, damit ein Neustart mit demselben
+ * `--user-data-dir` sie wiederfindet (simulierter Absturz); dort steht auch der Plattenzustand, den der nächste Lauf meldet.
+ */
+class VirtualRecovery implements Pick<StubControl, 'setRecoveryDiskState' | 'recoveryBackups'> {
+    private readonly previous = new Map<string, StoredBackup>();
+    private readonly current = new Map<string, StoredBackup>();
+    private diskState: RecoveryDiskState;
+
+    constructor(private readonly nameOf: (path: string) => string) {
+        const stored = loadStoredRecovery();
+        this.diskState = stored.diskState;
+        for (const backup of stored.backups) this.previous.set(backup.path, backup);
+    }
+
+    setRecoveryDiskState(state: RecoveryDiskState): void {
+        this.diskState = state;
+        this.persist();
+    }
+
+    recoveryBackups(): { path: string; text: string }[] {
+        return [...this.previous.values(), ...this.current.values()].map(({ path, text }) => ({ path, text }));
+    }
+
+    private persist(): void {
+        try {
+            const backups = [...this.previous.values(), ...this.current.values()];
+            const stored: StoredRecovery = { backups, diskState: this.diskState };
+            recoveryStorage()?.setItem(RECOVERY_STORAGE_KEY, JSON.stringify(stored));
+        } catch {
+            // ohne Speicher bleibt die Sicherung im Speicher des Laufs
+        }
+    }
+
+    readonly responders: Pick<StubResponders, 'recovery:save' | 'recovery:list' | 'recovery:delete'> = {
+        'recovery:save': (entry) => {
+            this.previous.delete(entry.path);
+            this.current.set(entry.path, { ...entry, name: this.nameOf(entry.path) });
+            this.persist();
+        },
+        'recovery:list': (): RecoveryItem[] =>
+            [...this.previous.values()].map((backup) => ({ ...backup, diskState: this.diskState })),
+        'recovery:delete': (path) => {
+            this.previous.delete(path);
+            this.current.delete(path);
+            this.persist();
+        },
+    };
+}
+
+// ---------- PDF (W3-3) ----------
+
+function base64ToBytes(base64: string): Uint8Array {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+    return bytes;
+}
+
+/** PDFs im Speicher je Pfad; jede Antwort ist eine frische Kopie (pdf.js darf den Speicher übernehmen) */
+class VirtualPdfs implements Pick<StubControl, 'setPdf' | 'failPdf'> {
+    private readonly files = new Map<string, Uint8Array>();
+    private failure: { kind: GeneralErrorKind; message: string } | null = null;
+
+    setPdf(path: string, base64: string | null): void {
+        if (base64 === null) this.files.delete(path);
+        else this.files.set(path, base64ToBytes(base64));
+    }
+
+    failPdf(kind: GeneralErrorKind | null, message = 'PDF ist unvollständig (Stub)'): void {
+        this.failure = kind === null ? null : { kind, message };
+    }
+
+    readonly responders: Pick<StubResponders, 'pdf:open'> = {
+        'pdf:open': (path) => {
+            if (this.failure !== null) throw new IpcFailure(this.failure);
+            const bytes = this.files.get(path);
+            if (bytes === undefined) throw new IpcFailure({ kind: 'notFound', message: `PDF nicht gefunden: ${path}` });
+            return { kind: 'bytes', bytes: bytes.slice() };
         },
     };
 }
@@ -408,12 +545,16 @@ class VirtualBuild {
 export function createPreloadStub(overrides: Partial<StubResponders> = {}): PreloadStub {
     const virtualFiles = new VirtualFiles();
     const virtualTabMemory = new VirtualTabMemory();
+    const virtualRecovery = new VirtualRecovery((path) => virtualFiles.displayNameOf(path));
+    const virtualPdfs = new VirtualPdfs();
     const listeners = new Map<EventChannel, Set<AnyListener>>();
     const virtualBuild = new VirtualBuild((event, payload) => emitEvent(listeners, event, payload));
     const responders: Record<string, unknown> = {
         ...DEFAULT_STUB_RESPONSES,
         ...virtualFiles.responders,
         ...virtualTabMemory.responders,
+        ...virtualRecovery.responders,
+        ...virtualPdfs.responders,
         'tools:detect': () => virtualBuild.tools,
         'build:start': () => virtualBuild.start(),
         'build:cancel': () => virtualBuild.cancel(),
@@ -447,6 +588,8 @@ export function createPreloadStub(overrides: Partial<StubResponders> = {}): Prel
         writtenText: (path) => virtualFiles.writtenText(path),
         setTabMemory: (memory) => virtualTabMemory.setTabMemory(memory),
         tabMemory: () => virtualTabMemory.tabMemory(),
+        setRecoveryDiskState: (state) => virtualRecovery.setRecoveryDiskState(state),
+        recoveryBackups: () => virtualRecovery.recoveryBackups(),
         emit: (event, payload) => emitEvent(listeners, event, payload),
         installSampleProject,
         addProjectFile: (relativePath, text) => sampleProject?.addFile(relativePath, text),
@@ -456,6 +599,8 @@ export function createPreloadStub(overrides: Partial<StubResponders> = {}): Prel
         setBuildResult: (report, options) => virtualBuild.setResult(report, options),
         holdBuilds: (hold) => virtualBuild.hold(hold),
         finishBuild: () => virtualBuild.finish(false),
+        setPdf: (path, base64) => virtualPdfs.setPdf(path, base64),
+        failPdf: (kind, message) => virtualPdfs.failPdf(kind, message),
         calls: () => calls.map((call) => ({ channel: call.channel, args: [...call.args] })),
         clearCalls: () => {
             calls.length = 0;

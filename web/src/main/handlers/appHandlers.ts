@@ -8,6 +8,7 @@ import type { QuitTasks } from '../lifecycle';
 import { createLogParser, type ParseWorkerFactory, workerThreadFactory } from '../logParser';
 import type { PathPlatform } from '../paths';
 import { RecentProjectsStore } from '../project';
+import { RecoveryStore } from '../recovery';
 import { createSettingsHandlers, SettingsService } from '../settings';
 import { type SyncTeXWorkerFactory, syncTeXWorkerThreadFactory } from '../synctexClient';
 import { createProjectHandlers } from './projectHandlers';
@@ -15,6 +16,8 @@ import { createBuildHandlers } from './buildHandlers';
 import { createDialogHandlers, type DialogLike } from './dialogHandlers';
 import { createFsHandlers } from './fsHandlers';
 import { createFsOpsHandlers } from './fsOpsHandlers';
+import { createRecoveryHandlers } from './recoveryHandlers';
+import { createPdfHandlers } from './pdfHandlers';
 import { createSyncTeXFeature, type SyncTeXFeature } from './synctexHandlers';
 import { createTabMemoryHandlers, TabMemoryStore } from './tabMemoryHandlers';
 import { createProjectWatch, type ProjectWatch, type ProjectWatchOptions } from './watchHandlers';
@@ -118,10 +121,12 @@ export function createAppHandlers<W>(options: AppHandlerOptions<W>): AppHandlers
         ...createFsHandlers({ grants, watch }),
         ...createFsOpsHandlers({ grants, userDataDir, trashItem: options.trashItem }),
         ...createTabMemoryHandlers(new TabMemoryStore({ userDataDir, grants })),
+        ...createRecoveryHandlers({ grants, store: new RecoveryStore({ userDataDir, platform }) }),
         ...projectHandlers,
         ...(synctex === null ? {} : { 'project:open': synctex.reloadOnProjectOpen(projectHandlers['project:open']) }),
         ...createBuildHandlers({ grants, emit: synctex?.observeBuildEvents(emit) ?? emit, quitTasks, userDataDir, log, watch, parseLog }),
         ...synctex?.handlers,
+        ...createPdfHandlers({ grants }),
     });
     return { handlers, grants, settings, watch };
 }

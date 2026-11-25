@@ -4,13 +4,17 @@ import { createAppCommandRegistry, reportStatus } from './app/commandsRuntime';
 import { loadSettingsOnce } from './app/startup';
 import { useBuildSync } from './app/useBuildSync';
 import { useOutlineSync } from './app/outlineSync';
+import { usePdfSync } from './app/usePdfSync';
 import { useProjectSync } from './app/useProjectSync';
+import { useRecovery } from './app/useRecovery';
 import type { SessionView } from './editor/session';
 import { getApi } from './ipc/api';
 import { useSettingsStore } from './stores/settings';
 import { statusStore } from './stores/status';
 import { EditorPane } from './ui/EditorPane';
 import { AppOverlays } from './ui/AppOverlays';
+import { PDFPane } from './ui/PDFPane';
+import { RecoveryDialog } from './ui/RecoveryDialog';
 import { Sidebar } from './ui/Sidebar';
 import { SidebarShell } from './ui/SidebarShell';
 
@@ -48,8 +52,10 @@ export function App() {
     }, []);
 
     useProjectSync();
+    useRecovery();
     useBuildSync();
     useOutlineSync(sessionView);
+    usePdfSync();
 
     return (
         <main>
@@ -59,7 +65,10 @@ export function App() {
                 <Sidebar onFocusEditor={focusEditor} />
             </SidebarShell>
             <EditorPane heading={<h1>LatexEditor</h1>} onSessionView={handleSessionView} />
+            {/* Vorläufig zwei Spalten mit festem Teiler; W3-4 ersetzt diese Stelle durch Editor/Geteilt/PDF. */}
+            <PDFPane />
             <AppOverlays focusEditor={focusEditor} />
+            <RecoveryDialog />
         </main>
     );
 }

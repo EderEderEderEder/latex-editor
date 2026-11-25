@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -56,9 +56,9 @@ interface Setup {
 }
 
 // Gefälschter Prozessstart und gefälschte Signale: kein echter latexmk, keine echten PIDs.
-function setup(tools: ToolsInfo = FAKE_TOOLS, openProject = true): Setup {
+function setup(tools: ToolsInfo = FAKE_TOOLS, openProject = true, projectPath: string = project): Setup {
     const grants = new GrantStore({ platform: currentPathPlatform() });
-    if (openProject) grants.openProject(grants.grant(project, 'project').grantId);
+    if (openProject) grants.openProject(grants.grant(projectPath, 'project').grantId);
     const children: FakeChild[] = [];
     const calls: Setup['calls'] = [];
     const spawn: SpawnFunction = (command, args, options) => {
@@ -158,6 +158,18 @@ describe('Ereignisse und Abbruch', () => {
             { ok: true, cancelled: false, report: [], pdfPath: null, durationMs: expect.any(Number) },
             { ok: true, cancelled: false, report: [], pdfPath: null, durationMs: expect.any(Number) },
         ]);
+    });
+
+    it('build:finished nennt das PDF in der Projektform, auch wenn der Build den aufgelösten Pfad kennt', async () => {
+        const alias = join(base, 'Alias');
+        await symlink(project, alias);
+        await writeFile(join(project, 'main.pdf'), '%PDF-1.5\n');
+        const { handlers, children, events } = setup(FAKE_TOOLS, true, alias);
+        await handlers['build:start'](join(alias, 'main.tex'), PDFLATEX);
+        finishChild(children[0]);
+        await waitFor(() => events.some((entry) => entry.event === 'build:finished'));
+        const finished = events.find((entry) => entry.event === 'build:finished')?.payload as IpcEvents['build:finished'];
+        expect(finished.pdfPath).toBe(join(alias, 'main.pdf'));
     });
 
     it('build:cancel bricht ab; das Beenden der App (QuitTasks) ebenso, danach startet nichts mehr', async () => {

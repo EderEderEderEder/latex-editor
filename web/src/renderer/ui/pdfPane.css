@@ -1,0 +1,34 @@
+/* PDF-Ansicht (W3-3). pdf.js verlangt einen absolut positionierten, scrollenden Container (`.pdf-container`). */
+.pdf-pane {
+    flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
+    border-left: 1px solid var(--chrome-border);
+}
+
+.pdf-toolbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.8em; padding: 0.4em 0.8em;
+    border-bottom: 1px solid var(--chrome-border); white-space: nowrap;
+}
+.pdf-toolbar-group { display: flex; align-items: center; gap: 0.3em; min-width: 0; }
+
+.pdf-pane button {
+    font: inherit; color: inherit; background: transparent; border: 1px solid var(--chrome-border);
+    border-radius: 4px; padding: 0.1em 0.6em; min-width: 2em; cursor: pointer;
+}
+.pdf-pane button:disabled { opacity: 0.5; cursor: default; }
+.pdf-pane button[aria-pressed='true'] { background: var(--chrome-active); box-shadow: inset 0 -2px 0 var(--chrome-accent); }
+.pdf-pane button:focus-visible { outline: 2px solid var(--chrome-accent); outline-offset: 1px; }
+
+.pdf-zoom-value { min-width: 3.6em; text-align: center; font-variant-numeric: tabular-nums; }
+.pdf-page-indicator { min-width: 7em; text-align: center; font-variant-numeric: tabular-nums; }
+
+.pdf-viewport { position: relative; flex: 1 1 auto; min-height: 0; background: var(--pdf-background, #8a8a8a); }
+.pdf-container { position: absolute; inset: 0; overflow: auto; outline: none; }
+
+.pdf-empty {
+    position: absolute; inset: 0; margin: 0; display: flex; align-items: center; justify-content: center;
+    padding: 1em; text-align: center; color: #ffffff; pointer-events: none;
+}
+
+@media (prefers-color-scheme: dark) {
+    .pdf-viewport { --pdf-background: #3a3a3a; }
+}

@@ -1,0 +1,5 @@
+/* Nachfrage „Ungespeicherte Änderungen wiederherstellen?“; Rahmen von `.close-confirm` (editorPane.css) */
+.recovery-confirm { max-width: 38em; }
+.recovery-list { margin: 0 0 1em; padding-left: 1.2em; max-height: 14em; overflow-y: auto; }
+.recovery-list li { margin-bottom: 0.4em; overflow-wrap: anywhere; }
+.recovery-note { display: block; font-size: 0.9em; color: var(--chrome-error); }

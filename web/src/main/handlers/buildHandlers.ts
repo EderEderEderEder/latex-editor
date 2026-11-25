@@ -1,4 +1,4 @@
-import type { AbsolutePath, BuildOptions, ToolsInfo } from '../../shared/contract';
+import type { AbsolutePath, BuildOptions, IpcEvents, ToolsInfo } from '../../shared/contract';
 import { IpcFailure } from '../../shared/ipcResult';
 import {
     BUILD_MESSAGES,
@@ -113,13 +113,34 @@ async function cleanBuild(context: BuildContext, mainFile: AbsolutePath): Promis
     if (failure !== null) throw failure;
 }
 
-// Erst das Ereignis an den Renderer, dann der Abgleich: `fs:changed` folgt so nach `build:finished`.
-function rescanAfterBuild(emit: EventSender, watch: BuildWatchHooks | null | undefined): EventSender {
-    if (watch === undefined || watch === null) return emit;
+// Erst das Ereignis an den Renderer (mit PDF-Pfad in Projektform), dann der Abgleich: `fs:changed` folgt so nach `build:finished`.
+function finishedInProjectForm(deps: BuildHandlerDependencies): EventSender {
+    // Kette: auch Ereignisse nach `build:finished` warten, damit die Reihenfolge erhalten bleibt
+    let tail: Promise<void> = Promise.resolve();
     return (event, payload) => {
-        emit(event, payload);
-        if (event === 'build:finished') void watch.rescan();
+        tail = tail.then(async () => {
+            if (event !== 'build:finished') {
+                deps.emit(event, payload);
+                return;
+            }
+            await deliverFinished(deps, payload as IpcEvents['build:finished']);
+        }).catch((error: unknown) => deps.log(`Build-Ereignis nicht zugestellt: ${error instanceof Error ? error.message : String(error)}`));
     };
+}
+
+async function deliverFinished(deps: BuildHandlerDependencies, finished: IpcEvents['build:finished']): Promise<void> {
+    deps.emit('build:finished', await withProjectFormPdf(deps, finished));
+    if (deps.watch !== undefined && deps.watch !== null) void deps.watch.rescan();
+}
+
+async function withProjectFormPdf(
+    deps: BuildHandlerDependencies,
+    finished: IpcEvents['build:finished'],
+): Promise<IpcEvents['build:finished']> {
+    const root = deps.grants.currentProject;
+    if (finished.pdfPath === null || root === null) return finished;
+    const realRoot = await resolveRealPath(root, deps.realpath === undefined ? {} : { realpath: deps.realpath });
+    return { ...finished, pdfPath: rebaseToProjectRoot(finished.pdfPath, realRoot, root, currentPathPlatform()) };
 }
 
 // Meldungen tragen aufgelöste Pfade (`realpath`); die Oberfläche kennt das Projekt in der Form der Gewährung.
@@ -138,7 +159,7 @@ function parseLogInProjectForm(deps: BuildHandlerDependencies, parse: LogParser)
 
 export function createBuildHandlers(deps: BuildHandlerDependencies): BuildHandlers {
     const queue = new BuildQueue({
-        emit: rescanAfterBuild(deps.emit, deps.watch),
+        emit: finishedInProjectForm(deps),
         log: (message) => deps.log(`Build: ${message}`),
         ...(deps.buildDependencies === undefined ? {} : { dependencies: deps.buildDependencies }),
         ...(deps.parseLog === undefined ? {} : { parseLog: parseLogInProjectForm(deps, deps.parseLog) }),

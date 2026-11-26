@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { TextFile } from '../../src/shared/contract';
-import { createCommandRegistry, runCommand, saveAllDirtyTabs } from '../../src/renderer/app/commands';
+import { COMPLETION_TEXTS, createCommandRegistry, runCommand, saveAllDirtyTabs } from '../../src/renderer/app/commands';
 import type { CommandDeps } from '../../src/renderer/app/commands';
 import { gotoLine } from '../../src/renderer/app/gotoLine';
 import { quickOpenFilesOf } from '../../src/renderer/app/quickOpenFiles';
@@ -109,6 +109,24 @@ describe('Befehlsregister', () => {
         await runCommand(registry, 'view.toggleFollowCursor', deps.report);
         expect(values.pdfFollowsCursor).toBe(false);
         expect(messages.map((message) => message.text)).toEqual(['PDF folgt dem Cursor.', 'PDF folgt dem Cursor nicht mehr.']);
+    });
+
+    it('„Automatische Vervollständigung“ schaltet `autoComplete` um und nennt den Zustand (W4-6)', async () => {
+        const { deps, messages } = setup();
+        const values = { compilesOnSave: true, pdfFollowsCursor: false, autoComplete: true };
+        const set = vi.fn((key: 'autoComplete', value: boolean) => {
+            values[key] = value;
+            return Promise.resolve();
+        });
+        const settings = { getState: () => ({ values, set }) } as unknown as CommandDeps['settings'];
+        const registry = createCommandRegistry({ ...deps, settings });
+        await runCommand(registry, 'edit.toggleAutoComplete', deps.report);
+        expect(set).toHaveBeenCalledWith('autoComplete', false);
+        await runCommand(registry, 'edit.toggleAutoComplete', deps.report);
+        expect(values.autoComplete).toBe(true);
+        expect(messages.map((message) => message.text)).toEqual([COMPLETION_TEXTS.automaticOff, COMPLETION_TEXTS.automaticOn]);
+        await runCommand(registry, 'edit.triggerCompletion', deps.report);
+        expect(messages).toHaveLength(2);
     });
 
     it('unbekannte IDs werden ignoriert, Fehler als Meldung gezeigt', async () => {

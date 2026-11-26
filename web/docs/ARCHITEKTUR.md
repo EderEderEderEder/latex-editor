@@ -103,6 +103,21 @@ Regeln für `main/watch.ts` (W2-2):
 
 Alle Zahlen und Tabellen: `spikes/watch/ERGEBNIS.md`.
 
+### S8 Rechtschreibung
+
+Empfehlung (W7-2, Spike 2026-11-26, nur macOS gemessen): **`nspell` + Hunspell-Wörterbuch `dictionary-de-at` (optional `dictionary-de`) im Web Worker über den sichtbaren Bereich, eigene Dekorationen, Filter wie Swift.** Gemessen (Electron 45.4.1, 10.000 Zeilen): sichtbarer Bereich (≈ 200 Wörter) in 1,9 ms geprüft, hin und zurück p95 2,8 ms; Tippen mit Prüfung nach jedem Tastendruck p95 9,4 ms (ohne Prüfung 2,8 ms); Aufbau im Worker ≈ 0,45 s, +55 MB Renderer-Speicher; kein Netzzugriff. **Freigabe des Nutzers nötig:** `nspell` 2.1.5 (MIT) und die Wörterbücher (Daten GPL-2.0 OR GPL-3.0); bis dahin nichts in `package.json`.
+
+Regeln für die Umsetzung:
+- Wörterbuch als Ressource mit Lizenzdatei; der Main liest `index.aff`/`index.dic`, IPC an den Worker. Vor `nspell(aff, dic)` alle Einträge mit dem ONLYINCOMPOUND-Flag entfernen (`spikes/spell/src/dictionaryFix.ts`): sonst lehnt nspell `gehen`, `stehen`, `prüfen` usw. ab.
+- nspell kann die deutschen Kompositaregeln nicht (0 von 30 Zusammensetzungen erkannt): eigene Zerlegung (Teile bekannt, Fugenelemente, Verbstamm; 30/30 erkannt, 10/10 Tippfehler weiter gemeldet).
+- Filter: Token-Überlappung (Tokenizer), `TechnicalVocabulary.accepts`, Abkürzungen mit Punkt. HgbDemo: 218 → 28 (Syntax) → 12 (Vokabular) → 6 Meldungen (Zerlegung), der Rest sind keine Wörter (Dateinamen, `lrr`). Benutzerwörterbuch im `userData`, nie das Systemwörterbuch.
+- Entprellt prüfen, veraltete Antworten verwerfen, Anfangszustand aus dem `LineStateCache`, Vorschläge (`suggest`, 3–66 ms) nur auf Anforderung.
+- `webPreferences.spellcheck: false` bleibt, zusätzlich `session.setSpellCheckerEnabled(false)`.
+
+Verworfen: Chromium-Prüfung (`spellcheck="true"`). Unter Windows/Linux lädt sie Hunspell-Wörterbücher aus einem Google-CDN (Basis-URL änderbar, `file://` undokumentiert, ob `webRequest` den Download sieht, ungeprüft). Unter macOS ist die Sprache nicht wählbar (`en-GB` blieb), geladener Text wird nicht geprüft, nur getippter, und `\textit` meldet `textit`. Ein Syntaxfilter ginge zwar über `spellcheck="false"`-Spans, einen Vokabularfilter gibt es nicht. `webFrame.setSpellCheckProvider` sieht nur Einzelwörter ohne Lage und läuft im Hauptthread.
+
+Alternative, falls die GPL-Wörterbücher nicht freigegeben werden: nur Fachvokabular und Syntaxprüfung, keine allgemeine Rechtschreibung. Ungeprüft: Windows/Linux (W-H27). Alle Zahlen: `spikes/spell/ERGEBNIS.md`.
+
 ## Review M0
 
 Review durch einen Opus-Agenten (W0-R, 2026-11-23): Befunde H1–N12 mit Stand der Einarbeitung und die Liste der nötigen Plan-Änderungen in `REVIEW-M0.md`. Wichtigste Folgen für die Architektur: Der Main hält die Pfad-Gewährungen (Renderer kann keine Pfadherkunft behaupten, H1), `main/pdfProtocol.ts` und das Protokoll `latexeditor:` entfallen, `file:` nur unter dem App-Ordner, DevTools nur unverpackt, Single-Instance-Lock, S2 unter CSP und mit Hauptthread-Rendern nachmessen (H2, W3-3a). Eingearbeitet in `shared/PLAN-WEBUI.md` und `shared/FEATURES.md`.

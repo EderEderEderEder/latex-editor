@@ -107,6 +107,12 @@ function editMenu(isMac: boolean): SubmenuEntry {
             command('Suchen …', 'edit.find', `${MOD}+F`, true),
             command('Ersetzen …', 'edit.replace', replace, true),
             SEPARATOR,
+            // ⌃Leertaste wie Swift (auch unter Windows Strg+Leertaste); CodeMirror führt es aus
+            command('Vervollständigen', 'edit.triggerCompletion', 'Control+Space', true),
+            command('Automatische Vervollständigung (ein/aus)', 'edit.toggleAutoComplete'),
+            command('Großschreibung automatisch korrigieren (ein/aus)', 'edit.toggleAutoCapitalize'),
+            command('Schreibhinweise anzeigen (ein/aus)', 'edit.toggleWritingHints'),
+            SEPARATOR,
             command('Gehe zu Zeile …', 'edit.gotoLine', `${MOD}+G`),
             command('Schnell öffnen …', 'edit.quickOpen', `${MOD}+P`),
         ],

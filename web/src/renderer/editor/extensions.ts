@@ -1,10 +1,13 @@
 import type { Extension } from '@codemirror/state';
+import { autoCapitalizeExtension } from './autocap';
 import { buildMarksExtension } from './buildMarks';
+import { completionExtension } from './completion';
 import { diagnosticsExtension } from './diagnostics';
 import { foldingExtension } from './folding';
 import { gutterExtension } from './gutter';
 import { searchExtension } from './search';
 import { typingExtension } from './typing';
+import { writingHintsExtension } from './writingHints';
 
 /** Was eine Editor-Funktion über die Sitzung wissen darf */
 export interface FeatureContext {
@@ -22,6 +25,9 @@ export function featureExtensions(context: FeatureContext): Extension[] {
         diagnosticsExtension(context),
         buildMarksExtension(),
         typingExtension(context),
+        autoCapitalizeExtension(context),
+        writingHintsExtension(context),
         searchExtension(),
+        completionExtension(context),
     ];
 }

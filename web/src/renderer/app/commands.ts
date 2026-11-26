@@ -3,8 +3,10 @@
 // - Menü-Accelerator (Strg+W, Strg+P, Strg+G, Strg+N, Strg+Umschalt+O, Strg+J, Strg+Umschalt+N; macOS ⌥⌘Z/⌥⇧⌘Z für
 //   Datei-Aktionen): löst `menu:command` aus, hier registriert. Im Dateibaum gilt Strg+Z zusätzlich den Datei-Aktionen.
 // - Renderer (`app/shortcuts.ts` und CodeMirror): Strg+O/S/Umschalt+S/B/., F8, Strg+Tab, Zoom, Suchen, Ersetzen,
-//   Rückgängig/Wiederholen; das Menü zeigt sie nur an (`displayOnly`), die Befehle hier gelten für Mausklicks im Menü.
+//   Rückgängig/Wiederholen, Strg+Leertaste (Vervollständigen); das Menü zeigt sie nur an (`displayOnly`), die
+//   Befehle hier gelten für Mausklicks im Menü.
 // - Ausschneiden/Kopieren/Einfügen/Alles auswählen: Electron-Rollen, nicht hier.
+import { startCompletion } from '@codemirror/autocomplete';
 import { redo, undo } from '@codemirror/commands';
 import { openSearchPanel } from '@codemirror/search';
 import type { EditorView } from '@codemirror/view';
@@ -41,8 +43,14 @@ export type CommandRegistry = ReadonlyMap<string, CommandHandler>;
 /** Einstellungen, die Befehle brauchen: Zoom, „Beim Speichern kompilieren“, „PDF folgt Cursor“ (ein gemeinsamer Zustandstyp) */
 export interface CommandSettingsStore {
     getState(): ReturnType<ZoomSettingsStore['getState']> & {
-        readonly values: { readonly compilesOnSave: boolean; readonly pdfFollowsCursor: boolean };
-        set(key: 'compilesOnSave' | 'pdfFollowsCursor', value: boolean): Promise<void>;
+        readonly values: {
+            readonly compilesOnSave: boolean;
+            readonly pdfFollowsCursor: boolean;
+            readonly autoComplete: boolean;
+            readonly autoCapitalize: boolean;
+            readonly writingHints: boolean;
+        };
+        set(key: 'compilesOnSave' | 'pdfFollowsCursor' | 'autoComplete' | 'autoCapitalize' | 'writingHints', value: boolean): Promise<void>;
     };
 }
 
@@ -111,6 +119,10 @@ function editCommands(deps: CommandDeps): [string, CommandHandler][] {
         ['edit.replace', withView((view) => void openReplacePanel(view))],
         ['edit.gotoLine', gotoLineCommand(deps)],
         ['edit.quickOpen', () => deps.overlays.getState().show('quickOpen')],
+        ['edit.triggerCompletion', withView((view) => void startCompletion(view))],
+        ['edit.toggleAutoComplete', () => toggleAutoComplete(deps)],
+        ['edit.toggleAutoCapitalize', () => toggleAutoCapitalize(deps)],
+        ['edit.toggleWritingHints', () => toggleWritingHints(deps)],
     ];
 }
 
@@ -160,6 +172,57 @@ async function toggleFollowCursor(deps: CommandDeps): Promise<void> {
         return;
     }
     deps.report({ text: next ? SYNCTEX_TEXTS.followOn : SYNCTEX_TEXTS.followOff, kind: 'info' });
+}
+
+export const COMPLETION_TEXTS = {
+    automaticOn: 'Automatische Vervollständigung ein.',
+    automaticOff: 'Automatische Vervollständigung aus (von Hand: Strg+Leertaste).',
+} as const;
+
+/** „Automatische Vervollständigung“ ein/aus (Standard an wie Swift); die Statusleiste nennt den neuen Zustand */
+async function toggleAutoComplete(deps: CommandDeps): Promise<void> {
+    const state = deps.settings.getState();
+    const next = !state.values.autoComplete;
+    try {
+        await state.set('autoComplete', next);
+    } catch (error) {
+        reportSettingFailure(deps, error);
+        return;
+    }
+    deps.report({ text: next ? COMPLETION_TEXTS.automaticOn : COMPLETION_TEXTS.automaticOff, kind: 'info' });
+}
+
+export const WRITING_TEXTS = {
+    capitalizeOn: 'Großschreibung wird automatisch korrigiert.',
+    capitalizeOff: 'Automatische Korrektur der Großschreibung aus.',
+    hintsOn: 'Schreibhinweise ein.',
+    hintsOff: 'Schreibhinweise aus.',
+} as const;
+
+/** „Groß-/Kleinschreibung automatisch korrigieren“ ein/aus (Standard an wie Swift) */
+async function toggleAutoCapitalize(deps: CommandDeps): Promise<void> {
+    const state = deps.settings.getState();
+    const next = !state.values.autoCapitalize;
+    try {
+        await state.set('autoCapitalize', next);
+    } catch (error) {
+        reportSettingFailure(deps, error);
+        return;
+    }
+    deps.report({ text: next ? WRITING_TEXTS.capitalizeOn : WRITING_TEXTS.capitalizeOff, kind: 'info' });
+}
+
+/** „Schreibhinweise anzeigen“ ein/aus (Standard an wie Swift) */
+async function toggleWritingHints(deps: CommandDeps): Promise<void> {
+    const state = deps.settings.getState();
+    const next = !state.values.writingHints;
+    try {
+        await state.set('writingHints', next);
+    } catch (error) {
+        reportSettingFailure(deps, error);
+        return;
+    }
+    deps.report({ text: next ? WRITING_TEXTS.hintsOn : WRITING_TEXTS.hintsOff, kind: 'info' });
 }
 
 function toggleCompileOnSave(deps: CommandDeps): Promise<void> {

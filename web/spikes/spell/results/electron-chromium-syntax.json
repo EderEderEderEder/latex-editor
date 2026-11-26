@@ -1,0 +1,143 @@
+{
+    "variant": "chromium-syntax",
+    "platform": "darwin",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.8078.100 Electron/45.4.1 Safari/537.36",
+    "electron": "45.4.1",
+    "chrome": "156.0.8078.100",
+    "apis": {
+        "enabled": true,
+        "languagesBefore": [
+            "en-GB"
+        ],
+        "availableCount": 57,
+        "availableGerman": [
+            "de",
+            "de-DE"
+        ],
+        "setLanguages": "ok: null",
+        "languagesAfter": [
+            "en-GB"
+        ],
+        "setFileUrl": "ok: null",
+        "customWords": 0
+    },
+    "hasFocus": true,
+    "spellcheckAttribute": "true",
+    "probe": [
+        {
+            "word": "Rechtschreibfeler",
+            "menu": {
+                "misspelledWord": "",
+                "suggestions": []
+            }
+        },
+        {
+            "word": "Tippfehlr",
+            "menu": {
+                "misspelledWord": "",
+                "suggestions": []
+            }
+        },
+        {
+            "word": "fehlerhaftt",
+            "menu": {
+                "misspelledWord": "",
+                "suggestions": []
+            }
+        },
+        {
+            "word": "alphaa",
+            "menu": {
+                "misspelledWord": "",
+                "suggestions": []
+            }
+        },
+        {
+            "word": "befehlx",
+            "menu": {
+                "misspelledWord": "",
+                "suggestions": []
+            }
+        },
+        {
+            "word": "Kommentaar",
+            "menu": {
+                "misspelledWord": "",
+                "suggestions": []
+            }
+        },
+        {
+            "word": "Optionfehler",
+            "menu": {
+                "misspelledWord": "",
+                "suggestions": []
+            }
+        },
+        {
+            "word": "Fließtext",
+            "menu": {
+                "misspelledWord": "",
+                "suggestions": []
+            }
+        }
+    ],
+    "typed": [
+        {
+            "word": "Nochainfehler",
+            "menu": {
+                "misspelledWord": "Nochainfehler",
+                "suggestions": []
+            }
+        },
+        {
+            "word": "Zweitfeler",
+            "menu": {
+                "misspelledWord": "Zweitfeler",
+                "suggestions": []
+            }
+        },
+        {
+            "word": "textit",
+            "menu": {
+                "misspelledWord": "",
+                "suggestions": []
+            }
+        }
+    ],
+    "providerWords": [],
+    "typingOff": {
+        "latency": {
+            "p50": 12.399999976158142,
+            "p95": 27.600000023841858,
+            "max": 29.80000001192093,
+            "count": 200
+        },
+        "work": {
+            "p50": 12.300000011920929,
+            "p95": 13.800000011920929,
+            "max": 18.599999994039536,
+            "count": 200
+        }
+    },
+    "typingOn": {
+        "latency": {
+            "p50": 12.299999982118607,
+            "p95": 27.799999982118607,
+            "max": 29,
+            "count": 200
+        },
+        "work": {
+            "p50": 12.299999982118607,
+            "p95": 13.600000011920201,
+            "max": 15.50000000595901,
+            "count": 200
+        }
+    },
+    "log": {
+        "requests": [],
+        "fileRequests": 2,
+        "spellEvents": [
+            "spellcheck-dictionary-initialized en-GB"
+        ]
+    }
+}

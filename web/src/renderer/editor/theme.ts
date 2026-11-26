@@ -230,3 +230,26 @@ export function buildEditorTheme(palette: ThemePalette): Extension {
         { dark: palette.dark },
     );
 }
+
+/**
+ * Popup der Vervollständigung (W4-6) in den Farben der Oberfläche (`--chrome-*` aus `ui/editorPane.css`, Hell/Dunkel
+ * dort); höchstens etwa 8 Zeilen sichtbar wie in Swift (`CompletionController.visibleRows`).
+ */
+export const completionPopupTheme: Extension = EditorView.theme({
+    '.cm-tooltip.cm-tooltip-autocomplete': {
+        backgroundColor: 'var(--chrome-active)',
+        color: 'var(--chrome-text)',
+        border: '1px solid var(--chrome-border)',
+        borderRadius: '6px',
+        boxShadow: '0 4px 14px rgba(0, 0, 0, 0.2)',
+        padding: '4px 0',
+    },
+    '.cm-tooltip.cm-tooltip-autocomplete > ul': { minWidth: '18em', maxWidth: '36em', maxHeight: '13.5em' },
+    '.cm-tooltip.cm-tooltip-autocomplete > ul > li': { padding: '1px 10px', lineHeight: '1.6' },
+    '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': {
+        backgroundColor: 'var(--chrome-accent)',
+        color: 'var(--chrome-active)',
+    },
+    '.cm-tooltip-autocomplete .cm-completionDetail': { color: 'var(--chrome-muted)', fontStyle: 'normal', marginLeft: '1.5em' },
+    '.cm-tooltip-autocomplete li[aria-selected] .cm-completionDetail': { color: 'inherit' },
+});

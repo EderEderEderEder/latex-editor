@@ -193,6 +193,8 @@ export const ARG_SCHEMAS: ArgSchemas = {
     'tabs:memoryLoad': [],
     'tabs:memorySave': [isTabMemory],
     'image:import': [isGrantId, isPath],
+    'bib:append': [isPath, isNonEmptyString],
+    'bib:undo': [isNonEmptyString],
     'pdf:open': [isPath],
 };
 

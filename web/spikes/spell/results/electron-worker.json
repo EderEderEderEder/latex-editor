@@ -1,0 +1,120 @@
+{
+    "variant": "worker",
+    "platform": "darwin",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.8078.100 Electron/45.4.1 Safari/537.36",
+    "electron": "45.4.1",
+    "chrome": "156.0.8078.100",
+    "load": {
+        "ipcMs": 7.899999976158142,
+        "buildMs": 422.40000000596046,
+        "totalMs": 442.7999999821186,
+        "dictionaryChars": 1126210
+    },
+    "memoryBeforeMB": 105.5234375,
+    "memoryAfterMB": 160.72265625,
+    "probe": {
+        "roundTripMs": 4.0999999940395355,
+        "errorWords": [
+            "Rechtschreibfeler",
+            "Tippfehlr"
+        ]
+    },
+    "visibleChecks": [
+        {
+            "roundTripMs": 4.5999999940395355,
+            "errorWords": [
+                "hgbthesis",
+                "cls",
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            ]
+        },
+        {
+            "roundTripMs": 2.4000000059604645,
+            "errorWords": [
+                "hgbthesis",
+                "cls",
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            ]
+        },
+        {
+            "roundTripMs": 2.300000011920929,
+            "errorWords": [
+                "hgbthesis",
+                "cls",
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            ]
+        },
+        {
+            "roundTripMs": 3.199999988079071,
+            "errorWords": [
+                "hgbthesis",
+                "cls",
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            ]
+        },
+        {
+            "roundTripMs": 2.199999988079071,
+            "errorWords": [
+                "hgbthesis",
+                "cls",
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+            ]
+        }
+    ],
+    "typingBaseline": {
+        "latency": {
+            "p50": 2.300000011920929,
+            "p95": 2.7999999821186066,
+            "max": 4.600000023841858,
+            "count": 200
+        },
+        "work": {
+            "p50": 2.300000011920929,
+            "p95": 2.7999999821186066,
+            "max": 4.600000023841858,
+            "count": 200
+        }
+    },
+    "typingWithWorker": {
+        "typing": {
+            "latency": {
+                "p50": 3.699999988079071,
+                "p95": 9.399999976158142,
+                "max": 11.400000005960464,
+                "count": 200
+            },
+            "work": {
+                "p50": 3.300000011920929,
+                "p95": 4.399999976158142,
+                "max": 5.0999999940395355,
+                "count": 200
+            }
+        },
+        "roundTrip": {
+            "p50": 2,
+            "p95": 2.800000011920929,
+            "max": 5.5,
+            "count": 202
+        },
+        "check": {
+            "p50": 1.699999988079071,
+            "p95": 1.9000000059604645,
+            "max": 2,
+            "count": 202
+        },
+        "words": {
+            "p50": 185,
+            "p95": 200,
+            "max": 202,
+            "count": 202
+        },
+        "lastErrors": 39
+    },
+    "log": {
+        "requests": [],
+        "fileRequests": 3,
+        "spellEvents": [
+            "spellcheck-dictionary-initialized en-GB"
+        ]
+    }
+}

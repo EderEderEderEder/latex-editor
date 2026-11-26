@@ -5,9 +5,25 @@
 import { duplicateLabelEntries, type LabelEntry } from '../../shared/core/latex/duplicateLabels';
 import { scanReferences } from '../../shared/core/latex/masking';
 import { checkSyntax, type TextMark } from '../../shared/core/latex/syntaxChecker';
+import { countWords } from '../../shared/core/latex/wordCounter';
+import { type WritingHint, writingHints } from '../../shared/core/latex/writingHints';
+
+/** Ergebnis der Schreibprüfung einer Datei: Hinweise (leer, wenn nicht angefordert) und Wörter des Fließtexts */
+export interface WritingResult {
+    readonly hints: WritingHint[];
+    readonly words: number;
+}
 
 export type AnalysisRequest =
     | { readonly kind: 'check'; readonly docId: string; readonly version: number; readonly text: string }
+    | {
+        readonly kind: 'writing';
+        readonly docId: string;
+        readonly version: number;
+        readonly text: string;
+        /** `false`: nur zählen (Schreibhinweise sind ausgeschaltet oder die Datei ist keine LaTeX-Datei) */
+        readonly includeHints: boolean;
+    }
     | {
         readonly kind: 'labels';
         readonly docId: string;
@@ -24,6 +40,7 @@ export type AnalysisRequest =
 
 export type AnalysisResponse =
     | { readonly kind: 'check'; readonly docId: string; readonly version: number; readonly marks: TextMark[] }
+    | { readonly kind: 'writing'; readonly docId: string; readonly version: number; readonly result: WritingResult }
     | {
         readonly kind: 'labels';
         readonly docId: string;
@@ -53,11 +70,17 @@ function labelEntries(text: string, file: string): LabelEntry[] {
     return entries;
 }
 
+function writingResult(text: string, includeHints: boolean): WritingResult {
+    return { hints: includeHints ? writingHints(text) : [], words: countWords(text) };
+}
+
 export function handleAnalysisRequest(request: AnalysisRequest): AnalysisResponse {
     const { docId, version } = request;
     switch (request.kind) {
         case 'check':
             return { kind: 'check', docId, version, marks: checkSyntax(request.text) };
+        case 'writing':
+            return { kind: 'writing', docId, version, result: writingResult(request.text, request.includeHints) };
         case 'labels':
             return { kind: 'labels', docId, version, file: request.file, entries: labelEntries(request.text, request.file) };
         case 'duplicates':

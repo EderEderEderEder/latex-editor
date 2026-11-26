@@ -19,6 +19,7 @@ import type { StatusMessage } from '../stores/status';
 import { BUILD_TOOLBAR_TEXTS } from '../ui/BuildToolbar';
 import { buildStore, compileOnSave } from './buildRuntime';
 import { createCommandRegistry } from './commands';
+import { startCompletionIndex } from './completionIndexRuntime';
 import type { CommandDeps, CommandRegistry } from './commands';
 import type { FileActionDeps } from './fileActions';
 import { projectFileActionDeps } from './projectFileActionsRuntime';
@@ -101,5 +102,7 @@ export function createAppCommandDeps(activeView: () => EditorView | null): Comma
 }
 
 export function createAppCommandRegistry(activeView: () => EditorView | null): CommandRegistry {
+    // Projektindex der Vervollständigung (W4-6): einmal je App-Lauf, der Worker entsteht mit der ersten Anfrage
+    startCompletionIndex();
     return createCommandRegistry(createAppCommandDeps(activeView));
 }

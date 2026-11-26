@@ -85,6 +85,15 @@ describe('Menüvorlage', () => {
         expect(commands.find((entry) => entry.commandId === 'view.toggleFollowCursor')?.accelerator).toBeUndefined();
     });
 
+    it('Vervollständigung (W4-6): ⌃/Strg+Leertaste führt CodeMirror aus, der Schalter hat kein Kürzel', () => {
+        for (const platform of [win, mac]) {
+            const commands = allCommands(buildMenuEntries(platform));
+            expect(commands.find((entry) => entry.commandId === 'edit.triggerCompletion'))
+                .toMatchObject({ accelerator: 'Control+Space', displayOnly: true, label: 'Vervollständigen' });
+            expect(commands.find((entry) => entry.commandId === 'edit.toggleAutoComplete')?.accelerator).toBeUndefined();
+        }
+    });
+
     it('Windows: kein App-Menü, Beenden in Datei; macOS: App-Menü, kein Beenden in Datei', () => {
         const winEntries = buildMenuEntries(win);
         const macEntries = buildMenuEntries(mac);

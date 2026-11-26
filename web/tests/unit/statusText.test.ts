@@ -1,7 +1,8 @@
 import { EditorState } from '@codemirror/state';
 import { describe, expect, it } from 'vitest';
 import {
-    buildStatusBarTexts, cursorPositionOf, fileNameOf, formatFormat, formatPosition, samePosition,
+    buildStatusBarTexts, cursorPositionOf, fileNameOf, formatFormat, formatPosition, formatWordCount, samePosition,
+    selectionWordCount, MAX_SELECTED_TEXT_LENGTH,
 } from '../../src/renderer/app/statusText';
 
 describe('Statusleiste: Zeile und Spalte', () => {
@@ -39,9 +40,36 @@ describe('Statusleiste: Datei und Format', () => {
     it('baut die drei Texte; ohne Datei bleiben Format und Position leer', () => {
         expect(
             buildStatusBarTexts({ name: 'a.tex', encoding: 'utf8', eol: 'crlf', position: { line: 2, column: 5 } }),
-        ).toEqual({ fileName: 'a.tex', format: 'UTF-8 · CRLF', position: 'Zeile 2, Spalte 5' });
-        expect(buildStatusBarTexts({ name: null, encoding: 'utf8', eol: 'lf', position: null })).toEqual({
-            fileName: 'Keine Datei geöffnet', format: '', position: '',
+        ).toEqual({
+            fileName: 'a.tex', format: 'UTF-8 · CRLF', position: 'Zeile 2, Spalte 5', words: '', selectionWords: '',
         });
+        expect(buildStatusBarTexts({ name: null, encoding: 'utf8', eol: 'lf', position: null })).toEqual({
+            fileName: 'Keine Datei geöffnet', format: '', position: '', words: '', selectionWords: '',
+        });
+    });
+});
+
+describe('Statusleiste: Wortzähler (W7-3)', () => {
+    it('formatiert Einzahl, Mehrzahl und Tausenderpunkt wie die Swift-Version', () => {
+        expect(formatWordCount(0)).toBe('0 Wörter');
+        expect(formatWordCount(1)).toBe('1 Wort');
+        expect(formatWordCount(1234)).toBe('1.234 Wörter');
+    });
+
+    it('zeigt Datei- und Auswahlwörter nur mit Datei und Zahl', () => {
+        const base = { name: 'a.tex', encoding: 'utf8', eol: 'lf', position: null } as const;
+        expect(buildStatusBarTexts({ ...base, fileWords: 12, selectionWords: 1 })).toMatchObject({
+            words: '12 Wörter', selectionWords: '1 Wort ausgewählt',
+        });
+        expect(buildStatusBarTexts({ ...base, fileWords: null, selectionWords: 0 })).toMatchObject({ words: '', selectionWords: '' });
+        expect(buildStatusBarTexts({ name: null, encoding: 'utf8', eol: 'lf', position: null, fileWords: 5 }).words).toBe('');
+    });
+
+    it('zählt die Auswahl (Fließtext ohne Befehle), nicht bei leerer oder zu langer Auswahl', () => {
+        const doc = 'Eins \\textbf{zwei drei} vier';
+        expect(selectionWordCount(EditorState.create({ doc, selection: { anchor: 0, head: doc.length } }))).toBe(4);
+        expect(selectionWordCount(EditorState.create({ doc, selection: { anchor: 3 } }))).toBe(0);
+        const long = 'wort '.repeat(MAX_SELECTED_TEXT_LENGTH);
+        expect(selectionWordCount(EditorState.create({ doc: long, selection: { anchor: 0, head: long.length } }))).toBe(0);
     });
 });

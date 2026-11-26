@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="de">
+    <head>
+        <meta charset="UTF-8" />
+        <!-- CSP wie RENDERER_CSP in src/main/security.ts -->
+        <meta
+            http-equiv="Content-Security-Policy"
+            content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; worker-src 'self' blob:; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+        />
+        <title>Spike S8: Rechtschreibung</title>
+        <style>
+            body { margin: 0; font: 15px -apple-system, "Segoe UI", sans-serif; background: #fff; color: #222; }
+            #editor { height: 760px; }
+            #editor .cm-editor { height: 100%; }
+            .cm-spike-error { text-decoration: underline wavy #d00; text-underline-offset: 2px; }
+        </style>
+    </head>
+    <body>
+        <div id="editor"></div>
+        <script src="./page.js"></script>
+    </body>
+</html>

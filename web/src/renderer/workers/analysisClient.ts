@@ -4,7 +4,7 @@
  */
 import type { LabelEntry } from '../../shared/core/latex/duplicateLabels';
 import type { TextMark } from '../../shared/core/latex/syntaxChecker';
-import type { AnalysisRequest, AnalysisResponse } from './analysisLogic';
+import type { AnalysisRequest, AnalysisResponse, WritingResult } from './analysisLogic';
 
 export const ANALYSIS_DEBOUNCE_MS = 600;
 
@@ -26,6 +26,7 @@ export interface AnalysisTimer {
 
 export interface AnalysisCallbacks {
     onMarks?(docId: string, version: number, marks: readonly TextMark[]): void;
+    onWriting?(docId: string, version: number, result: WritingResult): void;
     onLabels?(docId: string, version: number, file: string, entries: readonly LabelEntry[]): void;
     onDuplicates?(docId: string, version: number, entries: readonly LabelEntry[]): void;
     /** `docId`/`version` fehlen, wenn der Worker selbst ausgefallen ist (er wird dann neu gestartet) */
@@ -73,6 +74,10 @@ export class AnalysisClient {
 
     requestCheck(docId: string, version: number, text: string): void {
         this.schedule({ kind: 'check', docId, version, text });
+    }
+
+    requestWriting(docId: string, version: number, text: string, includeHints: boolean): void {
+        this.schedule({ kind: 'writing', docId, version, text, includeHints });
     }
 
     requestLabels(docId: string, version: number, text: string, file: string): void {
@@ -143,6 +148,7 @@ export class AnalysisClient {
     private deliver(response: Exclude<AnalysisResponse, { kind: 'error' }>): void {
         const { docId, version } = response;
         if (response.kind === 'check') this.callbacks.onMarks?.(docId, version, response.marks);
+        else if (response.kind === 'writing') this.callbacks.onWriting?.(docId, version, response.result);
         else if (response.kind === 'labels') this.callbacks.onLabels?.(docId, version, response.file, response.entries);
         else this.callbacks.onDuplicates?.(docId, version, response.entries);
     }

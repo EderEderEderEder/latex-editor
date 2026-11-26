@@ -202,6 +202,8 @@ export const DEFAULT_STUB_RESPONSES: StubResponders = {
     'tabs:memoryLoad': () => null,
     'tabs:memorySave': nothing,
     'image:import': () => ({ relPath: 'images/bild.png', reused: false }),
+    'bib:append': (bibPath) => ({ path: bibPath, hash: STUB_HASH, mtime: STUB_TIME, created: false, undoToken: STUB_UNDO }),
+    'bib:undo': nothing,
     'pdf:open': () => ({ kind: 'bytes', bytes: new Uint8Array() }),
 };
 

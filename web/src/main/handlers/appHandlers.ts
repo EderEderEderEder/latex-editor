@@ -16,6 +16,7 @@ import { createBuildHandlers } from './buildHandlers';
 import { createDialogHandlers, type DialogLike } from './dialogHandlers';
 import { createFsHandlers } from './fsHandlers';
 import { createFsOpsHandlers } from './fsOpsHandlers';
+import { createImportHandlers } from './importHandlers';
 import { createRecoveryHandlers } from './recoveryHandlers';
 import { createPdfHandlers } from './pdfHandlers';
 import { createSyncTeXFeature, type SyncTeXFeature } from './synctexHandlers';
@@ -120,6 +121,7 @@ export function createAppHandlers<W>(options: AppHandlerOptions<W>): AppHandlers
         ...createDialogHandlers({ dialog, grants, window, platform }),
         ...createFsHandlers({ grants, watch }),
         ...createFsOpsHandlers({ grants, userDataDir, trashItem: options.trashItem }),
+        ...createImportHandlers({ grants, userDataDir }),
         ...createTabMemoryHandlers(new TabMemoryStore({ userDataDir, grants })),
         ...createRecoveryHandlers({ grants, store: new RecoveryStore({ userDataDir, platform }) }),
         ...projectHandlers,

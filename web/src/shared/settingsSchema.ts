@@ -40,6 +40,12 @@ export const SETTING_SPECS = {
     compilesOnSave: { kind: 'boolean', default: true },
     // „PDF folgt Cursor“ (Swift `pdfFollowsCursor`, Standard aus)
     pdfFollowsCursor: { kind: 'boolean', default: false },
+    // „Automatisch vervollständigen“ (Swift `CompletionSettings.automaticKey` = `autoComplete`, Standard an)
+    autoComplete: { kind: 'boolean', default: true },
+    // „Groß-/Kleinschreibung automatisch korrigieren“ (Swift `Capitalization.automaticKey` = `autoCapitalize`, Standard an)
+    autoCapitalize: { kind: 'boolean', default: true },
+    // „Schreibhinweise anzeigen“ (Swift `WritingHints.enabledKey` = `writingHints`, Standard an)
+    writingHints: { kind: 'boolean', default: true },
 } as const satisfies Readonly<Record<string, SettingSpec>>;
 
 export type SettingKey = keyof typeof SETTING_SPECS;

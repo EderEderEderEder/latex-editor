@@ -327,6 +327,16 @@ export interface ImageImportResult {
     readonly reused: boolean;
 }
 
+// Ergebnis von `bib:append`: `path` ist das geschickte Ziel; Hash und Änderungszeit der geschriebenen Datei für offene Tabs
+// (gleicher Hash wie die Platte = nichts zu tun). `undoToken` gilt für `bib:undo` (Sicherung im App-Datenordner).
+export interface BibAppendResult {
+    readonly path: AbsolutePath;
+    readonly hash: ContentHash;
+    readonly mtime: EpochMillis;
+    readonly created: boolean;
+    readonly undoToken: UndoToken;
+}
+
 /** PDF-Transport laut Spike S9: nur Bytes über IPC (kein eigenes Protokoll) */
 export type PdfSource = { readonly kind: 'bytes'; readonly bytes: Uint8Array };
 
@@ -392,6 +402,10 @@ export interface IpcRequests {
     'tabs:memoryLoad': Request<[], TabMemory | null>;
     'tabs:memorySave': Request<[memory: TabMemory], void>;
     'image:import': Request<[sourceGrant: GrantId, imagesDir: AbsolutePath], ImageImportResult>;
+    // Hängt ein fertig formatiertes Bib-Fragment an eine `.bib` im Projekt an (legt sie an, wenn sie fehlt).
+    'bib:append': Request<[bibPath: AbsolutePath, fragment: string], BibAppendResult>;
+    // Nimmt ein `bib:append` zurück (nur solange die Datei noch genau so ist wie nach dem Anhängen).
+    'bib:undo': Request<[undoToken: UndoToken], void>;
     'pdf:open': Request<[path: AbsolutePath], PdfSource>;
 }
 
@@ -480,6 +494,8 @@ const REQUEST_CHANNEL_TABLE: Readonly<Record<RequestChannel, true>> = {
     'tabs:memoryLoad': true,
     'tabs:memorySave': true,
     'image:import': true,
+    'bib:append': true,
+    'bib:undo': true,
     'pdf:open': true,
 };
 

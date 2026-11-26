@@ -57,6 +57,28 @@ describe('Verdrahtung der echten Handler', () => {
         expect((await handlers['settings:get']()).pdfFollowsCursor).toBe(true);
     });
 
+    it('„Automatisch vervollständigen“ (`autoComplete` wie Swift) ist standardmäßig an und bleibt gespeichert (W4-6)', async () => {
+        const { handlers } = setup();
+        expect((await handlers['settings:get']()).autoComplete).toBe(true);
+        await expect(handlers['settings:set']('autoComplete', 0)).rejects.toThrow(IpcFailure);
+        await handlers['settings:set']('autoComplete', false);
+        expect((await handlers['settings:get']()).autoComplete).toBe(false);
+    });
+
+    it('„Großschreibung korrigieren“ (`autoCapitalize`) und „Schreibhinweise“ (`writingHints`) wie Swift: Standard an, nur Wahrheitswerte (W7-3)', async () => {
+        const { handlers } = setup();
+        const initial = await handlers['settings:get']();
+        expect(initial.autoCapitalize).toBe(true);
+        expect(initial.writingHints).toBe(true);
+        await expect(handlers['settings:set']('autoCapitalize', 'nein')).rejects.toThrow(IpcFailure);
+        await expect(handlers['settings:set']('writingHints', 1)).rejects.toThrow(IpcFailure);
+        await handlers['settings:set']('autoCapitalize', false);
+        await handlers['settings:set']('writingHints', false);
+        const stored = await handlers['settings:get']();
+        expect(stored.autoCapitalize).toBe(false);
+        expect(stored.writingHints).toBe(false);
+    });
+
     it('beim Beenden schreibt flush die ausstehende Änderung sofort', async () => {
         const { handlers, quitTasks, log } = setup();
         expect(quitTasks.size).toBeGreaterThanOrEqual(1);

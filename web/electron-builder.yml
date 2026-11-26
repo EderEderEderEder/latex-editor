@@ -7,6 +7,12 @@ files:
   - package.json
   # Test-Preload (Playwright, LATEXEDITOR_STUB_PRELOAD): gehört nicht ins Paket.
   - "!out/preload/stub*"
+# Rechtschreibung (W7-2): Die Wörterbuchdaten (`dictionary-de-at`, igerman98, GPL-2.0 OR GPL-3.0) liegen als eigene
+# Dateien in `out/renderer/assets/` (`index-*.aff`, `index-*.dic`) und kommen über `out/**` ins Paket. Der Lizenztext
+# liegt sichtbar daneben unter `resources/licenses/`.
+extraResources:
+  - from: node_modules/dictionary-de-at/license
+    to: licenses/dictionary-de-at-LICENSE.txt
 # Kein asarUnpack für die Worker (`out/main/parse.worker.js`, `synctex.worker.js`): `worker_threads` lädt sie samt
 # `out/main/chunks/` direkt aus `app.asar` (W2-INT, mit dem Programm aus `electron-builder --dir` geprüft).
 # Keine nativen Module: spart den Rebuild-Schritt (S6).

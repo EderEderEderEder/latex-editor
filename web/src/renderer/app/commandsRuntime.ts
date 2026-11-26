@@ -4,6 +4,7 @@ import type { EditorView } from '@codemirror/view';
 import type { Unsubscribe } from '../../shared/contract';
 import type { PdfPoint } from '../../shared/core/synctexCoordinates';
 import { onCursorActivity } from '../editor/cursorEvents';
+import { setSpellMenuOpener } from '../editor/spell';
 import { getApi } from '../ipc/api';
 import { onMainEvent } from '../ipc/events';
 import { editorStore } from '../stores/editor';
@@ -24,6 +25,7 @@ import type { CommandDeps, CommandRegistry } from './commands';
 import type { FileActionDeps } from './fileActions';
 import { projectFileActionDeps } from './projectFileActionsRuntime';
 import { projectFlowDeps, revealDeps } from './projectRuntime';
+import { showSpellMenu } from './spellMenu';
 import { connectSyncTeX, createViewerSlot, showPdfPointInEditor } from './synctexFlow';
 import type { SyncTeXFlowDeps } from './synctexFlow';
 import { tabClosePrompt } from './tabClosePrompt';
@@ -104,5 +106,7 @@ export function createAppCommandDeps(activeView: () => EditorView | null): Comma
 export function createAppCommandRegistry(activeView: () => EditorView | null): CommandRegistry {
     // Projektindex der Vervollständigung (W4-6): einmal je App-Lauf, der Worker entsteht mit der ersten Anfrage
     startCompletionIndex();
+    // Kontextmenü der Rechtschreibung (W7-2): React-Komponente, deshalb hier und nicht in `editor/spell.ts`
+    setSpellMenuOpener(showSpellMenu);
     return createCommandRegistry(createAppCommandDeps(activeView));
 }

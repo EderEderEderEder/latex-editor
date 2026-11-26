@@ -40,6 +40,9 @@ import type { ZoomDirection, ZoomSettingsStore } from './zoom';
 export type CommandHandler = () => void | Promise<void>;
 export type CommandRegistry = ReadonlyMap<string, CommandHandler>;
 
+/** Wahrheitswerte, die Menübefehle umschalten */
+export type CommandSettingKey = 'compilesOnSave' | 'pdfFollowsCursor' | 'autoComplete' | 'autoCapitalize' | 'writingHints' | 'checksSpelling';
+
 /** Einstellungen, die Befehle brauchen: Zoom, „Beim Speichern kompilieren“, „PDF folgt Cursor“ (ein gemeinsamer Zustandstyp) */
 export interface CommandSettingsStore {
     getState(): ReturnType<ZoomSettingsStore['getState']> & {
@@ -49,8 +52,9 @@ export interface CommandSettingsStore {
             readonly autoComplete: boolean;
             readonly autoCapitalize: boolean;
             readonly writingHints: boolean;
+            readonly checksSpelling: boolean;
         };
-        set(key: 'compilesOnSave' | 'pdfFollowsCursor' | 'autoComplete' | 'autoCapitalize' | 'writingHints', value: boolean): Promise<void>;
+        set(key: CommandSettingKey, value: boolean): Promise<void>;
     };
 }
 
@@ -123,6 +127,7 @@ function editCommands(deps: CommandDeps): [string, CommandHandler][] {
         ['edit.toggleAutoComplete', () => toggleAutoComplete(deps)],
         ['edit.toggleAutoCapitalize', () => toggleAutoCapitalize(deps)],
         ['edit.toggleWritingHints', () => toggleWritingHints(deps)],
+        ['edit.toggleSpellCheck', () => toggleSpellCheck(deps)],
     ];
 }
 
@@ -223,6 +228,24 @@ async function toggleWritingHints(deps: CommandDeps): Promise<void> {
         return;
     }
     deps.report({ text: next ? WRITING_TEXTS.hintsOn : WRITING_TEXTS.hintsOff, kind: 'info' });
+}
+
+export const SPELL_TEXTS = {
+    on: 'Rechtschreibprüfung ein.',
+    off: 'Rechtschreibprüfung aus.',
+} as const;
+
+/** „Rechtschreibung prüfen“ ein/aus (Swift `checksSpelling`, Standard an) */
+async function toggleSpellCheck(deps: CommandDeps): Promise<void> {
+    const state = deps.settings.getState();
+    const next = !state.values.checksSpelling;
+    try {
+        await state.set('checksSpelling', next);
+    } catch (error) {
+        reportSettingFailure(deps, error);
+        return;
+    }
+    deps.report({ text: next ? SPELL_TEXTS.on : SPELL_TEXTS.off, kind: 'info' });
 }
 
 function toggleCompileOnSave(deps: CommandDeps): Promise<void> {

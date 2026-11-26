@@ -6,6 +6,7 @@ import { diagnosticsExtension } from './diagnostics';
 import { foldingExtension } from './folding';
 import { gutterExtension } from './gutter';
 import { searchExtension } from './search';
+import { spellExtension } from './spell';
 import { typingExtension } from './typing';
 import { writingHintsExtension } from './writingHints';
 
@@ -27,6 +28,7 @@ export function featureExtensions(context: FeatureContext): Extension[] {
         typingExtension(context),
         autoCapitalizeExtension(context),
         writingHintsExtension(context),
+        spellExtension(context),
         searchExtension(),
         completionExtension(context),
     ];

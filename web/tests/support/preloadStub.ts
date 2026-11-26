@@ -26,6 +26,7 @@ import type {
 } from '../../src/shared/contract';
 import { IpcFailure, fail, ok, toIpcError } from '../../src/shared/ipcResult';
 import { copyName, newFileName, renamedFileName, assertValidFileName } from '../../src/shared/core/fileNames';
+import { isValidUserWord, MAX_USER_WORDS } from '../../src/shared/core/spelling/userWords';
 
 // Bildet `window.api` vollständig nach (gleiche Form wie der Preload, über `buildRendererApi`),
 // damit Renderer-Code ohne Electron testbar ist. Antworten sind gefälschte, feste Daten und lassen
@@ -110,6 +111,9 @@ export interface StubControl {
     changeFileExternally(path: string, text: string): void;
     /** W2-13: löscht eine Datei „außerhalb der App“ (`fs:readText` meldet `notFound`) und schickt `fs:changed` */
     deleteFileExternally(path: string): void;
+    /** W7-2: Benutzerwörterbuch, das `spell:words` liefert und `spell:addWord` ergänzt (wie der Main, nur im Speicher) */
+    spellWords(): string[];
+    setSpellWords(words: string[]): void;
 }
 
 export interface PreloadStub {
@@ -205,6 +209,8 @@ export const DEFAULT_STUB_RESPONSES: StubResponders = {
     'bib:append': (bibPath) => ({ path: bibPath, hash: STUB_HASH, mtime: STUB_TIME, created: false, undoToken: STUB_UNDO }),
     'bib:undo': nothing,
     'pdf:open': () => ({ kind: 'bytes', bytes: new Uint8Array() }),
+    'spell:words': () => [],
+    'spell:addWord': (word) => [word],
 };
 
 type AnyResponder = (...args: readonly unknown[]) => unknown;
@@ -474,6 +480,32 @@ class VirtualPdfs implements Pick<StubControl, 'setPdf' | 'failPdf'> {
             const bytes = this.files.get(path);
             if (bytes === undefined) throw new IpcFailure({ kind: 'notFound', message: `PDF nicht gefunden: ${path}` });
             return { kind: 'bytes', bytes: bytes.slice() };
+        },
+    };
+}
+
+// ---------- Benutzerwörterbuch (W7-2) ----------
+
+/** Wörter im Speicher; Prüfung und Obergrenze wie `main/handlers/spellHandlers.ts` */
+class VirtualSpellWords implements Pick<StubControl, 'spellWords' | 'setSpellWords'> {
+    private words: string[] = [];
+
+    spellWords(): string[] {
+        return [...this.words];
+    }
+
+    setSpellWords(words: string[]): void {
+        this.words = [...words];
+    }
+
+    readonly responders: Pick<StubResponders, 'spell:words' | 'spell:addWord'> = {
+        'spell:words': () => [...this.words],
+        'spell:addWord': (word) => {
+            if (!isValidUserWord(word)) throw new IpcFailure({ kind: 'invalidInput', message: 'Ungültiges Wort (Stub)' });
+            if (this.words.includes(word)) return [...this.words];
+            if (this.words.length >= MAX_USER_WORDS) throw new IpcFailure({ kind: 'invalidInput', message: 'Wörterbuch voll (Stub)' });
+            this.words = [...this.words, word].sort((first, second) => first.localeCompare(second, 'de'));
+            return [...this.words];
         },
     };
 }
@@ -839,6 +871,7 @@ export function createPreloadStub(overrides: Partial<StubResponders> = {}): Prel
     const virtualRecovery = new VirtualRecovery((path) => virtualFiles.displayNameOf(path));
     const virtualPdfs = new VirtualPdfs();
     const virtualSyncTeX = new VirtualSyncTeX();
+    const virtualSpellWords = new VirtualSpellWords();
     const listeners = new Map<EventChannel, Set<AnyListener>>();
     const virtualBuild = new VirtualBuild((event, payload) => emitEvent(listeners, event, payload));
     const responders: Record<string, unknown> = {
@@ -848,6 +881,7 @@ export function createPreloadStub(overrides: Partial<StubResponders> = {}): Prel
         ...virtualRecovery.responders,
         ...virtualPdfs.responders,
         ...virtualSyncTeX.responders,
+        ...virtualSpellWords.responders,
         'tools:detect': () => virtualBuild.tools,
         'build:start': () => virtualBuild.start(),
         'build:cancel': () => virtualBuild.cancel(),
@@ -906,6 +940,8 @@ export function createPreloadStub(overrides: Partial<StubResponders> = {}): Prel
             virtualFiles.deleteExternally(path);
             emitEvent(listeners, 'fs:changed', externalChange(path, 'deleted'));
         },
+        spellWords: () => virtualSpellWords.spellWords(),
+        setSpellWords: (words) => virtualSpellWords.setSpellWords(words),
         calls: () => calls.map((call) => ({ channel: call.channel, args: [...call.args] })),
         clearCalls: () => {
             calls.length = 0;

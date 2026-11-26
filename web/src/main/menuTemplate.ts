@@ -112,6 +112,7 @@ function editMenu(isMac: boolean): SubmenuEntry {
             command('Automatische Vervollständigung (ein/aus)', 'edit.toggleAutoComplete'),
             command('Großschreibung automatisch korrigieren (ein/aus)', 'edit.toggleAutoCapitalize'),
             command('Schreibhinweise anzeigen (ein/aus)', 'edit.toggleWritingHints'),
+            command('Rechtschreibung prüfen (ein/aus)', 'edit.toggleSpellCheck'),
             SEPARATOR,
             command('Gehe zu Zeile …', 'edit.gotoLine', `${MOD}+G`),
             command('Schnell öffnen …', 'edit.quickOpen', `${MOD}+P`),

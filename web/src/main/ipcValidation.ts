@@ -1,5 +1,6 @@
 import { TAB_MEMORY_VERSION } from '../shared/contract';
 import type { JsonValue, RequestArgs, RequestChannel, TabMemory } from '../shared/contract';
+import { isValidUserWord } from '../shared/core/spelling/userWords';
 
 // Grundprüfung der Argumentform je Kanal. Inhaltliche Prüfungen (Pfad liegt im Projekt,
 // Dateiname erlaubt …) machen die Fachhandler.
@@ -144,6 +145,9 @@ export const isTabMemory: Guard<TabMemory> = objectOf({
     active: isNullableRelativePath,
 });
 
+// Ein Wort fürs Benutzerwörterbuch: Buchstaben, feste Höchstlänge (Regeln mit dem Renderer geteilt).
+const isSpellWord: Guard<string> = isValidUserWord;
+
 export const ARG_SCHEMAS: ArgSchemas = {
     'app:ping': [],
     'app:confirmClose': [],
@@ -196,6 +200,8 @@ export const ARG_SCHEMAS: ArgSchemas = {
     'bib:append': [isPath, isNonEmptyString],
     'bib:undo': [isNonEmptyString],
     'pdf:open': [isPath],
+    'spell:words': [],
+    'spell:addWord': [isSpellWord],
 };
 
 export function areArgsValid(channel: RequestChannel, args: readonly unknown[]): boolean {

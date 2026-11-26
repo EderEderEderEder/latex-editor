@@ -70,6 +70,11 @@ function pdfjsAssets(): Plugin {
     };
 }
 
+// Rechtschreibung (W7-2): `dictionary-de-at` exportiert nur `index.js` (liest per `node:fs`); der Alias macht
+// `index.aff`/`index.dic` für `?url`-Importe erreichbar, Vite legt sie als Assets nach `out/renderer/assets/`.
+const SPELL_DICTIONARY_ALIAS = '@spell-dictionary/de-at';
+const SPELL_DICTIONARY_DIRECTORY = resolve(__dirname, 'node_modules/dictionary-de-at');
+
 const E2E_MODE = 'e2e';
 const TEST_API_VARIABLE = 'RENDERER_VITE_EDITOR_TEST_API';
 
@@ -112,6 +117,7 @@ const electronViteConfig: UserConfig = {
     },
     renderer: {
         plugins: [react(), developmentCsp(), pdfjsAssets()],
+        resolve: { alias: { [SPELL_DICTIONARY_ALIAS]: SPELL_DICTIONARY_DIRECTORY } },
     },
 };
 

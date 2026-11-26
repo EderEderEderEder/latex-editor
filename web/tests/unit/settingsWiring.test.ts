@@ -79,6 +79,14 @@ describe('Verdrahtung der echten Handler', () => {
         expect(stored.writingHints).toBe(false);
     });
 
+    it('„Rechtschreibung prüfen“ (`checksSpelling` wie Swift) ist standardmäßig an, nur Wahrheitswerte (W7-2)', async () => {
+        const { handlers } = setup();
+        expect((await handlers['settings:get']()).checksSpelling).toBe(true);
+        await expect(handlers['settings:set']('checksSpelling', 'aus')).rejects.toThrow(IpcFailure);
+        await handlers['settings:set']('checksSpelling', false);
+        expect((await handlers['settings:get']()).checksSpelling).toBe(false);
+    });
+
     it('beim Beenden schreibt flush die ausstehende Änderung sofort', async () => {
         const { handlers, quitTasks, log } = setup();
         expect(quitTasks.size).toBeGreaterThanOrEqual(1);

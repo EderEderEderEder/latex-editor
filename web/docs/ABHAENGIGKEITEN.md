@@ -1,6 +1,6 @@
 # Direkte Abhängigkeiten (web/)
 
-Stand 2026-11-22, Versionen exakt gepinnt (`npm install --save-exact`), Lizenzen aus der `package.json` der installierten Pakete gelesen. Nur diese Pakete sind vom Nutzer freigegeben; `chokidar` und `nspell` sind Spike-abhängig und nicht installiert.
+Stand 2026-11-22, Versionen exakt gepinnt (`npm install --save-exact`), Lizenzen aus der `package.json` der installierten Pakete gelesen. Nur diese Pakete sind vom Nutzer freigegeben; `chokidar` ist Spike-abhängig und nicht installiert. `nspell` und `dictionary-de-at` hat der Nutzer für W7-2 (Rechtschreibung, Spike S8) freigegeben (2026-11-26).
 
 ## dependencies
 
@@ -18,6 +18,9 @@ Stand 2026-11-22, Versionen exakt gepinnt (`npm install --save-exact`), Lizenzen
 | @codemirror/lint | 6.9.8 | MIT | Diagnose |
 | @lezer/highlight | 1.2.5 | MIT | Syntaxfarben |
 | pdfjs-dist | 6.5.438 | Apache-2.0 | PDF-Anzeige |
+| nspell | 2.1.5 | MIT | Hunspell-Prüfung in reinem JS im Rechtschreib-Worker (`workers/spell.worker.ts`); kein Wasm, keine nativen Module, CSP bleibt unverändert. 112 KB entpackt, CommonJS, Typen selbst (`core/spelling/moduleTypes.d.ts`) |
+| is-buffer | 2.0.5 | MIT | transitiv über `nspell` (einzige Abhängigkeit), 20 KB |
+| dictionary-de-at | 3.0.0 | **Wörterbuchdaten GPL-2.0 OR GPL-3.0** (igerman98, Björn Jacke), Hülle MIT | österreichisches Wörterbuch (`Jänner`, `Matura`). `index.aff`/`index.dic` (1,1 MB, gzip 334 KB) kommen als eigene Vite-Assets nach `out/renderer/assets/`, nicht in den Programmcode; Laden erst bei der ersten Prüfung. **Bei Weitergabe des Installers Lizenztext beilegen** (`electron-builder.yml` legt `license` als `resources/licenses/dictionary-de-at-LICENSE.txt` bei) |
 
 ## devDependencies
 
@@ -38,6 +41,6 @@ Stand 2026-11-22, Versionen exakt gepinnt (`npm install --save-exact`), Lizenzen
 
 ## Auffälligkeiten
 
-- Keine Lizenz außerhalb von MIT und Apache-2.0 bei den direkten Paketen.
+- Keine Lizenz außerhalb von MIT und Apache-2.0 bei den direkten Paketen, außer den Wörterbuchdaten von `dictionary-de-at` (GPL-2.0 OR GPL-3.0): Sie sind Daten, die das Programm zur Laufzeit liest, liegen als eigene Dateien im Paket und werden nicht mit dem Code gebündelt (wie bei LibreOffice/Firefox-Sprachpaketen üblich). Rechtlich nicht abschließend bewertet (Spike S8).
 - Transitive Pakete wurden nicht geprüft (`electron-builder` zieht viele). `npm install` meldet 6 Schwachstellen (moderate) und veraltete Pakete (`inflight`, `glob@7`, `rimraf@2`, `boolean`), vermutlich aus der Bauwerkzeug-Kette; nicht behoben.
 - Das Electron-Programm wird erst beim ersten Start geladen (`node_modules/electron/install.js` läuft lazy), nicht bei `npm install`.

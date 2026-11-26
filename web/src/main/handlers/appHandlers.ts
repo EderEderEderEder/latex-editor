@@ -19,6 +19,7 @@ import { createFsOpsHandlers } from './fsOpsHandlers';
 import { createImportHandlers } from './importHandlers';
 import { createRecoveryHandlers } from './recoveryHandlers';
 import { createPdfHandlers } from './pdfHandlers';
+import { createSpellHandlers, UserWordStore } from './spellHandlers';
 import { createSyncTeXFeature, type SyncTeXFeature } from './synctexHandlers';
 import { createTabMemoryHandlers, TabMemoryStore } from './tabMemoryHandlers';
 import { createProjectWatch, type ProjectWatch, type ProjectWatchOptions } from './watchHandlers';
@@ -129,6 +130,7 @@ export function createAppHandlers<W>(options: AppHandlerOptions<W>): AppHandlers
         ...createBuildHandlers({ grants, emit: synctex?.observeBuildEvents(emit) ?? emit, quitTasks, userDataDir, log, watch, parseLog }),
         ...synctex?.handlers,
         ...createPdfHandlers({ grants }),
+        ...createSpellHandlers(new UserWordStore(userDataDir)),
     });
     return { handlers, grants, settings, watch };
 }

@@ -148,6 +148,9 @@ async function start(): Promise<void> {
     const location = getRendererLocation();
     const platform = currentPathPlatform();
     applySessionSecurity(session.defaultSession, { location, platform, allowDevTools: !app.isPackaged }, logSecurity);
+    // Chromiums eigene Prüfung bleibt aus (zusätzlich zu `spellcheck: false`): unter Windows/Linux lüde sie sonst
+    // Wörterbücher aus dem Netz (Spike S8). Geprüft wird im Renderer-Worker mit mitgeliefertem Wörterbuch (W7-2).
+    session.defaultSession.setSpellCheckerEnabled(false);
     const watch = registerHandlers(location, platform);
     mainWindow = createWindow(location, watch);
 }

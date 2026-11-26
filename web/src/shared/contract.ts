@@ -407,6 +407,10 @@ export interface IpcRequests {
     // Nimmt ein `bib:append` zurück (nur solange die Datei noch genau so ist wie nach dem Anhängen).
     'bib:undo': Request<[undoToken: UndoToken], void>;
     'pdf:open': Request<[path: AbsolutePath], PdfSource>;
+    // Benutzerwörterbuch der Rechtschreibprüfung (W7-2, JSON im `userData`-Ordner); nur Wörter, nie Dokumenttext.
+    'spell:words': Request<[], string[]>;
+    // Nimmt ein Wort auf (Regeln `core/spelling/userWords.ts`) und liefert die neue Liste.
+    'spell:addWord': Request<[word: string], string[]>;
 }
 
 export type RequestChannel = keyof IpcRequests;
@@ -497,6 +501,8 @@ const REQUEST_CHANNEL_TABLE: Readonly<Record<RequestChannel, true>> = {
     'bib:append': true,
     'bib:undo': true,
     'pdf:open': true,
+    'spell:words': true,
+    'spell:addWord': true,
 };
 
 const EVENT_CHANNEL_TABLE: Readonly<Record<EventChannel, true>> = {

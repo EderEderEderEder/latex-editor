@@ -41,3 +41,18 @@
     display: flex; flex-direction: column; gap: 0.3em; margin: 0.5em; padding: 0.5em 0.6em; overflow-wrap: anywhere;
     border: 1px solid var(--chrome-border); border-left: 3px solid var(--editor-diagnostic-warning, #b26a00); border-radius: 4px;
 }
+
+/* Hinweise (W4-12): ungenutzte Labels, Quellen und Abkürzungen, doppelte Labels; kein Fehler beim Kompilieren */
+.hint-section { border-top: 1px solid var(--chrome-border); }
+.hint-heading { margin: 0; padding: 0.35em 0.6em; font-size: inherit; font-weight: 600; color: var(--chrome-muted, #5c5c5c); }
+.sidebar .hint-row {
+    display: flex; align-items: baseline; gap: 0.6em; width: 100%; padding: 0.2em 0.6em; border: 0; border-radius: 0;
+    background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.hint-row:hover { background: color-mix(in srgb, var(--chrome-text, #1f1f1f) 8%, transparent); }
+.hint-row:focus-visible { outline: 2px solid var(--chrome-accent, #0b57d0); outline-offset: -2px; }
+.hint-title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hint-detail {
+    flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right;
+    color: var(--chrome-muted, #5c5c5c);
+}

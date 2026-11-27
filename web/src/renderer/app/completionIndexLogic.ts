@@ -4,13 +4,22 @@
  * nur geänderte Dateien neu; meldet einen neuen Index nur, wenn sich wirklich etwas geändert hat.
  * Reine Logik ohne DOM und ohne Node; Pfade mit `/` oder `\`.
  */
-import { catalogEntries } from '../../shared/core/bib/parser';
+import { catalogEntries, type BibEntry as BibCatalogEntry } from '../../shared/core/bib/parser';
 import { definedCommands, definedEnvironments } from '../../shared/core/completion/definitions';
 import type { PackageOptions } from '../../shared/core/completion/catalog';
 import { scanOptions } from '../../shared/core/completion/options';
 import { scannable } from '../../shared/core/latex/masking';
+import { acronymDefinitions as acronymEntriesOf } from '../../shared/core/latex/acronyms';
 import { catalogLabels, scanAcronymsMasked } from '../../shared/core/latex/references';
 import { graphicsDirectoriesIn } from '../../shared/core/referenceUpdater';
+import {
+    buildReferenceSnapshot,
+    EMPTY_REFERENCES,
+    NO_USES,
+    usesOfMasked,
+    type ReferenceFileData,
+    type ReferenceSnapshot,
+} from './referenceCheckLogic';
 
 export interface LabelItem {
     readonly label: string;
@@ -80,8 +89,16 @@ export interface CompletionIndexUpdate {
 }
 
 export type CompletionIndexResponse =
-    /** `index` ist `null`, wenn sich seit der letzten Antwort nichts geändert hat */
-    | { readonly kind: 'index'; readonly version: number; readonly index: CompletionIndexSnapshot | null }
+    /**
+     * `index` ist `null`, wenn sich seit der letzten Antwort nichts geändert hat; ebenso `references` (W4-12, Ergebnis
+     * der Verweisprüfung; fehlt bei älteren Absendern)
+     */
+    | {
+        readonly kind: 'index';
+        readonly version: number;
+        readonly index: CompletionIndexSnapshot | null;
+        readonly references?: ReferenceSnapshot | null;
+    }
     | { readonly kind: 'error'; readonly version: number; readonly message: string };
 
 export type SourceKind = 'tex' | 'bib' | 'style';
@@ -232,24 +249,28 @@ interface ParsedFile {
     readonly commands: readonly string[];
     readonly environments: readonly string[];
     readonly graphicsDirectories: readonly string[];
+    /** Was die Verweisprüfung braucht (W4-12) */
+    readonly references: ReferenceFileData;
     /** Vergleichswert der abgeleiteten Daten (ohne Text): gleich = Index unverändert */
     readonly signature: string;
+    /** Dasselbe für die Verweisprüfung: Verwendungen mit Position ändern sie bei fast jeder Eingabe */
+    readonly referenceSignature: string;
 }
 
-type ParsedParts = Omit<ParsedFile, 'path' | 'kind' | 'source' | 'signature'>;
+type ParsedParts = Omit<ParsedFile, 'path' | 'kind' | 'source' | 'signature' | 'references' | 'referenceSignature'>;
 
 const NO_PARTS_OF_FILE: ParsedParts = {
     labels: [], citations: [], acronyms: [], commands: [], environments: [], graphicsDirectories: [],
 };
 
-function citationsOf(text: string): CitationItem[] {
-    return catalogEntries(text).map((entry) => ({
+function citationsOf(entries: readonly BibCatalogEntry[]): CitationItem[] {
+    return entries.map((entry) => ({
         key: entry.key, summary: entry.summary, searchText: [entry.allAuthors, entry.title, entry.year].join(' '),
     }));
 }
 
-function partsOf(file: SourceFile, kind: SourceKind): ParsedParts {
-    if (kind === 'bib') return { ...NO_PARTS_OF_FILE, citations: citationsOf(file.text) };
+function partsOf(file: SourceFile, kind: SourceKind, entries: readonly BibCatalogEntry[]): ParsedParts {
+    if (kind === 'bib') return { ...NO_PARTS_OF_FILE, citations: citationsOf(entries) };
     const definitions = { commands: [...definedCommands(file.text)], environments: [...definedEnvironments(file.text)] };
     if (kind === 'style') return { ...NO_PARTS_OF_FILE, ...definitions };
     return {
@@ -268,11 +289,39 @@ function signatureOf(parts: ParsedParts, styleText: string): string {
 /** Eine neue Datei ohne Einträge ändert den Index nicht */
 const EMPTY_SIGNATURE = signatureOf(NO_PARTS_OF_FILE, '');
 
+const NO_REFERENCE_DATA: ReferenceFileData = { path: '', isTex: false, labels: [], sources: [], acronyms: [], uses: NO_USES };
+
+function referenceDataOf(file: SourceFile, kind: SourceKind, entries: readonly BibCatalogEntry[]): ReferenceFileData {
+    const base = { ...NO_REFERENCE_DATA, path: file.path };
+    if (kind === 'bib') {
+        return { ...base, sources: entries.map((entry) => ({ key: entry.key, file: file.path, line: entry.line, title: entry.title })) };
+    }
+    if (kind !== 'tex') return base;
+    return {
+        ...base,
+        isTex: true,
+        labels: catalogLabels(file.text, file.path),
+        acronyms: acronymEntriesOf(file.text).map(({ key, line, summary }) => ({ key, file: file.path, line, summary })),
+        uses: usesOfMasked(scannable(file.text)),
+    };
+}
+
+function referenceSignatureOf(data: ReferenceFileData, graphicsDirectories: readonly string[]): string {
+    const { path: _path, ...rest } = data;
+    return JSON.stringify([rest, graphicsDirectories]);
+}
+
+/** Eine neue Datei ohne Verweise ändert die Verweisprüfung nicht */
+const EMPTY_REFERENCE_SIGNATURE = referenceSignatureOf(NO_REFERENCE_DATA, []);
+
 function parseFile(file: SourceFile, kind: SourceKind): ParsedFile {
-    const parts = partsOf(file, kind);
+    const entries = kind === 'bib' ? catalogEntries(file.text) : [];
+    const parts = partsOf(file, kind, entries);
     // Klassen und Pakete liefern auch Optionen: dort zählt jede Textänderung
     const signature = signatureOf(parts, kind === 'style' ? file.text : '');
-    return { ...parts, path: file.path, kind, source: file, signature };
+    const references = referenceDataOf(file, kind, entries);
+    const referenceSignature = referenceSignatureOf(references, parts.graphicsDirectories);
+    return { ...parts, path: file.path, kind, source: file, signature, references, referenceSignature };
 }
 
 // ---------- Projekt ----------
@@ -332,13 +381,18 @@ export class CompletionIndexBuilder {
     private project: ProjectFiles | null = null;
     private options: readonly (readonly [string, PackageOptions])[] = [];
     private optionsStale = false;
+    private referencesDirty = true;
 
     /** Wendet eine Aktualisierung an; `null`, wenn sich der Index dadurch nicht ändert */
     apply(update: CompletionIndexUpdate): CompletionIndexSnapshot | null {
         let changed = update.reset;
-        if (update.reset) this.clear();
+        if (update.reset) {
+            this.clear();
+            this.referencesDirty = true;
+        }
         if (update.project !== undefined && !sameProject(this.project, update.project)) {
             this.project = update.project;
+            this.referencesDirty = true;
             changed = true;
         }
         for (const path of update.removed) changed = this.remove(path) || changed;
@@ -358,6 +412,7 @@ export class CompletionIndexBuilder {
         if (previous === undefined) return false;
         this.files.delete(path);
         if (previous.kind === 'style') this.optionsStale = true;
+        if (previous.referenceSignature !== EMPTY_REFERENCE_SIGNATURE) this.referencesDirty = true;
         return true;
     }
 
@@ -370,7 +425,20 @@ export class CompletionIndexBuilder {
         const parsed = parseFile(file, kind);
         this.files.set(file.path, parsed);
         if (kind === 'style' || previous?.kind === 'style') this.optionsStale = true;
+        if ((previous?.referenceSignature ?? EMPTY_REFERENCE_SIGNATURE) !== parsed.referenceSignature) this.referencesDirty = true;
         return (previous?.signature ?? EMPTY_SIGNATURE) !== parsed.signature;
+    }
+
+    /**
+     * Ergebnis der Verweisprüfung (W4-12), `null`, wenn es sich seit dem letzten Aufruf nicht geändert hat. Ohne Projekt
+     * ist nichts „geladen“: dann wird nichts geprüft.
+     */
+    takeReferences(): ReferenceSnapshot | null {
+        if (!this.referencesDirty) return null;
+        this.referencesDirty = false;
+        if (this.project === null) return EMPTY_REFERENCES;
+        const parsed = [...this.files.values()].sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
+        return buildReferenceSnapshot(parsed.map((file) => file.references), sortedUnion(parsed.map((file) => file.graphicsDirectories)));
     }
 
     private packageOptions(parsed: readonly ParsedFile[]): readonly (readonly [string, PackageOptions])[] {
@@ -399,7 +467,8 @@ export class CompletionIndexBuilder {
 /** Eine Anfrage des Clients beantworten (Fehler als Antwort `error`, der Worker läuft weiter) */
 export function handleCompletionIndexRequest(builder: CompletionIndexBuilder, update: CompletionIndexUpdate): CompletionIndexResponse {
     try {
-        return { kind: 'index', version: update.version, index: builder.apply(update) };
+        const index = builder.apply(update);
+        return { kind: 'index', version: update.version, index, references: builder.takeReferences() };
     } catch (error) {
         return { kind: 'error', version: update.version, message: error instanceof Error ? error.message : String(error) };
     }

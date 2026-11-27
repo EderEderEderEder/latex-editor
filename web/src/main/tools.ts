@@ -195,16 +195,19 @@ async function perlProblems(distro: TexDistribution | null, context: ToolsContex
     return missingProblem('perl', perl, TOOL_MESSAGES.perlMissing);
 }
 
+export function gitMissingMessage(platform: NodeJS.Platform): string {
+    return platform === 'darwin' ? TOOL_MESSAGES.gitMissingMac : TOOL_MESSAGES.gitMissing;
+}
+
 export async function detectTools(context: ToolsContext = defaultToolsContext()): Promise<ToolsInfo> {
     const latexmk = await findExecutable('latexmk', context);
     const git = await findExecutable('git', context);
     const synctex = await findExecutable('synctex', context);
     const distro = detectDistribution(latexmk.found, context.platform);
-    const gitMessage = context.platform === 'darwin' ? TOOL_MESSAGES.gitMissingMac : TOOL_MESSAGES.gitMissing;
     const problems = [
         ...missingProblem('latexmk', latexmk, latexmkMissingMessage(context.platform)),
         ...(await perlProblems(distro, context)),
-        ...missingProblem('git', git, gitMessage),
+        ...missingProblem('git', git, gitMissingMessage(context.platform)),
     ];
     return { latexmk: latexmk.found, git: git.found, synctexRef: synctex.found, distro, problems };
 }

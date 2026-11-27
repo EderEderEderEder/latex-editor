@@ -8,8 +8,12 @@ import { unwrap } from '../../shared/ipcResult';
 import { connectCompletionIndex } from '../editor/completion';
 import { editorStore } from '../stores/editor';
 import { projectStore, type ProjectView } from '../stores/project';
+import { hintsStore } from '../stores/hints';
 import { CompletionIndexClient, type OpenDocument } from './completionIndex';
-import type { ProjectFiles } from './completionIndexLogic';
+import { EMPTY_COMPLETION_INDEX } from './completionIndexLogic';
+import type { CompletionIndexSnapshot, ProjectFiles } from './completionIndexLogic';
+import { EMPTY_REFERENCES } from './referenceCheckLogic';
+import { connectAppNavigation } from './referenceCheckRuntime';
 
 const UNLOAD_EVENT = 'pagehide';
 
@@ -75,10 +79,17 @@ export function startCompletionIndex(): void {
     const index = new CompletionIndexClient({
         readMany: async (paths) => unwrap(await api.fs.readMany(paths)),
         openDocuments: openDocumentsOfStore,
+        onReferencesChanged: (references) => hintsStore.getState().setReferences(references),
     });
     client = index;
     connectCompletionIndex({ index: () => index.index, documentsEdited: () => index.noteDocumentsEdited() });
     connect(index, api);
+    stops.push(connectAppNavigation(() => projectFilesOf(projectStore.getState().current)));
+}
+
+/** Zuletzt gültiger Index (leer, solange er nicht läuft); das Einfügen-Fenster liest Labels und Schlüssel daraus */
+export function currentCompletionIndex(): CompletionIndexSnapshot {
+    return client?.index ?? EMPTY_COMPLETION_INDEX;
 }
 
 /** Gibt Abonnements und Worker frei (Beenden) */
@@ -88,4 +99,5 @@ export function stopCompletionIndex(): void {
     client?.dispose();
     client = null;
     connectCompletionIndex(null);
+    hintsStore.getState().setReferences(EMPTY_REFERENCES);
 }

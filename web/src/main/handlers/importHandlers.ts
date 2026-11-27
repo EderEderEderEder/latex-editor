@@ -5,7 +5,7 @@ import { BibAppender } from '../bibAppend';
 import { type FileStatLike, type GrantKind, type GrantStore, grantDroppedPaths } from '../grants';
 import { importImage } from '../imageImport';
 import type { IpcHandlers } from '../ipcHandlers';
-import { type RealpathFunction, resolveRealPath } from '../paths';
+import { rebaseToProjectRoot, type RealpathFunction, resolveRealPath } from '../paths';
 import type { TextIoOptions } from '../textIo';
 import { BACKUP_FOLDER_NAME } from './fsOpsHandlers';
 
@@ -48,9 +48,11 @@ async function importImageHandler(sourceGrant: string, imagesDir: string, deps: 
     rejectParentSegments(imagesDir);
     const directory = await grants.assertInProject(imagesDir, deps.realpath);
     const imported = await importImage(source, directory, { platform: grants.platform, realpath: deps.realpath, stat: deps.stat });
-    const root = await resolveRealPath(grants.requireProject(), { platform: grants.platform, realpath: deps.realpath });
-    // Nach dem Anlegen noch einmal prüfen: Ein Symlink, der erst jetzt hinausweist, zählt als außerhalb.
-    await grants.assertInProject(imported.path, deps.realpath);
+    const projectRoot = grants.requireProject();
+    const root = await resolveRealPath(projectRoot, { platform: grants.platform, realpath: deps.realpath });
+    // Nach dem Anlegen noch einmal prüfen: Ein Symlink, der erst jetzt hinausweist, zählt als außerhalb. Der Pfad
+    // kommt in aufgelöster Form (`/private/var/…`), die Projektwurzel in der Form der Gewährung (`/var/…`).
+    await grants.assertInProject(rebaseToProjectRoot(imported.path, root, projectRoot, grants.platform), deps.realpath);
     return { relPath: toProjectRelative(imported.path, root, deps), reused: imported.reused };
 }
 

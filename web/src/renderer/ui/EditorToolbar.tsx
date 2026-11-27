@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { InsertToolbarButton } from './insert/InsertToolbarButton';
 
 export interface EditorToolbarProps {
     readonly heading: ReactNode;
@@ -32,6 +33,7 @@ export function EditorToolbar({ heading, canSave, onOpen, onSave, onSaveAs, buil
                     Speichern unter …
                 </button>
             </div>
+            <InsertToolbarButton />
             {build}
         </header>
     );

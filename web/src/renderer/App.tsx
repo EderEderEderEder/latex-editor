@@ -17,6 +17,7 @@ import { AppOverlays } from './ui/AppOverlays';
 import { PDFPane } from './ui/PDFPane';
 import { RecoveryDialog } from './ui/RecoveryDialog';
 import { FileActionDialogs } from './ui/dialogs/FileActionDialogs';
+import { InsertDialog } from './ui/insert/InsertDialog';
 import { Sidebar } from './ui/Sidebar';
 import { SidebarShell } from './ui/SidebarShell';
 import { WorkspaceSplit } from './ui/WorkspaceSplit';
@@ -75,6 +76,7 @@ export function App() {
             <AppOverlays focusEditor={focusEditor} />
             <RecoveryDialog />
             <FileActionDialogs />
+            <InsertDialog focusEditor={focusEditor} />
         </main>
     );
 }

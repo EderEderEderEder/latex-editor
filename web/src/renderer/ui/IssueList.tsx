@@ -9,6 +9,10 @@ import type {
     IssueCounts, IssueEntry, IssueFilter, IssueFilterKey, IssueGroup, IssueGroups,
 } from '../app/issueNavigation';
 import { openIssue } from '../app/issueActions';
+import { HINT_TEXTS, hintGroupsOf } from '../app/referenceCheckHints';
+import type { HintGroupData, HintRowData } from '../app/referenceCheckHints';
+import { revealLine } from '../app/revealLine';
+import { hintCount, hintsStore, useHintsStore } from '../stores/hints';
 import { buildStore, useBuildStore } from '../app/buildRuntime';
 import { revealDeps } from '../app/projectRuntime';
 import { useProjectStore } from '../stores/project';
@@ -48,6 +52,16 @@ function IssueShape({ kind }: { readonly kind: ShapeKind }) {
     );
 }
 
+/** Abschnitt „Hinweise“ unter den Meldungen (W4-12); ohne Angabe gibt es ihn nicht */
+export interface IssueHintsProps {
+    readonly groups: readonly HintGroupData[];
+    /** Anzahl aller Hinweise, auch bei ausgeschaltetem Filter */
+    readonly count: number;
+    readonly isShown: boolean;
+    readonly onToggle: (isShown: boolean) => void;
+    readonly onOpen: (row: HintRowData) => void;
+}
+
 export interface IssueListProps {
     readonly groups: IssueGroups;
     readonly counts: IssueCounts;
@@ -60,9 +74,25 @@ export interface IssueListProps {
     readonly unavailableDetail: string | null;
     readonly onFilter: (key: IssueFilterKey, isOn: boolean) => void;
     readonly onOpen: (entry: IssueEntry, canOpen: boolean) => void;
+    readonly hints?: IssueHintsProps;
 }
 
-function FilterBar({ counts, filter, onFilter }: Pick<IssueListProps, 'counts' | 'filter' | 'onFilter'>) {
+function HintsFilter({ hints }: { readonly hints: IssueHintsProps }) {
+    return (
+        <button
+            type="button"
+            className="issue-filter"
+            aria-pressed={hints.isShown}
+            title={`${HINT_TEXTS.filter} ${hints.isShown ? 'ausblenden' : 'anzeigen'}`}
+            onClick={() => hints.onToggle(!hints.isShown)}
+        >
+            <IssueShape kind="info" />
+            <span>{`${HINT_TEXTS.filter} ${hints.count}`}</span>
+        </button>
+    );
+}
+
+function FilterBar({ counts, filter, onFilter, hints }: Pick<IssueListProps, 'counts' | 'filter' | 'onFilter' | 'hints'>) {
     return (
         <div className="issue-filters" role="group" aria-label={ISSUE_TEXTS.filters}>
             {FILTER_ORDER.map((key) => (
@@ -78,6 +108,7 @@ function FilterBar({ counts, filter, onFilter }: Pick<IssueListProps, 'counts' |
                     <span>{`${FILTER_LABELS[key]} ${counts[key]}`}</span>
                 </button>
             ))}
+            {hints !== undefined && <HintsFilter hints={hints} />}
         </div>
     );
 }
@@ -148,6 +179,28 @@ function GroupView(props: GroupViewProps) {
     );
 }
 
+function HintsSection({ hints }: { readonly hints: IssueHintsProps }) {
+    return (
+        <section className="hint-section" aria-label={HINT_TEXTS.heading}>
+            <h3 className="hint-heading" title={HINT_TEXTS.help}>{HINT_TEXTS.heading}</h3>
+            {hints.groups.map((group) => (
+                <div key={group.id} role="group" aria-label={`${group.title}, ${group.rows.length}`} className="issue-group" data-hint-group={group.id}>
+                    <div className="issue-group-title">
+                        <span className="issue-group-name">{group.title}</span>
+                        <span className="issue-group-count">{group.rows.length}</span>
+                    </div>
+                    {group.rows.map((hintRow) => (
+                        <button key={hintRow.key} type="button" className="hint-row" onClick={() => hints.onOpen(hintRow)}>
+                            <span className="hint-title">{hintRow.title}</span>
+                            <span className="hint-detail">{hintRow.detail}</span>
+                        </button>
+                    ))}
+                </div>
+            ))}
+        </section>
+    );
+}
+
 function nextKey(keys: readonly string[], current: string, key: string): string | null {
     const index = keys.indexOf(current);
     switch (key) {
@@ -206,7 +259,7 @@ export function IssueList(props: IssueListProps) {
     const isEmpty = groups.problems.length === 0 && groups.files.length === 0;
     return (
         <div className="issue-panel">
-            <FilterBar counts={props.counts} filter={props.filter} onFilter={props.onFilter} />
+            <FilterBar counts={props.counts} filter={props.filter} onFilter={props.onFilter} hints={props.hints} />
             <div className="issue-scroll">
                 {unavailableDetail !== null && (
                     <div className="issue-notice" role="note">
@@ -215,6 +268,7 @@ export function IssueList(props: IssueListProps) {
                     </div>
                 )}
                 {isEmpty ? <EmptyState props={props} /> : <GroupsView props={props} />}
+                {props.hints?.isShown === true && props.hints.groups.length > 0 && <HintsSection hints={props.hints} />}
             </div>
         </div>
     );
@@ -224,6 +278,19 @@ function useUnavailableDetail(): string | null {
     const tools = useBuildStore((state) => state.tools);
     if (tools === null || tools.latexmk !== null) return null;
     return tools.problems.find((problem) => problem.tool === 'latexmk')?.message ?? ISSUE_TEXTS.unavailable;
+}
+
+function useHintsProps(root: string | null, onFocusEditor: () => void): IssueHintsProps {
+    const references = useHintsStore((state) => state.references);
+    const isShown = useHintsStore((state) => state.showsHints);
+    const groups = useMemo(() => hintGroupsOf(references, root), [references, root]);
+    return {
+        groups,
+        count: hintCount(references),
+        isShown,
+        onToggle: (shows) => hintsStore.getState().setShowsHints(shows),
+        onOpen: (hintRow) => void revealLine(revealDeps(onFocusEditor), hintRow.file, hintRow.line),
+    };
 }
 
 /** Verbindet die Liste mit Build-Store und Editor; `onFocusEditor` gibt dem Editor nach dem Sprung den Fokus */
@@ -236,6 +303,7 @@ export function IssuesPanel({ onFocusEditor }: { readonly onFocusEditor: () => v
         buildStore.getState().select(entry.key);
         if (canOpen) void openIssue(revealDeps(onFocusEditor), buildStore, entry);
     };
+    const hints = useHintsProps(root, onFocusEditor);
     return (
         <IssueList
             groups={groups}
@@ -247,6 +315,7 @@ export function IssuesPanel({ onFocusEditor }: { readonly onFocusEditor: () => v
             unavailableDetail={useUnavailableDetail()}
             onFilter={(key, isOn) => buildStore.getState().setFilter(key, isOn)}
             onOpen={onOpen}
+            hints={hints}
         />
     );
 }

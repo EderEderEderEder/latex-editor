@@ -1,0 +1,565 @@
+{
+  "suite": "git-status",
+  "version": 1,
+  "source": [
+    "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+    "swift/Tests/LatexEditorTests/GitRemoteTests.swift",
+    "swift/Tests/LatexEditorTests/GitStoreTests.swift"
+  ],
+  "notes": "Quelle: GitStatusTests.swift (Suiten GitStatusParserTests und GitSupportTests). Aus GitRemoteTests.swift und GitStoreTests.swift gibt es keine reinen Fälle: alle Tests dort starten git in temporären Repositories (siehe skipped); die zugehörige Logik steht hier unter den Operationen unten, soweit sie in GitStatusTests.swift geprüft wird. Kinds sind die Swift-Fallnamen GitChangeKind: modified, typeChanged, added, deleted, renamed, copied, untracked, conflicted. Nicht-ASCII: Fälle entryKinds und renamed (Umlaut ö/ß in bilder/Größe.png), userMessages-identity und userMessages-host (Zeichen …), userMessages-auth (Erwartung Schlüsselbund) und alle deutschen Meldungstexte. Es werden keine Offsets geprüft, nur Zeichenketten; Pfade bleiben unverändert (keine Unicode-Normalisierung).\n\nGruppe parseStatus (GitStatusParser.parse, main/gitStatus.ts): input {op, output}. output ist die rohe Ausgabe von `git status --porcelain=v2 -z --branch --untracked-files=all` als Zeichenkette, Einträge durch \\u0000 getrennt, die Ausgabe endet mit \\u0000. Algorithmus: output nach \\u0000 teilen, leere Einträge weglassen. Dann Einträge der Reihe nach: (1) beginnt der Eintrag mit '# ', ist er eine Kopfzeile: an Leerzeichen höchstens zweimal teilen (leere Teile weglassen), genau 3 Teile ('#', Schlüssel, Wert) sonst ignorieren; Schlüssel branch.oid (Wert '(initial)' = commit null, sonst der Hash), branch.head (Wert '(detached)' = head null, sonst Name), branch.upstream (Wert), branch.ab (Wert wie '+2 -1': an Leerzeichen teilen, je Teil erstes Zeichen abschneiden und Rest als Zahl lesen; Teil mit '+' = ahead, mit '-' = behind; Teile ohne Zahl ignorieren); andere Schlüssel ignorieren. Standard: head null, commit null, upstream null, ahead 0, behind 0. (2) Beginnt der Eintrag mit '2 ' (Umbenennung/Kopie), ist der NÄCHSTE Eintrag der ursprüngliche Pfad (wird immer verbraucht, auch wenn er fehlt = null); der Eintrag selbst hat 9 feste Felder vor dem Pfad. (3) Sonst nach erstem Zeichen: '1' = gewöhnlich, 8 feste Felder (1 XY sub mH mI mW hH hI pfad); 'u' = Konflikt, 10 feste Felder (u XY sub m1 m2 m3 mW h1 h2 h3 pfad), Ergebnis path, indexKind null, worktreeKind conflicted; '?' = nicht versioniert, path = Eintrag ab Zeichen 2 (nach '? '), indexKind null, worktreeKind untracked; alles andere (z. B. '!' ignoriert) wird verworfen. Feste Felder: an einzelnen Leerzeichen höchstens N-mal teilen (leere Teile BEHALTEN), es müssen genau N+1 Teile entstehen, sonst Eintrag verwerfen; der letzte Teil ist der Pfad und darf Leerzeichen enthalten. Bei '1' und '2': Feld Nr. 2 (XY) muss genau 2 Zeichen haben, sonst verwerfen; X = Index-Zustand, Y = Arbeitsverzeichnis-Zustand. Statuscode: M modified, T typeChanged, A added, D deleted, R renamed, C copied, U conflicted, jedes andere Zeichen (z. B. '.') = null (unverändert). Eintrag = {path, originalPath, indexKind, worktreeKind}. Abgeleitet: stagedChanges = je Eintrag mit indexKind != null: {path, originalPath: originalPath, kind: indexKind}; unstagedChanges = je Eintrag mit worktreeKind != null: {path, originalPath: (worktreeKind == renamed ? originalPath : null), kind: worktreeKind}; Reihenfolge wie die Einträge. hasCommits = commit != null. displayName = head, sonst die ersten 7 Zeichen von commit, sonst '–' (U+2013).\nexpect (alle optional): branch (vollständiges Objekt {head, commit, upstream, ahead, behind}, exakt), branchHead (Wert oder null), entryCount (Anzahl Einträge, 0 = leer), hasCommits, displayName, stagedPaths/stagedKinds/unstagedPaths/unstagedKinds (Listen in Reihenfolge, exakt), staged (vollständige Liste {path, originalPath, kind}, exakt; originalPath null wenn keiner), unstagedPaths siehe oben.\n\nGruppe locateGit (GitLocator.locate(in:isExecutable:)): input {candidates: [Pfad], executable: [Pfad]}. Ergebnis ist der erste Kandidat, der in executable vorkommt; expect {path: Pfad | null}. (Der echte Kandidaten-Aufbau mit /var/db/xcode_select_link ist Swift-/macOS-spezifisch und nicht Teil des Vektors; unter Windows sucht main/ ohnehin anders.)\n\nGruppe environment (GitRunner.environment(base:)): input {base: {Name: Wert}}. Ergebnis ist base mit PATH = Systempfad + ':' + base.PATH (Systempfad '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin', nur ohne base.PATH ohne Anhang) und diesen festen Werten, die base überschreiben: LC_ALL=C, GIT_TERMINAL_PROMPT=0, GIT_EDITOR=true, GIT_PAGER=cat, GIT_OPTIONAL_LOCKS=0, GIT_LITERAL_PATHSPECS=1, GIT_HTTP_LOW_SPEED_LIMIT=1000, GIT_HTTP_LOW_SPEED_TIME=30; GIT_SSH_COMMAND='ssh -o BatchMode=yes -o ConnectTimeout=15', falls base keinen hat. Geprüft wird nur: expect.values {Name: Wert} (jeder genannte Name hat genau den Wert; HOME bleibt unverändert) und pathHasSuffix (PATH endet auf diese Zeichenkette). Der Trenner im PATH ist ':' (macOS); TypeScript verwendet path.delimiter (unter Windows ';') und prüft den Suffix entsprechend mit diesem Trenner; der Systempfad-Anteil ist plattformabhängig.\n\nGruppe userMessage (GitError.userMessage(for:), Meldungen sind deutsch, git läuft mit LC_ALL=C): input {message}; expect {equals | contains | hasSuffix} (Zeichenkette; jeder genannte Schlüssel muss gelten). Ablauf: trimmed = message ohne Leerraum an Anfang und Ende (Leerzeichen, Tabulator, Zeilenumbruch). Der erste zutreffende Block gewinnt, 'enthält' = Teilstring von trimmed (Groß-/Kleinschreibung zählt): (1) enthält 'Author identity unknown' oder 'Please tell me who you are' oder 'empty ident name': 'Git kennt deinen Namen und deine E-Mail-Adresse noch nicht. Bitte einmalig im Terminal setzen:\\n\\ngit config --global user.name \"Vorname Nachname\"\\ngit config --global user.email \"name@example.com\"'. (2) enthält 'index.lock': 'Ein anderer Git-Vorgang läuft gerade (index.lock existiert). Bitte kurz warten und erneut versuchen.' (3) enthält 'nothing to commit' oder 'nothing added to commit': 'Es gibt nichts zu committen.' (4) Netzwerk, in dieser Reihenfolge: a) 'Authentication failed', 'could not read Username', 'could not read Password', 'terminal prompts disabled', 'Permission denied (publickey' -> 'Die Anmeldung beim Remote ist fehlgeschlagen. Die App kann nicht nach Passwörtern fragen.\\nBitte einmal im Terminal „git push“ (bzw. „git pull“) im Projektordner ausführen und sich anmelden. Danach liegt die Anmeldung im Schlüsselbund, und die App kann sie benutzen.'; b) 'Could not resolve host', 'Network is unreachable', 'Operation timed out', 'Connection refused', 'Connection timed out', 'Failed to connect', 'too slow', 'Could not read from remote' -> 'Der Remote ist nicht erreichbar. Besteht eine Internetverbindung?\\n\\n' + trimmed; c) '[rejected]', 'fetch first', 'non-fast-forward' -> 'Der Remote hat Commits, die lokal noch fehlen. Erst Pull, dann Push.'; d) 'Not possible to fast-forward', 'Diverging branches', 'have diverged' -> 'Lokaler Stand und Remote sind auseinandergelaufen: Beide haben neue Commits. Die App holt nur Änderungen, die sich ohne Zusammenführen übernehmen lassen. Zusammenführen bitte im Terminal („git pull“).' (ein Satz, ohne Zeilenumbruch); e) 'There is no tracking information', 'has no upstream branch' -> 'Für diesen Branch ist noch kein Remote-Branch eingerichtet. Zuerst Push ausführen.'; f) 'No configured push destination', 'No remote repository specified', 'does not appear to be a git repository' -> 'Für dieses Repository ist kein Remote eingerichtet.' (5) Branch: a) 'would be overwritten by' oder 'untracked working tree files would be' -> 'Lokale Änderungen würden überschrieben. Bitte zuerst committen oder verwerfen.' plus, falls trimmed Zeilen enthält, die mit einem Tabulator beginnen: '\\n\\n' + diese Zeilen (jeweils an Anfang und Ende von Leerraum befreit) mit '\\n' verbunden; b) 'is not a valid branch name' -> 'Ungültiger Branch-Name (keine Leerzeichen, kein „..“, nicht mit „-“ beginnen).'; c) 'already exists' -> 'Ein Branch mit diesem Namen existiert bereits.' (6) sonst: trimmed leer -> 'Git ist fehlgeschlagen.', sonst 'Git meldet:\\n' + trimmed.\n\nGruppe pathInsideGitDirectory (GitStore.pathInsideGitDirectory): input {path, gitDirectory}, expect {result: Pfad relativ zum .git-Ordner | null}. gitDirectory ist ein normalisierter absoluter POSIX-Pfad; Varianten: der Pfad selbst und die Schreibweise mit bzw. ohne führendes '/private' (hat er '/private/', wird '/private' entfernt, sonst vorangestellt; Beispiel '/private/var/r/.git' und '/var/r/.git'). Für jede Variante der Reihe nach: path == Variante -> ''; path beginnt mit Variante + '/' -> der Rest danach. Sonst: kommt '/.git/' im path vor, der Teil nach dem LETZTEN Vorkommen; sonst endet path auf '/.git' -> ''; sonst null.\nGruppe isRelevantInternalPath (GitStore.isRelevantInternalPath): input {path} (relativ zu .git), expect {result: bool}. Falsch, wenn path auf '.lock' endet; sonst wahr, wenn path eines von index, HEAD, packed-refs, MERGE_HEAD, CHERRY_PICK_HEAD, config ist oder mit 'refs/' beginnt; sonst falsch.\n\nGruppe projectMapping (GitRepository.projectPrefix und projectURL(forRepositoryPath:)): input {root, gitDirectory, projectRoot, repositoryPaths: [Pfad relativ zur Wurzel]}; alles POSIX-Pfade, die Ordner existieren nicht (keine Symlink-Auflösung nötig; echte Implementierungen lösen Symlinks vorher auf, /var und /private/var sind sonst verschiedene Ordner). projectPrefix = projectRoot relativ zu root, wenn projectRoot unter root + '/' liegt, sonst null (null auch bei Gleichheit). projectURL(path): ohne Prefix = projectRoot + '/' + path (normalisiert, nie null); mit Prefix nur, wenn path mit prefix + '/' beginnt, dann projectRoot + '/' + Rest, sonst null (z. B. 'thesis-alt/main.tex'). expect {projectPrefix, urls: {repositoryPath: absoluter Pfad | null}}.\n\nNicht von Tests geprüft, nur zur Orientierung (aus GitStore.swift): git status wird mit den Argumenten status --porcelain=v2 -z --branch --untracked-files=all aufgerufen; Einträge außerhalb des Projektordners (projectURL == null) werden verworfen, bereitgestellte davon (indexKind != null) als stagedOutsideProject gezählt; Marker je Datei = worktreeKind, sonst indexKind; changeCount = Anzahl verschiedener Pfade in staged + unstaged. Die Gruppen sind Vorlage für web/src/main/gitStatus.ts; Prozessstart und Warteschlange sind nicht Teil der Vektoren.",
+  "skipped": [
+    {
+      "name": "Echte Ausgabe von git status wird vollständig gelesen",
+      "reason": "Startet git in einem temporären Repository (Prozess, Dateisystem); die Parser-Fälle decken dieselbe Ausgabe mit festen Strings ab",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "sourceLine": 63
+    },
+    {
+      "name": "Abrufen zeigt neue Commits als ↓, Pull holt sie (nur Vorspulen)",
+      "reason": "Echtes Git mit Bare-Remote und Dateisystem (Prozesse); kein reiner Parser. Die Meldungstexte stehen als userMessage-Fälle (userMessages-*) in dieser Datei",
+      "source": "swift/Tests/LatexEditorTests/GitRemoteTests.swift",
+      "sourceLine": 17
+    },
+    {
+      "name": "Push sendet Commits; neuer Branch bekommt beim ersten Push seinen Upstream",
+      "reason": "Echtes Git mit Bare-Remote und Dateisystem (Prozesse); kein reiner Parser. Die Meldungstexte stehen als userMessage-Fälle (userMessages-*) in dieser Datei",
+      "source": "swift/Tests/LatexEditorTests/GitRemoteTests.swift",
+      "sourceLine": 34
+    },
+    {
+      "name": "Auseinandergelaufen: Pull bricht ab, Push wird abgelehnt – mit verständlicher Meldung, nichts geht verloren",
+      "reason": "Echtes Git mit Bare-Remote und Dateisystem (Prozesse); kein reiner Parser. Die Meldungstexte stehen als userMessage-Fälle (userMessages-*) in dieser Datei",
+      "source": "swift/Tests/LatexEditorTests/GitRemoteTests.swift",
+      "sourceLine": 58
+    },
+    {
+      "name": "Pull, der lokale Änderungen überschreiben würde, bricht ab und nennt die Datei",
+      "reason": "Echtes Git mit Bare-Remote und Dateisystem (Prozesse); kein reiner Parser. Die Meldungstexte stehen als userMessage-Fälle (userMessages-*) in dieser Datei",
+      "source": "swift/Tests/LatexEditorTests/GitRemoteTests.swift",
+      "sourceLine": 79
+    },
+    {
+      "name": "Branches wechseln und anlegen; ungültiger oder doppelter Name wird gemeldet",
+      "reason": "Echtes Git mit Bare-Remote und Dateisystem (Prozesse); kein reiner Parser. Die Meldungstexte stehen als userMessage-Fälle (userMessages-*) in dieser Datei",
+      "source": "swift/Tests/LatexEditorTests/GitRemoteTests.swift",
+      "sourceLine": 93
+    },
+    {
+      "name": "Ohne Remote: Push meldet das, Abrufen ist harmlos",
+      "reason": "Echtes Git mit Bare-Remote und Dateisystem (Prozesse); kein reiner Parser. Die Meldungstexte stehen als userMessage-Fälle (userMessages-*) in dieser Datei",
+      "source": "swift/Tests/LatexEditorTests/GitRemoteTests.swift",
+      "sourceLine": 114
+    },
+    {
+      "name": "Stand aus HEAD für die Änderungsmarken; neue Dateien haben keinen",
+      "reason": "Echtes Git mit Bare-Remote und Dateisystem (Prozesse); kein reiner Parser. Die Meldungstexte stehen als userMessage-Fälle (userMessages-*) in dieser Datei",
+      "source": "swift/Tests/LatexEditorTests/GitRemoteTests.swift",
+      "sourceLine": 127
+    },
+    {
+      "name": "Kein Repository, kein Git",
+      "reason": "Echte temporäre Repositories, Dateisystem, git-Prozesse und Warten auf asynchrone Ergebnisse (GitStore als @MainActor-Objekt); keine reine Funktion mit Literalen",
+      "source": "swift/Tests/LatexEditorTests/GitStoreTests.swift",
+      "sourceLine": 42
+    },
+    {
+      "name": "Status: Listen, Branch, Markierungen für Dateien und Ordner",
+      "reason": "Echte temporäre Repositories, Dateisystem, git-Prozesse und Warten auf asynchrone Ergebnisse (GitStore als @MainActor-Objekt); keine reine Funktion mit Literalen",
+      "source": "swift/Tests/LatexEditorTests/GitStoreTests.swift",
+      "sourceLine": 55
+    },
+    {
+      "name": "Bereitstellen und zurücknehmen, einzeln und alle",
+      "reason": "Echte temporäre Repositories, Dateisystem, git-Prozesse und Warten auf asynchrone Ergebnisse (GitStore als @MainActor-Objekt); keine reine Funktion mit Literalen",
+      "source": "swift/Tests/LatexEditorTests/GitStoreTests.swift",
+      "sourceLine": 79
+    },
+    {
+      "name": "Zurücknehmen im neuen Repository ohne ersten Commit",
+      "reason": "Echte temporäre Repositories, Dateisystem, git-Prozesse und Warten auf asynchrone Ergebnisse (GitStore als @MainActor-Objekt); keine reine Funktion mit Literalen",
+      "source": "swift/Tests/LatexEditorTests/GitStoreTests.swift",
+      "sourceLine": 106
+    },
+    {
+      "name": "Commit: nur Bereitgestelltes, mehrzeilige Nachricht, Feld wird geleert",
+      "reason": "Echte temporäre Repositories, Dateisystem, git-Prozesse und Warten auf asynchrone Ergebnisse (GitStore als @MainActor-Objekt); keine reine Funktion mit Literalen",
+      "source": "swift/Tests/LatexEditorTests/GitStoreTests.swift",
+      "sourceLine": 121
+    },
+    {
+      "name": "Commit mit allem, auch neuen und gelöschten Dateien, und erster Commit überhaupt",
+      "reason": "Echte temporäre Repositories, Dateisystem, git-Prozesse und Warten auf asynchrone Ergebnisse (GitStore als @MainActor-Objekt); keine reine Funktion mit Literalen",
+      "source": "swift/Tests/LatexEditorTests/GitStoreTests.swift",
+      "sourceLine": 143
+    },
+    {
+      "name": "Fehler: fehlende Identität, abgelehnter Hook, leere Nachricht – nichts wird committet",
+      "reason": "Echte temporäre Repositories, Dateisystem, git-Prozesse und Warten auf asynchrone Ergebnisse (GitStore als @MainActor-Objekt); keine reine Funktion mit Literalen",
+      "source": "swift/Tests/LatexEditorTests/GitStoreTests.swift",
+      "sourceLine": 158
+    },
+    {
+      "name": "Diff-Tab: nicht bereitgestellt gegen Index, bereitgestellt gegen HEAD; folgt beim Bereitstellen, Umschalten, schließt nach Commit",
+      "reason": "Echte temporäre Repositories, Dateisystem, git-Prozesse und Warten auf asynchrone Ergebnisse (GitStore als @MainActor-Objekt); keine reine Funktion mit Literalen",
+      "source": "swift/Tests/LatexEditorTests/GitStoreTests.swift",
+      "sourceLine": 187
+    },
+    {
+      "name": "Aufgeklappte Bereiche bleiben pro Diff-Tab erhalten, geschlossene Tabs werden vergessen",
+      "reason": "Echte temporäre Repositories, Dateisystem, git-Prozesse und Warten auf asynchrone Ergebnisse (GitStore als @MainActor-Objekt); keine reine Funktion mit Literalen",
+      "source": "swift/Tests/LatexEditorTests/GitStoreTests.swift",
+      "sourceLine": 217
+    },
+    {
+      "name": "Diff neuer, gelöschter, umbenannter und binärer Dateien",
+      "reason": "Echte temporäre Repositories, Dateisystem, git-Prozesse und Warten auf asynchrone Ergebnisse (GitStore als @MainActor-Objekt); keine reine Funktion mit Literalen",
+      "source": "swift/Tests/LatexEditorTests/GitStoreTests.swift",
+      "sourceLine": 240
+    },
+    {
+      "name": "Projekt im Unterordner: nur dessen Änderungen, Bereitgestelltes außerhalb wird gezählt",
+      "reason": "Echte temporäre Repositories, Dateisystem, git-Prozesse und Warten auf asynchrone Ergebnisse (GitStore als @MainActor-Objekt); keine reine Funktion mit Literalen",
+      "source": "swift/Tests/LatexEditorTests/GitStoreTests.swift",
+      "sourceLine": 262
+    },
+    {
+      "name": "Status lesen verändert den Index nicht (optionale Sperren aus)",
+      "reason": "Echte temporäre Repositories, Dateisystem, git-Prozesse und Warten auf asynchrone Ergebnisse (GitStore als @MainActor-Objekt); keine reine Funktion mit Literalen",
+      "source": "swift/Tests/LatexEditorTests/GitStoreTests.swift",
+      "sourceLine": 280
+    },
+    {
+      "name": "GitResetTests.swift (Suiten GitResetPlanTests und GitResetTests, 7 Tests)",
+      "reason": "Nicht beauftragt: App-Ebene mit Prozessen, Papierkorb und Editor; GitResetPlanTests (2 Tests, Zeilen 12 und 28) sind eine reine Planfunktion und könnten bei Bedarf nachgezogen werden",
+      "source": "swift/Tests/LatexEditorTests/GitResetTests.swift",
+      "sourceLine": 12
+    },
+    {
+      "name": "GitActionsTests.swift (Suiten GitActionsTests und GitDemoProjectTests, 10 Tests)",
+      "reason": "App-Ebene mit Prozessen, Fenstern, Tabs und Dateisystem; Demo-Projekt nur lesend",
+      "source": "swift/Tests/LatexEditorTests/GitActionsTests.swift",
+      "sourceLine": 26
+    },
+    {
+      "name": "GitPhase2Tests.swift (4 Tests)",
+      "reason": "App-Ebene mit Prozessen, Dateisystem-Ereignissen und Editor",
+      "source": "swift/Tests/LatexEditorTests/GitPhase2Tests.swift",
+      "sourceLine": 29
+    }
+  ],
+  "cases": [
+    {
+      "id": "branchHeaders",
+      "name": "Branch-Zeilen: Name, Commit, Upstream, voraus/zurück",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "parseStatus",
+        "output": "# branch.oid aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\u0000# branch.head main\u0000# branch.upstream origin/main\u0000# branch.ab +2 -1\u0000"
+      },
+      "expect": {
+        "branch": {
+          "head": "main",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "upstream": "origin/main",
+          "ahead": 2,
+          "behind": 1
+        },
+        "entryCount": 0
+      },
+      "sourceLine": 13
+    },
+    {
+      "id": "initialAndDetached-initial",
+      "name": "Neues Repository ohne Commit und losgelöster HEAD",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "parseStatus",
+        "output": "# branch.oid (initial)\u0000# branch.head main\u0000"
+      },
+      "expect": {
+        "hasCommits": false,
+        "displayName": "main"
+      },
+      "sourceLine": 23
+    },
+    {
+      "id": "initialAndDetached-detached",
+      "name": "Neues Repository ohne Commit und losgelöster HEAD",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "parseStatus",
+        "output": "# branch.oid aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\u0000# branch.head (detached)\u0000"
+      },
+      "expect": {
+        "branchHead": null,
+        "displayName": "aaaaaaa"
+      },
+      "sourceLine": 23
+    },
+    {
+      "id": "entryKinds",
+      "name": "Geändert, bereitgestellt, gelöscht, nicht versioniert, Konflikt; Pfade mit Leerzeichen und Umlauten",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "parseStatus",
+        "output": "1 .M N... 100644 100644 100644 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa kapitel/einleitung.tex\u00001 MM N... 100644 100644 100644 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa main.tex\u00001 A. N... 100644 100644 100644 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa neu mit Leerzeichen.tex\u00001 .D N... 100644 100644 100644 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa alt.tex\u0000? bilder/Größe.png\u0000u UU N... 100644 100644 100644 100644 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa konflikt.tex\u0000"
+      },
+      "expect": {
+        "stagedPaths": [
+          "main.tex",
+          "neu mit Leerzeichen.tex"
+        ],
+        "stagedKinds": [
+          "modified",
+          "added"
+        ],
+        "unstagedPaths": [
+          "kapitel/einleitung.tex",
+          "main.tex",
+          "alt.tex",
+          "bilder/Größe.png",
+          "konflikt.tex"
+        ],
+        "unstagedKinds": [
+          "modified",
+          "modified",
+          "deleted",
+          "untracked",
+          "conflicted"
+        ]
+      },
+      "sourceLine": 34
+    },
+    {
+      "id": "renamed",
+      "name": "Umbenennung: ursprünglicher Pfad folgt als eigener Eintrag",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "parseStatus",
+        "output": "2 R. N... 100644 100644 100644 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa R100 kapitel/neu name.tex\u0000kapitel/alt.tex\u00001 .M N... 100644 100644 100644 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa danach.tex\u0000"
+      },
+      "expect": {
+        "staged": [
+          {
+            "path": "kapitel/neu name.tex",
+            "originalPath": "kapitel/alt.tex",
+            "kind": "renamed"
+          }
+        ],
+        "unstagedPaths": [
+          "danach.tex"
+        ]
+      },
+      "sourceLine": 52
+    },
+    {
+      "id": "locatorOrder",
+      "name": "Homebrew vor Command Line Tools, nicht vorhandene Kandidaten werden übersprungen",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "locateGit",
+        "candidates": [
+          "/opt/homebrew/bin/git",
+          "/usr/local/bin/git",
+          "/clt/git"
+        ],
+        "executable": [
+          "/usr/local/bin/git",
+          "/clt/git"
+        ]
+      },
+      "expect": {
+        "path": "/usr/local/bin/git"
+      },
+      "sourceLine": 85
+    },
+    {
+      "id": "locatorOrder-none",
+      "name": "Homebrew vor Command Line Tools, nicht vorhandene Kandidaten werden übersprungen",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "locateGit",
+        "candidates": [
+          "/x/git"
+        ],
+        "executable": []
+      },
+      "expect": {
+        "path": null
+      },
+      "sourceLine": 85
+    },
+    {
+      "id": "environment",
+      "name": "Umgebung: englische Meldungen, keine Abfragen, keine optionalen Sperren, wörtliche Pfade",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "environment",
+        "base": {
+          "PATH": "/eigen/bin",
+          "HOME": "/Users/x"
+        }
+      },
+      "expect": {
+        "values": {
+          "LC_ALL": "C",
+          "GIT_TERMINAL_PROMPT": "0",
+          "GIT_OPTIONAL_LOCKS": "0",
+          "GIT_LITERAL_PATHSPECS": "1",
+          "HOME": "/Users/x"
+        },
+        "pathHasSuffix": ":/eigen/bin"
+      },
+      "sourceLine": 93
+    },
+    {
+      "id": "userMessages-identity",
+      "name": "Fehlende Identität, Sperre und leere Commits werden verständlich gemeldet",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "userMessage",
+        "message": "*** Please tell me who you are.\n\nRun …"
+      },
+      "expect": {
+        "contains": "git config --global user.email"
+      },
+      "sourceLine": 105
+    },
+    {
+      "id": "userMessages-lock",
+      "name": "Fehlende Identität, Sperre und leere Commits werden verständlich gemeldet",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "userMessage",
+        "message": "fatal: Unable to create '/r/.git/index.lock': File exists."
+      },
+      "expect": {
+        "contains": "index.lock"
+      },
+      "sourceLine": 105
+    },
+    {
+      "id": "userMessages-nothing",
+      "name": "Fehlende Identität, Sperre und leere Commits werden verständlich gemeldet",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "userMessage",
+        "message": "nothing to commit, working tree clean"
+      },
+      "expect": {
+        "equals": "Es gibt nichts zu committen."
+      },
+      "sourceLine": 105
+    },
+    {
+      "id": "userMessages-hook",
+      "name": "Fehlende Identität, Sperre und leere Commits werden verständlich gemeldet",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "userMessage",
+        "message": "pre-commit: Bitte keine TODOs"
+      },
+      "expect": {
+        "equals": "Git meldet:\npre-commit: Bitte keine TODOs"
+      },
+      "sourceLine": 105
+    },
+    {
+      "id": "userMessages-auth",
+      "name": "Fehlende Identität, Sperre und leere Commits werden verständlich gemeldet",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "userMessage",
+        "message": "fatal: Authentication failed for 'https://github.com/x/y.git/'"
+      },
+      "expect": {
+        "contains": "Schlüsselbund"
+      },
+      "sourceLine": 105
+    },
+    {
+      "id": "userMessages-host",
+      "name": "Fehlende Identität, Sperre und leere Commits werden verständlich gemeldet",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "userMessage",
+        "message": "fatal: unable to access '…': Could not resolve host: github.com"
+      },
+      "expect": {
+        "contains": "nicht erreichbar"
+      },
+      "sourceLine": 105
+    },
+    {
+      "id": "userMessages-rejected",
+      "name": "Fehlende Identität, Sperre und leere Commits werden verständlich gemeldet",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "userMessage",
+        "message": " ! [rejected]        main -> main (fetch first)"
+      },
+      "expect": {
+        "contains": "Erst Pull"
+      },
+      "sourceLine": 105
+    },
+    {
+      "id": "userMessages-diverged",
+      "name": "Fehlende Identität, Sperre und leere Commits werden verständlich gemeldet",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "userMessage",
+        "message": "fatal: Not possible to fast-forward, aborting."
+      },
+      "expect": {
+        "contains": "auseinandergelaufen"
+      },
+      "sourceLine": 105
+    },
+    {
+      "id": "userMessages-overwrite",
+      "name": "Fehlende Identität, Sperre und leere Commits werden verständlich gemeldet",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "userMessage",
+        "message": "error: Your local changes to the following files would be overwritten by merge:\n\tkapitel/a.tex\nPlease commit"
+      },
+      "expect": {
+        "hasSuffix": "kapitel/a.tex"
+      },
+      "sourceLine": 105
+    },
+    {
+      "id": "internalPaths-index-var",
+      "name": "Ereignisse in .git zählen nur für Index, HEAD und Refs",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "pathInsideGitDirectory",
+        "path": "/var/r/.git/index",
+        "gitDirectory": "/private/var/r/.git"
+      },
+      "expect": {
+        "result": "index"
+      },
+      "sourceLine": 119
+    },
+    {
+      "id": "internalPaths-refs-private",
+      "name": "Ereignisse in .git zählen nur für Index, HEAD und Refs",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "pathInsideGitDirectory",
+        "path": "/private/var/r/.git/refs/heads/main",
+        "gitDirectory": "/private/var/r/.git"
+      },
+      "expect": {
+        "result": "refs/heads/main"
+      },
+      "sourceLine": 119
+    },
+    {
+      "id": "internalPaths-worktree-file",
+      "name": "Ereignisse in .git zählen nur für Index, HEAD und Refs",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "pathInsideGitDirectory",
+        "path": "/var/r/kapitel/a.tex",
+        "gitDirectory": "/private/var/r/.git"
+      },
+      "expect": {
+        "result": null
+      },
+      "sourceLine": 119
+    },
+    {
+      "id": "internalPaths-relevant-0",
+      "name": "Ereignisse in .git zählen nur für Index, HEAD und Refs",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "isRelevantInternalPath",
+        "path": "index"
+      },
+      "expect": {
+        "result": true
+      },
+      "sourceLine": 119
+    },
+    {
+      "id": "internalPaths-relevant-1",
+      "name": "Ereignisse in .git zählen nur für Index, HEAD und Refs",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "isRelevantInternalPath",
+        "path": "refs/heads/main"
+      },
+      "expect": {
+        "result": true
+      },
+      "sourceLine": 119
+    },
+    {
+      "id": "internalPaths-relevant-2",
+      "name": "Ereignisse in .git zählen nur für Index, HEAD und Refs",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "isRelevantInternalPath",
+        "path": "index.lock"
+      },
+      "expect": {
+        "result": false
+      },
+      "sourceLine": 119
+    },
+    {
+      "id": "internalPaths-relevant-3",
+      "name": "Ereignisse in .git zählen nur für Index, HEAD und Refs",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "isRelevantInternalPath",
+        "path": "objects/ab/cdef"
+      },
+      "expect": {
+        "result": false
+      },
+      "sourceLine": 119
+    },
+    {
+      "id": "internalPaths-relevant-4",
+      "name": "Ereignisse in .git zählen nur für Index, HEAD und Refs",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "isRelevantInternalPath",
+        "path": "logs/HEAD"
+      },
+      "expect": {
+        "result": false
+      },
+      "sourceLine": 119
+    },
+    {
+      "id": "projectPrefix",
+      "name": "Projekt in einem Unterordner des Repositorys: nur Pfade darunter gehören zum Projekt",
+      "source": "swift/Tests/LatexEditorTests/GitStatusTests.swift",
+      "input": {
+        "op": "projectMapping",
+        "root": "/r",
+        "gitDirectory": "/r/.git",
+        "projectRoot": "/r/thesis",
+        "repositoryPaths": [
+          "thesis/main.tex",
+          "thesis-alt/main.tex",
+          "README.md"
+        ]
+      },
+      "expect": {
+        "projectPrefix": "thesis",
+        "urls": {
+          "thesis/main.tex": "/r/thesis/main.tex",
+          "thesis-alt/main.tex": null,
+          "README.md": null
+        }
+      },
+      "sourceLine": 133
+    }
+  ]
+}

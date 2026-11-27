@@ -5,6 +5,8 @@ import { completionExtension } from './completion';
 import { diagnosticsExtension } from './diagnostics';
 import { foldingExtension } from './folding';
 import { gutterExtension } from './gutter';
+import { navigationExtension } from './navigation';
+import { referenceMarksExtension } from './referenceMarks';
 import { searchExtension } from './search';
 import { spellExtension } from './spell';
 import { typingExtension } from './typing';
@@ -31,5 +33,7 @@ export function featureExtensions(context: FeatureContext): Extension[] {
         spellExtension(context),
         searchExtension(),
         completionExtension(context),
+        referenceMarksExtension(context),
+        navigationExtension(context),
     ];
 }

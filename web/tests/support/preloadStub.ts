@@ -183,7 +183,7 @@ export const DEFAULT_STUB_RESPONSES: StubResponders = {
     'build:clean': nothing,
     'synctex:forward': () => null,
     'synctex:backward': () => null,
-    'git:status': () => ({ branch: null, upstream: null, ahead: 0, behind: 0, entries: [] }),
+    'git:status': () => ({ branch: null, commit: null, upstream: null, ahead: 0, behind: 0, entries: [], stagedOutsideProject: 0 }),
     'git:blob': () => null,
     'git:stage': nothing,
     'git:unstage': nothing,

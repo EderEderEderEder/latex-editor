@@ -227,8 +227,12 @@ export interface SyncTexBackwardResult {
 
 // ---------- Git ----------
 
-export type GitFileState = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'conflicted';
+// Wie Swift `GitChangeKind` (`typeChanged` = Datei ↔ Symlink, `copied` nur bei Kopie-Erkennung).
+export type GitFileState = 'modified' | 'typeChanged' | 'added' | 'deleted' | 'renamed' | 'copied' | 'untracked' | 'conflicted';
 
+// Nur Dateien im Projektordner (liegt das Projekt in einem Unterordner des Repositorys, nur dessen Dateien);
+// `originalPath` ist `null`, wenn der alte Name außerhalb des Projekts lag. Kein Repository bzw. kein Git:
+// `git:status` antwortet mit dem Fehler `notARepository` bzw. `gitMissing`.
 export interface GitStatusEntry {
     readonly path: AbsolutePath;
     readonly originalPath: AbsolutePath | null;
@@ -237,11 +241,16 @@ export interface GitStatusEntry {
 }
 
 export interface GitStatus {
+    /** `null`: losgelöster HEAD (Anzeige dann die ersten 7 Zeichen von `commit`) */
     readonly branch: string | null;
+    /** `null`: noch kein Commit im Repository */
+    readonly commit: string | null;
     readonly upstream: string | null;
     readonly ahead: number;
     readonly behind: number;
     readonly entries: readonly GitStatusEntry[];
+    /** Bereitgestellte Dateien außerhalb des Projektordners (gingen beim Commit mit) */
+    readonly stagedOutsideProject: number;
 }
 
 export type GitRevision = 'HEAD' | 'index';

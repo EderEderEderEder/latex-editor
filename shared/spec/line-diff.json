@@ -1,0 +1,465 @@
+{
+  "suite": "line-diff",
+  "version": 1,
+  "source": "swift/Tests/LatexEditorTests/LineDiffTests.swift",
+  "notes": "Quelle: LineDiffTests.swift (Suiten LineDiffTests und DiffLayoutTests, 11 Tests; der Zufallstest steht in skipped, dafür zwei Fälle mit festen Eingaben). Implementierung in Swift: LineDiff.swift (Model); Ziel in TypeScript: core/diff/*.ts. Nicht-ASCII: Fall tokenizer-1 (Wort 'Größe' mit ö und ß) prüft Tokengrenzen als Zeichenketten, keine Offsets. Es werden nirgends Offsets geprüft: Zeilennummern sind 1-basiert, Zeilen- und Zeilenindizes in layoutRows 0-basiert. Wort- und Ähnlichkeitslängen zählen in Unicode-Codepoints (nicht UTF-16-Einheiten, nicht Grapheme): in TypeScript über Array.from(token).length bzw. for...of, nicht über String.length.\n\nKonstanten: maximumLineEdits 2000 (Myers für Zeilen), maximumWordEdits 400 (Myers für Wörter), minimumSimilarity 0.3, DiffLayout contextLines 3, minimumCollapsedLines 4.\n\nGruppe compute (LineDiff.compute(old:new:), mit Wort-Hervorhebung): input {op, old, new} (Texte). Ergebnis = Liste von Diff-Zeilen {kind: context | removed | added, oldNumber (1-basiert, null bei added), newNumber (1-basiert, null bei removed), segments: [{text, isChanged}]}; text = Zusammenfügen der Segmente. Ablauf: (1) splitLines beider Texte. (2) editScript auf den Zeilen (maxEdits 2000) liefert je Zeile von old 'entfernt' und je Zeile von new 'eingefügt'. (3) Zeilen zusammensetzen mit i = 0, j = 0: solange i < alt oder j < neu: ist alt[i] entfernt -> Zeile removed (oldNumber i+1) und i++; sonst ist neu[j] eingefügt -> Zeile added (newNumber j+1) und j++; sonst Zeile context mit Text neu[j] (oldNumber i+1, newNumber j+1), i++ und j++. Entfernte stehen also vor hinzugefügten. Jede Zeile hat zunächst ein Segment {text, isChanged: false}. (4) Wort-Hervorhebung: in jedem zusammenhängenden Änderungsblock (erst alle removed, dann alle added hintereinander) wird die k-te entfernte mit der k-ten hinzugefügten Zeile gepaart (k < min der Anzahlen). Paar: oldTokens = tokenize(removed.text), newTokens = tokenize(added.text), script = editScript(oldTokens, newTokens, maxEdits 400); common = Summe der Codepoint-Längen der oldTokens, die NICHT entfernt sind; longest = Maximum der Gesamt-Codepoint-Längen von oldTokens und newTokens; nur wenn longest > 0 und common / longest >= 0.3 werden beide Zeilen in Segmente zerlegt (aufeinanderfolgende Tokens mit gleichem Änderungszustand zu einem Segment verschmelzen, isChanged = Token entfernt bzw. eingefügt); sonst bleibt jede Zeile bei einem Segment ohne Änderung. Die Reihenfolge der Tokens und ihr Verbund ergeben immer den ursprünglichen Zeilentext.\nexpect (alle optional): rendered (Liste von Zeichenketten je Zeile: ' ' + Text für context, '-' + Text für removed, '+' + Text für added; [] = keine Zeilen), oldNumbers/newNumbers (Listen je Zeile, null wo es keine Nummer gibt), removedCount/addedCount/contextCount (Anzahl Zeilen dieser Art), texts (Liste der Zeilentexte aller Zeilen), changedTexts ({Zeilenindex 0-basiert als Zeichenkette: Liste der Texte der Segmente mit isChanged == true, exakt}), changedTextsTrimmed (wie changedTexts, aber jeder Text vorher von Leerzeichen/Tabulatoren an beiden Enden befreit), everyLineSingleUnchangedSegment (true: jede Zeile hat genau ein Segment und es ist nicht geändert).\n\nGruppe splitLines (LineDiff.splitLines): input {op, text}; expect {lines: [..]}. Leerer Text -> []. Sonst nach '\\n' teilen (leere Teile behalten); bei jedem Teil ein einzelnes '\\r' am Ende entfernen (nur am Ende, ein '\\r' mitten in der Zeile bleibt); endet der Text auf '\\n', die letzte (leere) Zeile weglassen. 'a\\n\\n' ergibt ['a', ''].\n\nGruppe tokenize (LineDiff.tokenize, Wort-Tokenizer): input {op, text}; expect {tokens: [..]} (zusammengesetzt wieder gleich text). Arbeitet über Unicode-Codepoints (in TypeScript for...of oder Array.from, nicht über UTF-16-Einheiten). Je Token wird am ersten Codepoint entschieden: (a) '\\\\' (Backslash): Token = Backslash plus alle folgenden Codepoints mit Unicode-Eigenschaft Alphabetic (\\p{Alphabetic}; Ziffern, Unterstrich und Satzzeichen nicht); ein Backslash vor Nicht-Buchstaben ist ein Token für sich ('\\\\\\\\' ergibt zwei Tokens '\\\\'). (b) Wortzeichen: ASCII a-z, A-Z, 0-9; Nicht-ASCII, wenn die allgemeine Kategorie Mn, Mc, Me oder Nd ist oder die Eigenschaft Alphabetic gilt; das Token umfasst alle folgenden Wortzeichen (ein Backslash gehört nicht dazu). (c) Leerraum (Unicode White_Space): Token umfasst alle folgenden Leerraum-Codepoints. (d) alles andere: ein einzelner Codepoint ein Token (z. B. '{', '}', ',', '%').\n\nGruppe editScript (LineDiff.editScript<Element>, generisch über Zeichenketten): input {op, old: [..], new: [..], maxEdits}; Ergebnis {removed: [bool je Element von old], inserted: [bool je Element von new]}. Ablauf: gemeinsamen Anfang (prefix) und gemeinsames Ende (suffix, höchstens min(Längen) - prefix) abtrennen; im mittleren Bereich nur Elemente behalten, die auf der anderen Seite im mittleren Bereich vorkommen (Kandidaten); alle Elemente im mittleren Bereich zunächst als entfernt/eingefügt markieren; dann Myers O(ND) auf den Kandidaten: längste gemeinsame Teilfolge (Paare gleicher Elemente), deren Elemente wieder auf false gesetzt werden. Überschreitet die Anzahl nötiger Bearbeitungsschritte D den Wert min(n + m, maxEdits) (n, m = Anzahl Kandidaten), liefert Myers keine Paare, der ganze mittlere Bereich gilt dann als ersetzt (korrekt, aber nicht minimal). expect {removedLength, insertedLength (Länge der Listen, hier gleich der Länge der Eingaben), keptSubsequencesEqual: true (die nicht entfernten Elemente von old sind in Reihenfolge gleich den nicht eingefügten Elementen von new)}.\n\nGruppe diffProperties: input {op, old, new} (Texte). Berechne compute(old, new) und prüfe: reconstructsOld (Texte der Zeilen mit kind != added sind gleich splitLines(old)), reconstructsNew (Texte der Zeilen mit kind != removed gleich splitLines(new)), contextCountEqualsLcs (Anzahl context-Zeilen = Länge der längsten gemeinsamen Teilfolge von splitLines(old) und splitLines(new); die Zeilen-LCS ist also minimal). expect {reconstructsOld, reconstructsNew, contextCountEqualsLcs: true}. Bei den festen Fällen bedeutet 'minimal' den Vergleich gegen eine einfache LCS-Berechnung mit dynamischer Programmierung (nicht gegen eine Zahl in der Datei).\n\nGruppe layoutRows (DiffLayout.rows(for:context:expanded:), Einklappen langer unveränderter Blöcke): input {op, kinds, expanded?}. kinds ist eine Zeichenkette, ein Zeichen je Diff-Zeile: '+' = added, '-' = removed, jedes andere Zeichen (hier '.') = context; expanded = Liste von Startindizes eingeklappter Bereiche, die aufgeklappt sind (Standard []); context = 3. Ergebnis = Liste von Zeilen {line: Index} (Index in kinds, 0-basiert) oder {collapsed: {start, count}}. Ablauf: Nicht-context-Zeilen gehen immer als {line: i} durch. Jede zusammenhängende context-Folge [von, bis) wird so behandelt: keepBefore = 0, wenn von == 0, sonst 3; keepAfter = 0, wenn bis == Gesamtzahl der Zeilen, sonst 3; hiddenStart = von + keepBefore; hiddenEnd = bis - keepAfter. Ist hiddenEnd - hiddenStart < 4 oder expanded enthält hiddenStart, kommen alle Zeilen der Folge als {line}. Sonst: {line} für von..<hiddenStart, dann {collapsed: {start: hiddenStart, count: hiddenEnd - hiddenStart}}, dann {line} für hiddenEnd..<bis. expect (optional): first (erste Zeile der Ergebnisliste), contains (Liste von Zeilen, jede kommt irgendwo vor), suffix (die letzten n Zeilen, n = Länge der Liste, sind gleich), rowCount (Länge der Ergebnisliste).",
+  "skipped": [
+    {
+      "name": "Zufallsabgleich: Der Diff ergibt alten und neuen Text exakt und ist minimal",
+      "reason": "Zufall: SeededGenerator (Swift-eigener Zufallsgenerator, 4 Seeds mal 150 Durchläufe) ist in TypeScript nicht reproduzierbar. Ersatz: die Eigenschaften als Fälle randomEditsReconstruct-fixed-* mit festen Eingaben (op diffProperties); TypeScript darf zusätzlich eigene Zufallstests mit eigenem Generator schreiben",
+      "sourceLine": 81
+    }
+  ],
+  "cases": [
+    {
+      "id": "changedLine",
+      "name": "Geänderte Zeile in der Mitte: entfernt vor hinzugefügt, Nummern stimmen",
+      "input": {
+        "op": "compute",
+        "old": "a\nb\nc\n",
+        "new": "a\nB\nc\n"
+      },
+      "expect": {
+        "rendered": [
+          " a",
+          "-b",
+          "+B",
+          " c"
+        ],
+        "oldNumbers": [
+          1,
+          2,
+          null,
+          3
+        ],
+        "newNumbers": [
+          1,
+          null,
+          2,
+          3
+        ]
+      },
+      "sourceLine": 22
+    },
+    {
+      "id": "emptySides-added",
+      "name": "Neue und gelöschte Dateien, leere Texte",
+      "input": {
+        "op": "compute",
+        "old": "",
+        "new": "x\ny"
+      },
+      "expect": {
+        "rendered": [
+          "+x",
+          "+y"
+        ]
+      },
+      "sourceLine": 31
+    },
+    {
+      "id": "emptySides-removed",
+      "name": "Neue und gelöschte Dateien, leere Texte",
+      "input": {
+        "op": "compute",
+        "old": "x\n",
+        "new": ""
+      },
+      "expect": {
+        "rendered": [
+          "-x"
+        ]
+      },
+      "sourceLine": 31
+    },
+    {
+      "id": "emptySides-empty",
+      "name": "Neue und gelöschte Dateien, leere Texte",
+      "input": {
+        "op": "compute",
+        "old": "",
+        "new": ""
+      },
+      "expect": {
+        "rendered": []
+      },
+      "sourceLine": 31
+    },
+    {
+      "id": "lineSplitting-split-1",
+      "name": "Zeilenumbrüche: abschließender Umbruch erzeugt keine Leerzeile, \\r\\n wie \\n",
+      "input": {
+        "op": "splitLines",
+        "text": "a\nb\n"
+      },
+      "expect": {
+        "lines": [
+          "a",
+          "b"
+        ]
+      },
+      "sourceLine": 38
+    },
+    {
+      "id": "lineSplitting-split-2",
+      "name": "Zeilenumbrüche: abschließender Umbruch erzeugt keine Leerzeile, \\r\\n wie \\n",
+      "input": {
+        "op": "splitLines",
+        "text": "a\n\n"
+      },
+      "expect": {
+        "lines": [
+          "a",
+          ""
+        ]
+      },
+      "sourceLine": 38
+    },
+    {
+      "id": "lineSplitting-split-3",
+      "name": "Zeilenumbrüche: abschließender Umbruch erzeugt keine Leerzeile, \\r\\n wie \\n",
+      "input": {
+        "op": "splitLines",
+        "text": "a\r\nb"
+      },
+      "expect": {
+        "lines": [
+          "a",
+          "b"
+        ]
+      },
+      "sourceLine": 38
+    },
+    {
+      "id": "lineSplitting-compute",
+      "name": "Zeilenumbrüche: abschließender Umbruch erzeugt keine Leerzeile, \\r\\n wie \\n",
+      "input": {
+        "op": "compute",
+        "old": "a\r\nb\r\n",
+        "new": "a\nb\n"
+      },
+      "expect": {
+        "rendered": [
+          " a",
+          " b"
+        ]
+      },
+      "sourceLine": 38
+    },
+    {
+      "id": "movedLine",
+      "name": "Verschobene Zeile wird als ein Entfernen und ein Einfügen erkannt",
+      "input": {
+        "op": "compute",
+        "old": "1\n2\n3\n4\n5",
+        "new": "2\n3\n4\n5\n1"
+      },
+      "expect": {
+        "removedCount": 1,
+        "addedCount": 1,
+        "contextCount": 4
+      },
+      "sourceLine": 46
+    },
+    {
+      "id": "wordHighlighting",
+      "name": "Wort-Hervorhebung: nur das geänderte Wort, LaTeX-Befehle als ein Token",
+      "input": {
+        "op": "compute",
+        "old": "\\section{Einleitung} Das ist ein Satz.",
+        "new": "\\subsection{Einleitung} Das ist ein langer Satz."
+      },
+      "expect": {
+        "changedTexts": {
+          "0": [
+            "\\section"
+          ]
+        },
+        "changedTextsTrimmed": {
+          "1": [
+            "\\subsection",
+            "langer"
+          ]
+        },
+        "texts": [
+          "\\section{Einleitung} Das ist ein Satz.",
+          "\\subsection{Einleitung} Das ist ein langer Satz."
+        ]
+      },
+      "sourceLine": 55
+    },
+    {
+      "id": "dissimilarLines",
+      "name": "Völlig verschiedene Zeilen bekommen keine Wort-Hervorhebung",
+      "input": {
+        "op": "compute",
+        "old": "Alpha Beta Gamma",
+        "new": "\\begin{figure}[htbp]"
+      },
+      "expect": {
+        "everyLineSingleUnchangedSegment": true
+      },
+      "sourceLine": 68
+    },
+    {
+      "id": "tokenizer-1",
+      "name": "Tokenizer: Wörter mit Umlauten, Befehle, Leerraum, Satzzeichen",
+      "input": {
+        "op": "tokenize",
+        "text": "Größe \\emph{x}, 12a"
+      },
+      "expect": {
+        "tokens": [
+          "Größe",
+          " ",
+          "\\emph",
+          "{",
+          "x",
+          "}",
+          ",",
+          " ",
+          "12a"
+        ]
+      },
+      "sourceLine": 75
+    },
+    {
+      "id": "tokenizer-2",
+      "name": "Tokenizer: Wörter mit Umlauten, Befehle, Leerraum, Satzzeichen",
+      "input": {
+        "op": "tokenize",
+        "text": "\\\\ \\%"
+      },
+      "expect": {
+        "tokens": [
+          "\\",
+          "\\",
+          " ",
+          "\\",
+          "%"
+        ]
+      },
+      "sourceLine": 75
+    },
+    {
+      "id": "editLimitFallsBackToReplacement",
+      "name": "Über der Grenze für Bearbeitungsschritte: korrekt, nur nicht minimal",
+      "input": {
+        "op": "editScript",
+        "old": [
+          "z0",
+          "z1",
+          "z2",
+          "z3",
+          "z4",
+          "z0",
+          "z1",
+          "z2",
+          "z3",
+          "z4",
+          "z0",
+          "z1",
+          "z2",
+          "z3",
+          "z4",
+          "z0",
+          "z1",
+          "z2",
+          "z3",
+          "z4",
+          "z0",
+          "z1",
+          "z2",
+          "z3",
+          "z4",
+          "z0",
+          "z1",
+          "z2",
+          "z3",
+          "z4",
+          "z0",
+          "z1",
+          "z2",
+          "z3",
+          "z4",
+          "z0",
+          "z1",
+          "z2",
+          "z3",
+          "z4",
+          "z0",
+          "z1",
+          "z2",
+          "z3",
+          "z4",
+          "z0",
+          "z1",
+          "z2",
+          "z3",
+          "z4"
+        ],
+        "new": [
+          "z1",
+          "z0",
+          "z4",
+          "z3",
+          "z2",
+          "z1",
+          "z0",
+          "z4",
+          "z3",
+          "z2",
+          "z1",
+          "z0",
+          "z4",
+          "z3",
+          "z2",
+          "z1",
+          "z0",
+          "z4",
+          "z3",
+          "z2",
+          "z1",
+          "z0",
+          "z4",
+          "z3",
+          "z2",
+          "z1",
+          "z0",
+          "z4",
+          "z3",
+          "z2",
+          "z1",
+          "z0",
+          "z4",
+          "z3",
+          "z2",
+          "z1",
+          "z0",
+          "z4",
+          "z3",
+          "z2",
+          "z1",
+          "z0",
+          "z4",
+          "z3",
+          "z2",
+          "z1",
+          "z0",
+          "z4",
+          "z3",
+          "z2"
+        ],
+        "maxEdits": 3
+      },
+      "expect": {
+        "removedLength": 50,
+        "insertedLength": 50,
+        "keptSubsequencesEqual": true
+      },
+      "sourceLine": 102
+    },
+    {
+      "id": "collapsesDistantContext",
+      "name": "Lange unveränderte Bereiche werden bis auf 3 Zeilen Kontext eingeklappt",
+      "input": {
+        "op": "layoutRows",
+        "kinds": "..........+....................-.."
+      },
+      "expect": {
+        "first": {
+          "collapsed": {
+            "start": 0,
+            "count": 7
+          }
+        },
+        "contains": [
+          {
+            "collapsed": {
+              "start": 14,
+              "count": 14
+            }
+          }
+        ],
+        "suffix": [
+          {
+            "line": 32
+          },
+          {
+            "line": 33
+          }
+        ]
+      },
+      "sourceLine": 145
+    },
+    {
+      "id": "keepsShortRunsAndExpanded-short",
+      "name": "Kurze Bereiche bleiben offen, aufgeklappte Bereiche erscheinen vollständig",
+      "input": {
+        "op": "layoutRows",
+        "kinds": "+.........-"
+      },
+      "expect": {
+        "rowCount": 11
+      },
+      "sourceLine": 155
+    },
+    {
+      "id": "keepsShortRunsAndExpanded-collapsed",
+      "name": "Kurze Bereiche bleiben offen, aufgeklappte Bereiche erscheinen vollständig",
+      "input": {
+        "op": "layoutRows",
+        "kinds": "..........+"
+      },
+      "expect": {
+        "rowCount": 5
+      },
+      "sourceLine": 155
+    },
+    {
+      "id": "keepsShortRunsAndExpanded-expanded",
+      "name": "Kurze Bereiche bleiben offen, aufgeklappte Bereiche erscheinen vollständig",
+      "input": {
+        "op": "layoutRows",
+        "kinds": "..........+",
+        "expanded": [
+          0
+        ]
+      },
+      "expect": {
+        "rowCount": 11
+      },
+      "sourceLine": 155
+    },
+    {
+      "id": "randomEditsReconstruct-fixed-1",
+      "name": "Zufallsabgleich: Der Diff ergibt alten und neuen Text exakt und ist minimal",
+      "input": {
+        "op": "diffProperties",
+        "old": "a\nb\nc\n\\item x\n\nSatz eins.",
+        "new": "b\na\nc\nSatz zwei.\n\n\\item x\nSatz eins."
+      },
+      "expect": {
+        "reconstructsOld": true,
+        "reconstructsNew": true,
+        "contextCountEqualsLcs": true
+      },
+      "sourceLine": 81
+    },
+    {
+      "id": "randomEditsReconstruct-fixed-2",
+      "name": "Zufallsabgleich: Der Diff ergibt alten und neuen Text exakt und ist minimal",
+      "input": {
+        "op": "diffProperties",
+        "old": "",
+        "new": "Satz zwei.\n\na\n"
+      },
+      "expect": {
+        "reconstructsOld": true,
+        "reconstructsNew": true,
+        "contextCountEqualsLcs": true
+      },
+      "sourceLine": 81
+    }
+  ]
+}

@@ -16,6 +16,7 @@ import {
     type ProjectFiles,
     type SourceFile,
 } from './completionIndexLogic';
+import { EMPTY_REFERENCES, type ReferenceSnapshot } from './referenceCheckLogic';
 
 /** Ruhezeit nach der letzten Änderung (Swift `CompletionProvider.reloadDelay`) */
 export const COMPLETION_INDEX_DEBOUNCE_MS = 500;
@@ -53,6 +54,8 @@ export interface CompletionIndexDeps {
     readonly timer?: IndexTimer;
     readonly debounceMs?: number;
     readonly onIndexChanged?: (index: CompletionIndexSnapshot) => void;
+    /** W4-12: Ergebnis der Verweisprüfung hat sich geändert (kommt mit derselben Antwort des Workers) */
+    readonly onReferencesChanged?: (references: ReferenceSnapshot) => void;
     readonly onError?: (message: string) => void;
 }
 
@@ -110,6 +113,8 @@ export class CompletionIndexClient {
     private disposed = false;
     private current: CompletionIndexSnapshot = EMPTY_COMPLETION_INDEX;
     private received: CompletionIndexSnapshot = EMPTY_COMPLETION_INDEX;
+    private currentReferences: ReferenceSnapshot = EMPTY_REFERENCES;
+    private receivedReferences: ReferenceSnapshot = EMPTY_REFERENCES;
     private readonly timer: IndexTimer;
     private readonly debounceMs: number;
     private readonly createWorker: CompletionWorkerFactory;
@@ -123,6 +128,11 @@ export class CompletionIndexClient {
     /** Zuletzt gültiger Index (leer, bis der Worker geantwortet hat) */
     get index(): CompletionIndexSnapshot {
         return this.current;
+    }
+
+    /** Zuletzt gültiges Ergebnis der Verweisprüfung (leer, bis der Worker geantwortet hat) */
+    get references(): ReferenceSnapshot {
+        return this.currentReferences;
     }
 
     /** Neues Projekt (Wurzel geändert: alles vergessen) oder neuer Baum (neue/entfernte Dateien neu lesen) */
@@ -187,7 +197,9 @@ export class CompletionIndexClient {
         for (const path of this.sources) this.dirty.add(path);
         for (const path of this.openPaths) this.dirty.add(path);
         this.received = EMPTY_COMPLETION_INDEX;
+        this.receivedReferences = EMPTY_REFERENCES;
         this.publish(EMPTY_COMPLETION_INDEX);
+        this.publishReferences(EMPTY_REFERENCES);
     }
 
     private schedule(delayMs = this.debounceMs): void {
@@ -325,8 +337,16 @@ export class CompletionIndexClient {
             return;
         }
         if (response.index !== null) this.received = response.index;
+        if (response.references) this.receivedReferences = response.references;
         if (response.version !== this.version) return;
         this.publish(this.received);
+        this.publishReferences(this.receivedReferences);
+    }
+
+    private publishReferences(references: ReferenceSnapshot): void {
+        if (references === this.currentReferences) return;
+        this.currentReferences = references;
+        this.deps.onReferencesChanged?.(references);
     }
 
     private publish(index: CompletionIndexSnapshot): void {

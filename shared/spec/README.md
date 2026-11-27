@@ -242,6 +242,8 @@ Stand 2026-11-22. „Fälle“ = Einträge in `cases`, „übersprungen“ = Ein
 | `bibliography.json` | `BibliographyTests.swift` | 25 | 4 | Schema und IDs geprüft, Swift-Gegenprobe offen; Ops: parseBib, catalogEntries, authorsBibtex, authorsShort, makeKey, keyValid, formatEntry, escapeValue, bibTarget, appendix, buildSource; Eingabe/Ausgabe je Op in `notes` der Datei |
 | `references.json` | `LatexReferencesTests, ReferenceCheckTests, UsageFinderTests, SyntaxCheckerTests (Doppelte Labels)` | 46 | 9 | Schema und IDs geprüft, Swift-Gegenprobe offen; Ops: scan, check, storeCheck, bibEntries, usedSets, unusedHints, projectCheck, duplicateMarks, duplicateList, usages; Eingabe/Ausgabe je Op in `notes` der Datei |
 | `writing.json` | `WritingHintsTests, WordCounterTests, AcronymTests, TechnicalVocabularyTests` | 163 | 8 | Schema und IDs geprüft, Swift-Gegenprobe offen; Ops: capitalizationCorrection, writingHints, wordCount, acronymDefinitions, acronymProblems, vocabularyAccepts, vocabularySize; Eingabe/Ausgabe je Op in `notes` der Datei |
+| `git-status.json` | `GitStatusTests.swift (Fälle), GitRemoteTests.swift und GitStoreTests.swift (nur übersprungen)` | 26 | 23 | Schema und IDs geprüft, Swift-Gegenprobe offen; Ops: parseStatus, locateGit, environment, userMessage, pathInsideGitDirectory, isRelevantInternalPath, projectMapping; Eingabe/Ausgabe je Op in `notes` der Datei |
+| `line-diff.json` | `LineDiffTests.swift (inkl. DiffLayoutTests)` | 20 | 1 | Schema und IDs geprüft, Swift-Gegenprobe offen; Ops: compute, splitLines, tokenize, editScript, layoutRows, diffProperties; Eingabe/Ausgabe je Op in `notes` der Datei |
 | `example.json` | `LatexTokenizerTests.swift` | 3 | 0 | nur Beispiel für das Format (ohne `op`) |
 
 ## Namen der Vektordateien

@@ -5,6 +5,7 @@
 // - Renderer (`app/shortcuts.ts` und CodeMirror): Strg+O/S/Umschalt+S/B/., F8, Strg+Tab, Zoom, Suchen, Ersetzen,
 //   Rückgängig/Wiederholen, Strg+Leertaste (Vervollständigen); das Menü zeigt sie nur an (`displayOnly`), die
 //   Befehle hier gelten für Mausklicks im Menü.
+// - Menü „Einfügen“ (Umschalt+Strg/⌘+I, W4-10): Menü-Accelerator, hier `insert.*`.
 // - Ausschneiden/Kopieren/Einfügen/Alles auswählen: Electron-Rollen, nicht hier.
 import { startCompletion } from '@codemirror/autocomplete';
 import { redo, undo } from '@codemirror/commands';
@@ -23,6 +24,8 @@ import { saveActiveFile, saveActiveFileAs, saveFile, openFilesFromDialog } from 
 import type { FileActionDeps } from './fileActions';
 import { dirtyPaths } from './closeFlow';
 import { goToIssue } from './issueActions';
+import { ALL_INSERTION_KINDS } from './insertKinds';
+import type { InsertionKind } from './insertKinds';
 import { createNewFile } from './newFile';
 import { beginNewEntry, redoFileAction, undoFileAction } from './projectFileActions';
 import type { ProjectFileActionDeps } from './projectFileActions';
@@ -79,6 +82,8 @@ export interface CommandDeps {
     readonly syncTeX: () => SyncTeXFlowDeps;
     /** Datei-Aktionen im Projekt und ihr App-Rückgängig (W2-9) */
     readonly projectFileActions: () => ProjectFileActionDeps;
+    /** Öffnet das Einfügen-Fenster (W4-10), mit `kind` bei diesem Baustein */
+    readonly openInsert: (kind?: InsertionKind) => void;
 }
 
 function fileCommands(deps: CommandDeps): [string, CommandHandler][] {
@@ -272,10 +277,17 @@ function projectCommands(deps: CommandDeps): [string, CommandHandler][] {
     ];
 }
 
+/** Menü „Einfügen“ (W4-10): `insert.open` (zuletzt benutzter Baustein) und `insert.<baustein>` je Baustein */
+function insertCommands(deps: CommandDeps): [string, CommandHandler][] {
+    const perKind = ALL_INSERTION_KINDS.map((kind): [string, CommandHandler] => [`insert.${kind}`, () => deps.openInsert(kind)]);
+    return [['insert.open', () => deps.openInsert()], ...perKind];
+}
+
 export function createCommandRegistry(deps: CommandDeps): CommandRegistry {
     return new Map<string, CommandHandler>([
         ...fileCommands(deps),
         ...editCommands(deps),
+        ...insertCommands(deps),
         ...viewCommands(deps),
         ...projectCommands(deps),
     ]);

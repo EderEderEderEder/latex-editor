@@ -49,6 +49,16 @@ describe('Befehlsregister', () => {
         expect(overlays.getState().active).toBe('quickOpen');
     });
 
+    it('Einfügen (W4-10): insert.open öffnet das Fenster beim letzten Baustein, insert.<baustein> beim gewählten', async () => {
+        const { deps } = setup();
+        const openInsert = vi.fn();
+        const registry = createCommandRegistry({ ...deps, openInsert });
+        await runCommand(registry, 'insert.open', deps.report);
+        await runCommand(registry, 'insert.source', deps.report);
+        await runCommand(registry, 'insert.table', deps.report);
+        expect(openInsert.mock.calls).toEqual([[], ['source'], ['table']]);
+    });
+
     it('Tab schließen fragt bei Änderungen nach und lässt den Tab bei Abbrechen offen', async () => {
         const { deps, open, ask, store } = setup();
         open('/p/a.tex', 'a.tex', true);

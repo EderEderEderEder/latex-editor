@@ -55,6 +55,20 @@ describe('image:import', () => {
         expect(await readFile(join(outside, 'Mein Foto (1).PNG'))).toEqual(PNG_A);
     });
 
+    it('funktioniert auch, wenn das Projekt über einen Symlink geöffnet wurde (aufgelöste Form weicht ab)', async () => {
+        const alias = join(base, 'Alias');
+        await symlink(project, alias);
+        const aliasGrants = new GrantStore({ platform: currentPathPlatform() });
+        aliasGrants.openProject(aliasGrants.grant(alias, 'project').grantId);
+        const aliasHandlers = createImportHandlers({ grants: aliasGrants, userDataDir: join(base, 'userDataAlias') });
+        const path = join(outside, 'bild.png');
+        await writeFile(path, PNG_A);
+        const grantId = aliasGrants.grant(path, 'importSource').grantId;
+        const result = await aliasHandlers['image:import'](grantId, join(alias, 'images'));
+        expect(result).toEqual({ relPath: 'images/bild.png', reused: false });
+        expect(await readFile(join(project, 'images', 'bild.png'))).toEqual(PNG_A);
+    });
+
     it('verwendet gleichen Inhalt weiter, nummeriert anderen Inhalt und überschreibt nie', async () => {
         const first = await handlers['image:import'](await granted('a.png', PNG_A), join(project, 'images'));
         const again = await handlers['image:import'](await granted('a.png', PNG_A), join(project, 'images'));

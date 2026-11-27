@@ -90,3 +90,7 @@ Zeitbudget, Zufall, Fenster, Pixel, Prozesse: PerformanceTests, RobustnessTests,
 ## Status W4-1 / Vorarbeit W7-3 (2026-11-25)
 
 `completion.json`, `insertion.json`, `bibliography.json`, `references.json` und `writing.json` sind umgesetzt (Fallzahlen und Op-Listen: Tabelle in `README.md`); Swift-Gegenprobe (`SpecVectorTests`) offen. Übersprungen sind Tests mit AppKit, `sleep`, Dateisystem oder TeX. Die Fachvokabular-Listen liegen in `swift/Sources/LatexEditor/Syntax/TechnicalWords*.swift` und werden für die Web-Version als JSON extrahiert. Die Rechtschreibung nutzt in Swift `NSSpellChecker`; es gibt keinen eigenen Code dafür.
+
+## Status W6-1 (2026-11-27)
+
+`git-status.json` (26 Fälle, 23 übersprungen: Tests mit echten Repositories/Prozessen) und `line-diff.json` (20 Fälle, 1 übersprungen: Zufallstest, ersetzt durch zwei feste Fälle) sind umgesetzt; Swift-Gegenprobe offen. `GitResetPlanTests` (2 Tests) sind rein und können nachgezogen werden. `pathHasSuffix` in `environment` setzt `:` als PATH-Trenner voraus, die TypeScript-Seite nimmt `path.delimiter`.

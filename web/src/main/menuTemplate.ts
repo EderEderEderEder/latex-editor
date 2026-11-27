@@ -120,6 +120,28 @@ function editMenu(isMac: boolean): SubmenuEntry {
     };
 }
 
+// Einfügen-Fenster (W4-10, Vorlage Swift ⇧⌘I): `insert.open` zeigt den zuletzt benutzten Baustein, die übrigen Einträge
+// springen zu ihrem Baustein (IDs `insert.<baustein>` wie `renderer/app/insertKinds.ts`). Nie Strg+Alt+Zeichen.
+function insertMenu(): SubmenuEntry {
+    return {
+        kind: 'submenu',
+        label: 'Einfügen',
+        submenu: [
+            command('Einfügeoptionen …', 'insert.open', `${MOD}+Shift+I`),
+            SEPARATOR,
+            command('Tabelle …', 'insert.table'),
+            command('Bild …', 'insert.image'),
+            command('Codeblock …', 'insert.code'),
+            command('Gleichung …', 'insert.equation'),
+            command('Aufzählung …', 'insert.list'),
+            SEPARATOR,
+            command('Querverweis (\\ref) …', 'insert.reference'),
+            command('Zitieren (\\cite) …', 'insert.citation'),
+            command('Quelle …', 'insert.source'),
+        ],
+    };
+}
+
 function viewMenu(): SubmenuEntry {
     return {
         kind: 'submenu',
@@ -182,6 +204,7 @@ export function buildMenuEntries(context: MenuContext): MenuEntry[] {
         fileMenu(isMac),
         editMenu(isMac),
         viewMenu(),
+        insertMenu(),
         projectMenu(),
         windowMenu(isMac),
         ...(help === null ? [] : [help]),

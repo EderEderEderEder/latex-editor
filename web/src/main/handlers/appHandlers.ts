@@ -16,6 +16,7 @@ import { createBuildHandlers } from './buildHandlers';
 import { createDialogHandlers, type DialogLike } from './dialogHandlers';
 import { createFsHandlers } from './fsHandlers';
 import { createFsOpsHandlers } from './fsOpsHandlers';
+import { createGitHandlers } from './gitHandlers';
 import { createImportHandlers } from './importHandlers';
 import { createRecoveryHandlers } from './recoveryHandlers';
 import { createPdfHandlers } from './pdfHandlers';
@@ -131,6 +132,8 @@ export function createAppHandlers<W>(options: AppHandlerOptions<W>): AppHandlers
         ...synctex?.handlers,
         ...createPdfHandlers({ grants }),
         ...createSpellHandlers(new UserWordStore(userDataDir)),
+        // Git (W6-2) wie die Dateiüberwachung nur im echten App-Lauf (mit Ereignisweg), sonst Platzhalter.
+        ...(options.emit === undefined ? {} : createGitHandlers({ grants })),
     });
     return { handlers, grants, settings, watch };
 }

@@ -23,6 +23,7 @@ import { createCommandRegistry } from './commands';
 import { startCompletionIndex } from './completionIndexRuntime';
 import type { CommandDeps, CommandRegistry } from './commands';
 import type { FileActionDeps } from './fileActions';
+import { openInsertDialogFromApp } from './insertRuntime';
 import { projectFileActionDeps } from './projectFileActionsRuntime';
 import { projectFlowDeps, revealDeps } from './projectRuntime';
 import { showSpellMenu } from './spellMenu';
@@ -100,6 +101,7 @@ export function createAppCommandDeps(activeView: () => EditorView | null): Comma
         confirmClean: () => window.confirm(BUILD_TOOLBAR_TEXTS.cleanQuestion),
         syncTeX: () => syncTeXFlowDeps(focusEditor),
         projectFileActions: projectFileActionDeps,
+        openInsert: openInsertDialogFromApp,
     };
 }
 

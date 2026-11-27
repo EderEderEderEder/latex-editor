@@ -12,6 +12,7 @@ import { createSidebarStore } from '../../src/renderer/stores/sidebar';
 const TOOLBAR_COMMAND_IDS = [
     'file.openFile', 'file.save', 'file.saveAs',
     'project.compile', 'project.cancel', 'project.showIssues', 'project.toggleCompileOnSave', 'project.clean',
+    'insert.open',
 ];
 
 function allCommands(entries: readonly MenuEntry[]): CommandEntry[] {
@@ -94,6 +95,18 @@ describe('Menüvorlage', () => {
         }
     });
 
+    it('Einfügen (W4-10): Menü mit allen Bausteinen, ⇧Strg/⌘+I gehört dem Menü, nie Strg+Alt', () => {
+        const commands = allCommands(buildMenuEntries(win));
+        const insert = commands.filter((entry) => entry.commandId.startsWith('insert.'));
+        expect(insert.map((entry) => entry.commandId)).toEqual([
+            'insert.open', 'insert.table', 'insert.image', 'insert.code', 'insert.equation', 'insert.list',
+            'insert.reference', 'insert.citation', 'insert.source',
+        ]);
+        expect(insert[0]).toMatchObject({ accelerator: 'CommandOrControl+Shift+I', label: 'Einfügeoptionen …' });
+        expect(insert[0]?.displayOnly).toBeUndefined();
+        expect(insert.slice(1).every((entry) => entry.accelerator === undefined)).toBe(true);
+    });
+
     it('Windows: kein App-Menü, Beenden in Datei; macOS: App-Menü, kein Beenden in Datei', () => {
         const winEntries = buildMenuEntries(win);
         const macEntries = buildMenuEntries(mac);
@@ -116,7 +129,7 @@ describe('Menüvorlage', () => {
             JSON.stringify(buildMenuEntries({ platform: 'win32', isPackaged })).includes('toggleDevTools');
         expect(hasDevTools(false)).toBe(true);
         expect(hasDevTools(true)).toBe(false);
-        expect(titles(buildMenuEntries(win))).toEqual(['Datei', 'Bearbeiten', 'Ansicht', 'Projekt', 'Fenster']);
+        expect(titles(buildMenuEntries(win))).toEqual(['Datei', 'Bearbeiten', 'Ansicht', 'Einfügen', 'Projekt', 'Fenster']);
         expect(titles(buildMenuEntries({ platform: 'win32', isPackaged: false }))).toContain('Hilfe');
     });
 });
